@@ -45,10 +45,10 @@ Plans:
   2. The event count matches the number of distinct beat positions in the score (no missing or duplicate events)
   3. Y positions extracted via `getBoundingClientRect()` correctly group notes into systems (lines of music) with the existing threshold logic
   4. The `interpolateTimestamps()` function produces correct computed timestamps when given Verovio-sourced events and user-set sync anchors
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: Event extraction and interpolation integration
+- [ ] 02-01-PLAN.md -- Verovio timemap event extraction and RegularRenderer wiring
 
 ### Phase 3: Animation and Camera
 **Goal**: Playback preview works end-to-end with note highlighting, camera scrolling, and Puppeteer frame capture
