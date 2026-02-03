@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Verovio WASM setup, service layer, useVerovio hook, and validation migration
+- [x] 01-01-PLAN.md -- Verovio WASM setup, service layer, useVerovio hook, and validation migration
 - [ ] 01-02-PLAN.md -- RegularRenderer rendering swap, CSS color migration, and animation selector updates
 
 ### Phase 2: Event System Migration
@@ -161,7 +161,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
-| 1. Core Verovio Integration | 0/2 | Planning complete | - |
+| 1. Core Verovio Integration | 1/2 | In progress | - |
 | 2. Event System Migration | 0/1 | Not started | - |
 | 3. Animation and Camera | 0/2 | Not started | - |
 | 4. SyncEditor Migration | 0/1 | Not started | - |
