@@ -23,7 +23,7 @@ export function animateNoteheads(
     const stavenote = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
     if (!stavenote) return;
 
-    const noteheads = stavenote.querySelectorAll<SVGGElement>(".vf-notehead");
+    const noteheads = stavenote.querySelectorAll<SVGGElement>("g.notehead");
 
     noteheads.forEach((nh) => {
       /* ---------------- scale (group) ---------------- */
@@ -35,15 +35,15 @@ export function animateNoteheads(
 
       /* ---------------- color override (shapes) ---------------- */
 
-      const shapes = nh.querySelectorAll<SVGGraphicsElement>("path, ellipse");
+      const shapes = nh.querySelectorAll<SVGGraphicsElement>("use");
 
       shapes.forEach((shape) => {
         if (color) {
           shape.style.transition = `fill ${entryMs}ms ease-out, stroke ${entryMs}ms ease-out`;
-
-          // TEMPORARY override
           shape.style.fill = color;
           shape.style.stroke = color;
+          // Also set color for currentColor cascade
+          shape.style.color = color;
         }
       });
 
@@ -58,10 +58,9 @@ export function animateNoteheads(
         shapes.forEach((shape) => {
           if (color) {
             shape.style.transition = `fill ${exitMs}ms ease-in, stroke ${exitMs}ms ease-in`;
-
-            // Remove override -> fall back to current score color
             shape.style.removeProperty("fill");
             shape.style.removeProperty("stroke");
+            shape.style.removeProperty("color");
           }
         });
       }, totalDelay);
@@ -72,16 +71,17 @@ export function animateNoteheads(
 export function resetNoteheadAnimations(root: HTMLElement | null) {
   if (!root) return;
 
-  root.querySelectorAll<SVGGElement>(".vf-notehead").forEach((nh) => {
+  root.querySelectorAll<SVGGElement>("g.notehead").forEach((nh) => {
     // Reset scale
     nh.style.transform = "scale(1)";
     nh.style.transition = "";
 
     // Remove color overrides from shapes
-    nh.querySelectorAll<SVGGraphicsElement>("path, ellipse").forEach(
+    nh.querySelectorAll<SVGGraphicsElement>("use").forEach(
       (shape) => {
         shape.style.removeProperty("fill");
         shape.style.removeProperty("stroke");
+        shape.style.removeProperty("color");
         shape.style.transition = "";
       }
     );

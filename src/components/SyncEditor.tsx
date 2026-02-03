@@ -151,7 +151,6 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     // In render mode, audioElement can be null - we only use setFrame/setTimestamp
     const controller = initAnimationController({
       audioElement: isRenderMode ? null : audioRef.current,
-      osmdInstance: osmd!,
       getInterpolatedEvents: () => interpolatedEventsRef.current,
       containerElement: osmdRef.current,
     });

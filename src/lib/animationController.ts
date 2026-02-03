@@ -1,4 +1,3 @@
-import type { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
 import type { InterpolatedEvent } from './interpolation';
 
 /**
@@ -7,11 +6,9 @@ import type { InterpolatedEvent } from './interpolation';
 export interface AnimationControllerConfig {
   /** Audio element for duration information (optional in render mode) */
   audioElement: HTMLAudioElement | null;
-  /** OSMD instance for DOM access to notes */
-  osmdInstance: OpenSheetMusicDisplay;
   /** Function to get current interpolated events */
   getInterpolatedEvents: () => InterpolatedEvent[];
-  /** Container element where OSMD rendered (for DOM queries) */
+  /** Container element where score is rendered (for DOM queries) */
   containerElement: HTMLElement;
 }
 
@@ -49,10 +46,11 @@ function applyNoteColor(container: HTMLElement, svgIds: string[], color: string)
   svgIds.forEach(svgId => {
     const stavenote = container.querySelector(`#${CSS.escape(svgId)}`);
     if (!stavenote) return;
-    const shapes = stavenote.querySelectorAll<SVGGraphicsElement>('.vf-notehead path, .vf-notehead ellipse');
+    const shapes = stavenote.querySelectorAll<SVGGraphicsElement>('g.notehead use');
     shapes.forEach(shape => {
       shape.style.fill = color;
       shape.style.stroke = color;
+      shape.style.color = color;
     });
   });
 }
@@ -64,10 +62,11 @@ function clearNoteColor(container: HTMLElement, svgIds: string[]): void {
   svgIds.forEach(svgId => {
     const stavenote = container.querySelector(`#${CSS.escape(svgId)}`);
     if (!stavenote) return;
-    const shapes = stavenote.querySelectorAll<SVGGraphicsElement>('.vf-notehead path, .vf-notehead ellipse');
+    const shapes = stavenote.querySelectorAll<SVGGraphicsElement>('g.notehead use');
     shapes.forEach(shape => {
       shape.style.removeProperty('fill');
       shape.style.removeProperty('stroke');
+      shape.style.removeProperty('color');
     });
   });
 }

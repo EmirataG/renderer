@@ -730,7 +730,6 @@ export default function RegularRenderer({
     // Initialize the animation controller module (for internal state tracking)
     initAnimationController({
       audioElement: audioRef.current,
-      osmdInstance: null as any, // TEMPORARY: Task 2 removes osmdInstance from interface
       getInterpolatedEvents,
       containerElement: osmdRef.current!,
     });
