@@ -48,7 +48,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 02-01-PLAN.md -- Verovio timemap event extraction and RegularRenderer wiring
+- [x] 02-01-PLAN.md -- Verovio timemap event extraction and RegularRenderer wiring
 
 ### Phase 3: Animation and Camera
 **Goal**: Playback preview works end-to-end with note highlighting, camera scrolling, and Puppeteer frame capture
