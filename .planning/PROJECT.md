@@ -14,37 +14,37 @@ Scores render correctly with Verovio and all existing animation/sync features wo
 
 These capabilities exist today with OSMD and must continue working with Verovio:
 
-- ✓ MusicXML file upload with drag-drop and validation — existing
-- ✓ Score rendering from MusicXML to SVG in the browser — existing
-- ✓ BPM-based animation: vertical scrolling through score at configurable tempo — existing
-- ✓ Sync-based animation: audio-driven playback with user-set anchor timestamps — existing
-- ✓ Notehead animation: scale, color highlight, entry/hold/exit timing on active notes — existing
-- ✓ Camera system: smooth vertical scrolling that centers the current playback position — existing
-- ✓ Score color customization: all SVG elements recolored to user-chosen color — existing
-- ✓ Score scale/zoom: adjustable score size with layout reflow — existing
-- ✓ Score region editor: draggable/resizable region positioning over background image — existing
-- ✓ Score border styles: decorative top/bottom borders (line, ornate, flourish) — existing
-- ✓ Background image support: score overlaid on user-uploaded image — existing
-- ✓ Audio upload and preview playback — existing
-- ✓ Sync Editor: visual event timeline for setting timestamp anchors per note — existing
-- ✓ Timestamp interpolation: computes per-event timestamps from sparse anchor points — existing
-- ✓ Puppeteer animation controller: frame-by-frame rendering API exposed on window — existing
-- ✓ Render mode: scales output to fill viewport for video capture — existing
-- ✓ Score shadow distance control — existing
-- ✓ Transport controls: play, stop, reset — existing
-- ✓ Toast notifications for user feedback — existing
+- VAL-01: MusicXML file upload with drag-drop and validation — existing
+- VAL-02: Score rendering from MusicXML to SVG in the browser — existing
+- VAL-03: BPM-based animation: vertical scrolling through score at configurable tempo — existing
+- VAL-04: Sync-based animation: audio-driven playback with user-set anchor timestamps — existing
+- VAL-05: Notehead animation: scale, color highlight, entry/hold/exit timing on active notes — existing
+- VAL-06: Camera system: smooth vertical scrolling that centers the current playback position — existing
+- VAL-07: Score color customization: all SVG elements recolored to user-chosen color — existing
+- VAL-08: Score scale/zoom: adjustable score size with layout reflow — existing
+- VAL-09: Score region editor: draggable/resizable region positioning over background image — existing
+- VAL-10: Score border styles: decorative top/bottom borders (line, ornate, flourish) — existing
+- VAL-11: Background image support: score overlaid on user-uploaded image — existing
+- VAL-12: Audio upload and preview playback — existing
+- VAL-13: Sync Editor: visual event timeline for setting timestamp anchors per note — existing
+- VAL-14: Timestamp interpolation: computes per-event timestamps from sparse anchor points — existing
+- VAL-15: Puppeteer animation controller: frame-by-frame rendering API exposed on window — existing
+- VAL-16: Render mode: scales output to fill viewport for video capture — existing
+- VAL-17: Score shadow distance control — existing
+- VAL-18: Transport controls: play, stop, reset — existing
+- Toast notifications for user feedback — existing (no migration impact, excluded from tracking)
 
 ### Active
 
-- [ ] Replace OSMD with Verovio for MusicXML-to-SVG rendering
-- [ ] Extract musical events (beat onset, duration, SVG element IDs) from Verovio output
-- [ ] Adapt notehead animation to target Verovio SVG structure (`.note > .notehead` elements)
-- [ ] Adapt score color styling to Verovio SVG class/ID conventions
-- [ ] Adapt MusicXML validation to use Verovio instead of OSMD
-- [ ] Adapt SyncEditor event extraction to use Verovio instead of OSMD Cursor
-- [ ] Adapt Puppeteer animation controller to target Verovio SVG elements
-- [ ] Implement zoom/scale via Verovio's `scale` option with re-render
-- [ ] Remove OSMD dependency entirely
+- MIG-01: Replace OSMD with Verovio for MusicXML-to-SVG rendering
+- MIG-02: Extract musical events (beat onset, duration, SVG element IDs) from Verovio output
+- MIG-03: Adapt notehead animation to target Verovio SVG structure (`.note > .notehead` elements)
+- MIG-04: Adapt score color styling to Verovio SVG class/ID conventions
+- MIG-05: Adapt MusicXML validation to use Verovio instead of OSMD
+- MIG-06: Adapt SyncEditor event extraction to use Verovio instead of OSMD Cursor
+- MIG-07: Adapt Puppeteer animation controller to target Verovio SVG elements
+- MIG-08: Implement zoom/scale via Verovio's `scale` option with re-render
+- MIG-09: Remove OSMD dependency entirely
 
 ### Out of Scope
 
@@ -53,6 +53,38 @@ These capabilities exist today with OSMD and must continue working with Verovio:
 - New features or UI changes — pure engine swap only
 - Server-side rendering — remains a client-side SPA
 - Mobile support — not in scope
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| MIG-01 | Phase 1 | Pending |
+| MIG-02 | Phase 2 | Pending |
+| MIG-03 | Phase 3 | Pending |
+| MIG-04 | Phase 1 | Pending |
+| MIG-05 | Phase 1 | Pending |
+| MIG-06 | Phase 4 | Pending |
+| MIG-07 | Phase 3 | Pending |
+| MIG-08 | Phase 1 | Pending |
+| MIG-09 | Phase 5 | Pending |
+| VAL-01 | Phase 1 | Pending |
+| VAL-02 | Phase 1 | Pending |
+| VAL-03 | Phase 3 | Pending |
+| VAL-04 | Phase 3 | Pending |
+| VAL-05 | Phase 3 | Pending |
+| VAL-06 | Phase 3 | Pending |
+| VAL-07 | Phase 1 | Pending |
+| VAL-08 | Phase 1 | Pending |
+| VAL-09 | Phase 5 | Pending |
+| VAL-10 | Phase 5 | Pending |
+| VAL-11 | Phase 5 | Pending |
+| VAL-12 | Phase 4 | Pending |
+| VAL-13 | Phase 4 | Pending |
+| VAL-14 | Phase 2 | Pending |
+| VAL-15 | Phase 3 | Pending |
+| VAL-16 | Phase 3 | Pending |
+| VAL-17 | Phase 5 | Pending |
+| VAL-18 | Phase 3 | Pending |
 
 ## Context
 
@@ -96,6 +128,7 @@ These capabilities exist today with OSMD and must continue working with Verovio:
 | Pure engine swap, no feature additions | Minimize risk, focused scope | — Pending |
 | Target Verovio semantic CSS classes for animations | Verovio uses `.note`, `.notehead` classes — maps cleanly to animation needs | — Pending |
 | Drop hideUnplayedNotes/smoothReveal from scope | Not implemented in current codebase | — Pending |
+| 5-phase sequential migration | Strict dependency chain: WASM -> rendering -> events -> animation -> cleanup | Adopted |
 
 ---
-*Last updated: 2026-02-03 after initialization*
+*Last updated: 2026-02-03 after roadmap creation*
