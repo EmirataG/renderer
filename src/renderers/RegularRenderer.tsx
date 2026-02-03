@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useVerovio } from "../hooks/useVerovio";
-import type { MusicalEvent } from "../lib/getEvents";
+import { getEventsFromVerovio } from "../lib/getEvents";
+import type { MusicalEventWithY } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
 import { interpolateTimestamps } from "../lib/interpolation";
@@ -39,11 +40,6 @@ interface Props {
   activeNoteheadAnimationEntryMs?: number;
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
-}
-
-// Extended event interface with Y position
-interface MusicalEventWithY extends MusicalEvent {
-  y: number;
 }
 
 export default function RegularRenderer({
@@ -246,13 +242,18 @@ export default function RegularRenderer({
         return;
       }
       resetNoteheadAnimations(osmdRef.current);
+
+      // Extract events from Verovio timemap + DOM positions
+      if (toolkit) {
+        const extractedEvents = getEventsFromVerovio(toolkit, osmdRef.current);
+        setEvents(extractedEvents);
+      }
     });
 
-    // Events will be empty until Phase 2 adds Verovio event extraction
     // Camera starts at top
     currentYRef.current = 0;
     applyCamera(0);
-  }, [svgString]);
+  }, [svgString, toolkit]);
 
   /* ---------------- score color and styling ---------------- */
 
