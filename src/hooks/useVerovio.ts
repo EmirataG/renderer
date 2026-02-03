@@ -38,19 +38,17 @@ export function useVerovio(
 
         toolkitRef.current = toolkit;
 
-        toolkit.setOptions(
-          JSON.stringify({
-            pageWidth: (containerWidth * 100) / scale,
-            pageHeight: 60000,
-            adjustPageHeight: true,
-            scale: scale,
-            svgViewBox: true,
-            svgRemoveXlink: true,
-            breaks: 'auto',
-            header: 'none',
-            footer: 'none',
-          })
-        );
+        toolkit.setOptions({
+          pageWidth: (containerWidth * 100) / scale,
+          pageHeight: 60000,
+          adjustPageHeight: true,
+          scale: scale,
+          svgViewBox: true,
+          svgRemoveXlink: true,
+          breaks: 'auto',
+          header: 'none',
+          footer: 'none',
+        });
 
         const loaded = toolkit.loadData(xml);
         if (!loaded) {

@@ -278,6 +278,7 @@ export default function RegularRenderer({
       /* Fill for all shape elements */
       .preview-score svg path,
       .preview-score svg rect,
+      .preview-score svg polygon,
       .preview-score svg use {
         fill: ${scoreColor};
       }
