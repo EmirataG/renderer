@@ -30,11 +30,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Changing the score scale slider causes the score to re-render at the new size with correct layout reflow
   4. An invalid MusicXML file shows a validation error toast without crashing
   5. The Verovio initialization sequence (`loadData` -> `renderToSVG` -> `renderToMIDI`) completes without errors, and `getTimeForElement()` returns non-zero values for note elements
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Verovio WASM setup and service layer
-- [ ] 01-02: RegularRenderer rendering swap and styling
+- [ ] 01-01-PLAN.md -- Verovio WASM setup, service layer, useVerovio hook, and validation migration
+- [ ] 01-02-PLAN.md -- RegularRenderer rendering swap, CSS color migration, and animation selector updates
 
 ### Phase 2: Event System Migration
 **Goal**: Musical events are extracted from Verovio output with timing and position data, compatible with the existing interpolation system
@@ -161,7 +161,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
-| 1. Core Verovio Integration | 0/2 | Not started | - |
+| 1. Core Verovio Integration | 0/2 | Planning complete | - |
 | 2. Event System Migration | 0/1 | Not started | - |
 | 3. Animation and Camera | 0/2 | Not started | - |
 | 4. SyncEditor Migration | 0/1 | Not started | - |
