@@ -66,7 +66,6 @@ export default function RegularRenderer({
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const osmdRef = useRef<HTMLDivElement>(null);
-  const styleRef = useRef<HTMLStyleElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [events, setEvents] = useState<MusicalEventWithY[]>([]);
@@ -257,61 +256,39 @@ export default function RegularRenderer({
 
   /* ---------------- score color and styling ---------------- */
 
-  useEffect(() => {
-    if (!osmdRef.current) return;
-
-    // Check if style element exists and is still in the DOM
-    // (Verovio re-render via dangerouslySetInnerHTML replaces container children)
-    if (!styleRef.current || !styleRef.current.parentNode) {
-      styleRef.current = document.createElement("style");
-      osmdRef.current.appendChild(styleRef.current);
+  // Score color CSS is rendered as React-managed JSX <style> to avoid
+  // being destroyed when dangerouslySetInnerHTML replaces the SVG container.
+  const scoreColorCss = `
+    .preview-score svg.definition-scale {
+      color: ${scoreColor};
     }
-
-    // Comprehensive styling scoped to .preview-score for Verovio SVG
-    styleRef.current.innerHTML = `
-      /* Global score coloring for Verovio SVG */
-      /* Set color property on SVG root -- cascades to stroke via currentColor */
-      .preview-score svg.definition-scale {
-        color: ${scoreColor};
-      }
-
-      /* Fill for all shape elements */
-      .preview-score svg path,
-      .preview-score svg rect,
-      .preview-score svg polygon,
-      .preview-score svg use {
-        fill: ${scoreColor};
-      }
-
-      /* Text elements */
-      .preview-score svg text {
-        fill: ${scoreColor};
-      }
-
-      /* Staff lines: stroke only, no fill */
-      .preview-score g.staff > path {
-        fill: none !important;
-        stroke: ${scoreColor} !important;
-        stroke-width: 1 !important;
-        shape-rendering: crispEdges !important;
-      }
-
-      /* Note elements that can be animated */
-      .preview-score g.notehead {
-        will-change: transform;
-      }
-
-      /* Disable pointer interactions in preview render */
-      .preview-score svg,
-      .preview-score svg *,
-      .preview-score g.note,
-      .preview-score g.note * {
-        pointer-events: none !important;
-        cursor: default !important;
-        user-select: none !important;
-      }
-    `;
-  }, [scoreColor, svgString]);
+    .preview-score svg path,
+    .preview-score svg rect,
+    .preview-score svg polygon,
+    .preview-score svg ellipse,
+    .preview-score svg use {
+      fill: ${scoreColor};
+    }
+    .preview-score svg text {
+      fill: ${scoreColor};
+    }
+    .preview-score g.staff > path {
+      fill: none !important;
+      stroke: ${scoreColor} !important;
+      shape-rendering: crispEdges !important;
+    }
+    .preview-score g.notehead {
+      will-change: transform;
+    }
+    .preview-score svg,
+    .preview-score svg *,
+    .preview-score g.note,
+    .preview-score g.note * {
+      pointer-events: none !important;
+      cursor: default !important;
+      user-select: none !important;
+    }
+  `;
 
   /* ---------------- camera (vertical) ---------------- */
 
@@ -768,6 +745,8 @@ export default function RegularRenderer({
 
   return (
     <div>
+      {/* React-managed score color styles — survives dangerouslySetInnerHTML updates */}
+      <style dangerouslySetInnerHTML={{ __html: scoreColorCss }} />
       {/* Renderer - in render mode, scale to fill viewport while preserving aspect ratio */}
       <div
         className="select-none pointer-events-none cursor-default"
