@@ -19,5 +19,12 @@ declare module 'verovio/esm' {
     getMEI(jsonOptions?: string): string;
     loadZipDataBuffer(data: ArrayBuffer): boolean;
     loadZipDataBase64(data: string): boolean;
+    renderToTimemap(options?: { includeMeasures?: boolean; includeRests?: boolean }): Array<{
+      tstamp: number;
+      qstamp: number;
+      on?: string[];
+      off?: string[];
+      tempo?: number;
+    }>;
   }
 }
