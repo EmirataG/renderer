@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
+import { useVerovio } from "../hooks/useVerovio";
 import type { MusicalEvent } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
@@ -69,7 +69,6 @@ export default function RegularRenderer({
   const styleRef = useRef<HTMLStyleElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [osmd, setOsmd] = useState<OpenSheetMusicDisplay | null>(null);
   const [events, setEvents] = useState<MusicalEventWithY[]>([]);
   // Interpolated events with computed timestamps (when syncAnchors provided)
   const [interpolatedEvents, setInterpolatedEvents] = useState<
@@ -77,6 +76,11 @@ export default function RegularRenderer({
   >([]);
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
+
+  // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
+  const verovioScale = Math.round(40 * scoreScale);
+  const scoreWidth = scoreRegion?.width ?? containerWidth;
+  const { svgString, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale);
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -221,205 +225,35 @@ export default function RegularRenderer({
     }
   }, [bgUrl, isRenderMode]);
 
-  /* ---------------- OSMD ---------------- */
+  /* ---------------- Verovio SVG rendering ---------------- */
 
-  // Function to get events with Y positions
-  function getEventsWithY(osmd: OpenSheetMusicDisplay): MusicalEventWithY[] {
-    const cursor = osmd.Cursor;
-    cursor.show();
-    cursor.reset();
-
-    const events: MusicalEventWithY[] = [];
-    const OFFSET = 15;
-
-    // First pass: collect all events with their raw Y positions
-    while (!cursor.Iterator.EndReached) {
-      const beatOnset = cursor.Iterator.currentTimeStamp.RealValue;
-
-      // Get SVG IDs
-      const svgIds: string[] = [];
-      for (const ve of cursor.Iterator.CurrentVoiceEntries) {
-        for (const n of ve.Notes) {
-          if (n.isRest()) continue;
-          const gNote = osmd.EngravingRules.GNote(n);
-          const id: string = (gNote as any).vfnote[0].getAttribute("id");
-          if (id) {
-            svgIds.push(`vf-${id}`);
-          }
-        }
-      }
-
-      // Get X and Y positions from cursor
-      const cssLeft = cursor.cursorElement.style.left;
-      const cssTop = cursor.cursorElement.style.top;
-
-      const posStrX = cssLeft.substring(0, cssLeft.length - 2);
-      const posStrY = cssTop.substring(0, cssTop.length - 2);
-
-      const x = Number(posStrX) + OFFSET;
-      const y = Number(posStrY);
-
-      events.push({
-        id: `evt-${events.length}`,
-        beatOnset,
-        beatDuration: 0,
-        svgIds: svgIds,
-        x: x ?? 0,
-        y: y ?? 0,
-      });
-
-      cursor.next();
-    }
-
-    // Second pass: group events by system and calculate center Y for each system
-    // Events on the same system will have similar Y values (within a threshold)
-    const Y_THRESHOLD = 20; // pixels - events within this range are considered on same system
-    const systems: {
-      minY: number;
-      maxY: number;
-      centerY: number;
-      events: MusicalEventWithY[];
-    }[] = [];
-
-    for (const event of events) {
-      // Find if this event belongs to an existing system
-      let foundSystem = systems.find(
-        (sys) => Math.abs(sys.minY - event.y) < Y_THRESHOLD,
-      );
-
-      if (foundSystem) {
-        foundSystem.events.push(event);
-        foundSystem.minY = Math.min(foundSystem.minY, event.y);
-        foundSystem.maxY = Math.max(foundSystem.maxY, event.y);
-        foundSystem.centerY = (foundSystem.minY + foundSystem.maxY) / 2;
-      } else {
-        // Create new system
-        systems.push({
-          minY: event.y,
-          maxY: event.y,
-          centerY: event.y,
-          events: [event],
-        });
-      }
-    }
-
-    // Get cursor height to add to center calculation
-    const cursorHeight = cursor.cursorElement.offsetHeight || 0;
-
-    // Third pass: assign center Y to all events in each system
-    for (const system of systems) {
-      const systemCenterY = system.centerY + cursorHeight / 2;
-      for (const event of system.events) {
-        event.y = systemCenterY;
-      }
-    }
-
-    // Calculate beat durations
-    for (let i = 0; i < events.length - 1; i++) {
-      events[i].beatDuration = events[i + 1].beatOnset - events[i].beatOnset;
-    }
-
-    if (events.length > 0) {
-      events[events.length - 1].beatDuration = 1;
-    }
-
-    cursor.hide();
-    return events;
-  }
-
+  // When Verovio renders SVG, update DOM and reset noteheads
   useEffect(() => {
-    if (!osmdRef.current || !containerWidth || osmd) return;
+    if (!svgString || !osmdRef.current) return;
 
-    const inst = new OpenSheetMusicDisplay(osmdRef.current, {
-      backend: "svg",
-      renderSingleHorizontalStaffline: false, // Render as normal page
-      drawTitle: false,
-      drawComposer: false,
-      drawPartNames: false,
-      drawMeasureNumbers: false,
+    // dangerouslySetInnerHTML updates the DOM synchronously during React's
+    // commit phase, but this useEffect fires AFTER the commit. However,
+    // the browser may not have fully laid out the new SVG yet.
+    // Use requestAnimationFrame to wait for the next paint, then verify
+    // the Verovio SVG is actually present in the DOM before resetting noteheads.
+    requestAnimationFrame(() => {
+      if (!osmdRef.current) return;
+      // Guard: confirm Verovio SVG elements exist in the DOM before
+      // attempting to query/reset noteheads. The svg.definition-scale
+      // class is Verovio's root SVG element.
+      const verovioSvg = osmdRef.current.querySelector('svg.definition-scale');
+      if (!verovioSvg) {
+        console.warn('[RegularRenderer] Verovio SVG not found in DOM after rAF');
+        return;
+      }
+      resetNoteheadAnimations(osmdRef.current);
     });
 
-    setOsmd(inst);
-
-    inst.load(xml).then(() => {
-      inst.render();
-      const evts = getEventsWithY(inst);
-      setEvents(evts);
-
-      if (osmdRef.current) {
-        resetNoteheadAnimations(osmdRef.current);
-      }
-
-      // Initial position - start at top
-      if (evts.length) {
-        currentYRef.current = evts[0].y;
-        applyCamera(evts[0].y);
-      }
-    });
-  }, [xml, containerWidth, osmd]);
-
-  // Track previous scoreScale to detect changes for zoom update
-  const prevScoreScaleRef = useRef(scoreScale);
-  // Track previous region width to detect changes
-  const prevRegionWidthRef = useRef(scoreRegion?.width);
-
-  // Apply OSMD zoom when scoreScale changes (no full re-initialization needed)
-  useEffect(() => {
-    // Skip if no OSMD yet or if scale hasn't changed
-    if (!osmd || scoreScale === prevScoreScaleRef.current) {
-      prevScoreScaleRef.current = scoreScale;
-      return;
-    }
-
-    prevScoreScaleRef.current = scoreScale;
-
-    // Apply zoom and re-render (much faster than full re-initialization)
-    osmd.zoom = scoreScale;
-    osmd.render();
-
-    // Re-extract events since layout changed
-    const evts = getEventsWithY(osmd);
-    setEvents(evts);
-
-    if (osmdRef.current) {
-      resetNoteheadAnimations(osmdRef.current);
-    }
-
-    // Update camera position
-    if (evts.length) {
-      currentYRef.current = evts[0].y;
-      applyCamera(evts[0].y);
-    }
-  }, [scoreScale, osmd]);
-
-  // Re-render OSMD when region width changes (layout reflow for new width)
-  useEffect(() => {
-    const currentWidth = scoreRegion?.width;
-    // Skip if no OSMD yet or width hasn't changed
-    if (!osmd || currentWidth === prevRegionWidthRef.current) {
-      prevRegionWidthRef.current = currentWidth;
-      return;
-    }
-
-    prevRegionWidthRef.current = currentWidth;
-
-    // Re-render to reflow layout for new container width
-    osmd.render();
-
-    // Re-extract events since layout changed
-    const evts = getEventsWithY(osmd);
-    setEvents(evts);
-
-    if (osmdRef.current) {
-      resetNoteheadAnimations(osmdRef.current);
-    }
-
-    // Update camera position
-    if (evts.length) {
-      currentYRef.current = evts[0].y;
-      applyCamera(evts[0].y);
-    }
-  }, [scoreRegion?.width, osmd]);
+    // Events will be empty until Phase 2 adds Verovio event extraction
+    // Camera starts at top
+    currentYRef.current = 0;
+    applyCamera(0);
+  }, [svgString]);
 
   /* ---------------- score color and styling ---------------- */
 
@@ -427,62 +261,56 @@ export default function RegularRenderer({
     if (!osmdRef.current) return;
 
     // Check if style element exists and is still in the DOM
-    // (OSMD re-render clears the container, removing our style element)
+    // (Verovio re-render via dangerouslySetInnerHTML replaces container children)
     if (!styleRef.current || !styleRef.current.parentNode) {
       styleRef.current = document.createElement("style");
       osmdRef.current.appendChild(styleRef.current);
     }
 
-    // Comprehensive styling scoped to .preview-score (don't affect SyncEditor)
+    // Comprehensive styling scoped to .preview-score for Verovio SVG
     styleRef.current.innerHTML = `
-      /* Universal color for all SVG shapes - scoped to preview-score */
-      .preview-score [id^="osmdSvgPage"] path,
-      .preview-score [id^="osmdSvgPage"] ellipse,
-      .preview-score [id^="osmdSvgPage"] circle,
-      .preview-score [id^="osmdSvgPage"] rect:not(.vf-bounding-box),
-      .preview-score [id^="osmdSvgPage"] line,
-      .preview-score [id^="osmdSvgPage"] polyline,
-      .preview-score [id^="osmdSvgPage"] polygon {
-        fill: ${scoreColor};
-        stroke: ${scoreColor};
+      /* Global score coloring for Verovio SVG */
+      /* Set color property on SVG root -- cascades to stroke via currentColor */
+      .preview-score svg.definition-scale {
+        color: ${scoreColor};
       }
 
-      /* Stafflines - isolated with fixed stroke-width to prevent glitching */
-      .preview-score [id^="osmdSvgPage"] .vf-stave path {
+      /* Fill for all shape elements */
+      .preview-score svg path,
+      .preview-score svg rect,
+      .preview-score svg use {
+        fill: ${scoreColor};
+      }
+
+      /* Text elements */
+      .preview-score svg text {
+        fill: ${scoreColor};
+      }
+
+      /* Staff lines: stroke only, no fill */
+      .preview-score g.staff > path {
         fill: none !important;
         stroke: ${scoreColor} !important;
         stroke-width: 1 !important;
         shape-rendering: crispEdges !important;
-        vector-effect: non-scaling-stroke !important;
       }
 
       /* Note elements that can be animated */
-      .preview-score [id^="osmdSvgPage"] .vf-notehead {
+      .preview-score g.notehead {
         will-change: transform;
       }
 
-      /* Text elements */
-      .preview-score [id^="osmdSvgPage"] text {
-        fill: ${scoreColor};
-      }
-
-      /* Hide bounding boxes (used for selection hit areas) */
-      .preview-score [id^="osmdSvgPage"] .vf-bounding-box {
-        fill: transparent !important;
-        stroke: transparent !important;
-      }
-
       /* Disable pointer interactions in preview render */
-      .preview-score [id^="osmdSvgPage"],
-      .preview-score [id^="osmdSvgPage"] *,
-      .preview-score .vf-stavenote,
-      .preview-score .vf-stavenote * {
+      .preview-score svg,
+      .preview-score svg *,
+      .preview-score g.note,
+      .preview-score g.note * {
         pointer-events: none !important;
         cursor: default !important;
         user-select: none !important;
       }
     `;
-  }, [scoreColor, osmd, scoreRegion?.width, scoreScale]);
+  }, [scoreColor, svgString]);
 
   /* ---------------- camera (vertical) ---------------- */
 
@@ -839,7 +667,7 @@ export default function RegularRenderer({
           if (!stavenote) continue;
 
           const noteheads =
-            stavenote.querySelectorAll<SVGGElement>(".vf-notehead");
+            stavenote.querySelectorAll<SVGGElement>("g.notehead");
           noteheads.forEach((nh) => {
             // Apply scale
             nh.style.transformBox = "fill-box";
@@ -847,13 +675,14 @@ export default function RegularRenderer({
             nh.style.transition = ""; // No CSS transition for frame capture
             nh.style.transform = `scale(${scale})`;
 
-            // Apply color to shapes
+            // Apply color to shapes (Verovio uses <use> elements for noteheads)
             if (color) {
               const shapes =
-                nh.querySelectorAll<SVGGraphicsElement>("path, ellipse");
+                nh.querySelectorAll<SVGGraphicsElement>("use");
               shapes.forEach((shape) => {
                 shape.style.fill = color;
                 shape.style.stroke = color;
+                shape.style.color = color;
               });
             }
           });
@@ -879,16 +708,17 @@ export default function RegularRenderer({
 
   // Expose animation controller on window for Puppeteer
   useEffect(() => {
-    // In render mode, expose controller as soon as OSMD is ready
+    // In render mode, expose controller as soon as Verovio is ready
     // In normal mode, require sync timing to be active
     const shouldExpose = isRenderMode
-      ? osmd && interpolatedEvents.length > 0
-      : useSyncTiming && osmd && interpolatedEvents.length > 0;
+      ? toolkit && svgString && interpolatedEvents.length > 0
+      : useSyncTiming && toolkit && svgString && interpolatedEvents.length > 0;
 
     if (!shouldExpose) {
       console.log("[RegularRenderer] Not exposing controller yet:", {
         isRenderMode,
-        hasOsmd: !!osmd,
+        hasToolkit: !!toolkit,
+        hasSvg: !!svgString,
         eventsCount: interpolatedEvents.length,
         useSyncTiming,
       });
@@ -900,7 +730,7 @@ export default function RegularRenderer({
     // Initialize the animation controller module (for internal state tracking)
     initAnimationController({
       audioElement: audioRef.current,
-      osmdInstance: osmd!, // osmd is checked above
+      osmdInstance: null as any, // TEMPORARY: Task 2 removes osmdInstance from interface
       getInterpolatedEvents,
       containerElement: osmdRef.current!,
     });
@@ -925,7 +755,8 @@ export default function RegularRenderer({
   }, [
     isRenderMode,
     useSyncTiming,
-    osmd,
+    toolkit,
+    svgString,
     interpolatedEvents,
     audioDuration,
     setTimestamp,
@@ -981,6 +812,7 @@ export default function RegularRenderer({
                   width: scoreRegion?.width ?? containerWidth,
                   cursor: "default",
                 }}
+                dangerouslySetInnerHTML={svgString ? { __html: svgString } : undefined}
               />
             </div>
 
