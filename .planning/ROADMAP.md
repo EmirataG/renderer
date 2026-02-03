@@ -12,7 +12,7 @@ This roadmap replaces the OpenSheetMusicDisplay (OSMD) rendering engine with Ver
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Core Verovio Integration** - WASM setup, basic rendering, color/scale validation
+- [x] **Phase 1: Core Verovio Integration** - WASM setup, basic rendering, color/scale validation
 - [ ] **Phase 2: Event System Migration** - Rebuild event extraction using Verovio APIs
 - [ ] **Phase 3: Animation and Camera** - Restore playback, notehead animation, camera scrolling
 - [ ] **Phase 4: SyncEditor Migration** - Apply migration patterns to the sync editor view
@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md -- Verovio WASM setup, service layer, useVerovio hook, and validation migration
-- [ ] 01-02-PLAN.md -- RegularRenderer rendering swap, CSS color migration, and animation selector updates
+- [x] 01-02-PLAN.md -- RegularRenderer rendering swap, CSS color migration, and animation selector updates
 
 ### Phase 2: Event System Migration
 **Goal**: Musical events are extracted from Verovio output with timing and position data, compatible with the existing interpolation system
@@ -161,7 +161,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|---------------|--------|-----------|
-| 1. Core Verovio Integration | 1/2 | In progress | - |
+| 1. Core Verovio Integration | 2/2 | Complete | 2026-02-03 |
 | 2. Event System Migration | 0/1 | Not started | - |
 | 3. Animation and Camera | 0/2 | Not started | - |
 | 4. SyncEditor Migration | 0/1 | Not started | - |
