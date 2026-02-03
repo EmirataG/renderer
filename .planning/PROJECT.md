@@ -59,7 +59,7 @@ These capabilities exist today with OSMD and must continue working with Verovio:
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | MIG-01 | Phase 1 | Pending |
-| MIG-02 | Phase 2 | Pending |
+| MIG-02 | Phase 2 | Complete |
 | MIG-03 | Phase 3 | Pending |
 | MIG-04 | Phase 1 | Pending |
 | MIG-05 | Phase 1 | Pending |
@@ -80,7 +80,7 @@ These capabilities exist today with OSMD and must continue working with Verovio:
 | VAL-11 | Phase 5 | Pending |
 | VAL-12 | Phase 4 | Pending |
 | VAL-13 | Phase 4 | Pending |
-| VAL-14 | Phase 2 | Pending |
+| VAL-14 | Phase 2 | Complete |
 | VAL-15 | Phase 3 | Pending |
 | VAL-16 | Phase 3 | Pending |
 | VAL-17 | Phase 5 | Pending |
