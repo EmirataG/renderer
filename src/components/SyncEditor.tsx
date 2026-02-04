@@ -62,20 +62,21 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   }, []);
 
   // Verovio hook - renders score to SVG
-  const { svgString, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
+  const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
 
   // Extract events when Verovio renders
   useEffect(() => {
-    if (!svgString || !osmdRef.current || !toolkit) return;
+    if (svgPages.length === 0 || !osmdRef.current || !toolkit) return;
 
     requestAnimationFrame(() => {
       if (!osmdRef.current || !toolkit) return;
       const verovioSvg = osmdRef.current.querySelector('svg.definition-scale');
       if (!verovioSvg) return;
+      // Pass single container -- SyncEditor doesn't need page-aware Y positions
       const extractedEvents = getEventsFromVerovio(toolkit, osmdRef.current);
       setEvents(extractedEvents);
     });
-  }, [svgString, toolkit]);
+  }, [svgPages, toolkit]);
 
   // Recalculate interpolated events when anchors change
   useEffect(() => {
@@ -135,7 +136,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
       delete window.getAnimationDuration;
       delete window.isAnimationReady;
     };
-  }, [toolkit, svgString, events.length, isRenderMode]);
+  }, [toolkit, svgPages, events.length, isRenderMode]);
 
   // Handle click on score to select note
   const handleScoreClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -206,6 +207,9 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
     // Only hover styles via CSS (inline styles for selection/anchor)
     styleRef.current.innerHTML = `
+      svg.definition-scale {
+        display: block;
+      }
       g.note {
         cursor: pointer;
       }
@@ -544,10 +548,14 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         className="flex-1 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
-        <div
-          ref={osmdRef}
-          dangerouslySetInnerHTML={svgString ? { __html: svgString } : undefined}
-        />
+        <div ref={osmdRef}>
+          {svgPages.map((svg, i) => (
+            <div
+              key={i}
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Audio controls */}
