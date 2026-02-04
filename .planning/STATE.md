@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-04)
 ## Current Position
 
 Phase: 6 of 9 (Paginated Rendering & Camera)
-Plan: 1 of 3 in phase
+Plan: 2 of 3 in phase
 Status: In progress
-Last activity: 2026-02-04 -- Completed 06-01-PLAN.md (multi-page useVerovio hook)
+Last activity: 2026-02-04 -- Completed 06-02-PLAN.md (paginated rendering with camera)
 
-Progress: [######....] 60% (v1.0 complete, v1.1 Plan 01 done)
+Progress: [#######...] 70% (v1.0 complete, v1.1 Plans 01-02 done)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: 2 min
-- Total execution time: 10 min
+- Total execution time: 12 min
 
 **By Phase:**
 
@@ -30,7 +30,7 @@ Progress: [######....] 60% (v1.0 complete, v1.1 Plan 01 done)
 | 1 - Core Verovio Integration | 2/2 | 4 min | 2 min |
 | 2 - Event System Migration | 1/1 | 1 min | 1 min |
 | 2.1 - Sync-Only Playback | 2/2 | 4 min | 2 min |
-| 6 - Paginated Rendering | 1/3 | 1 min | 1 min |
+| 6 - Paginated Rendering | 2/3 | 3 min | 1.5 min |
 
 *Updated after each plan completion*
 
@@ -49,6 +49,8 @@ Recent decisions affecting current work:
 - [v1.1]: Puppeteer render mode disables virtual scrolling (all pages mounted)
 - [v1.1]: pageHeight: 2970 (A4 default) enables Verovio pagination; zero margins for flush stacking
 - [v1.1]: Removed adjustPageHeight -- incompatible with fixed-height pagination mode
+- [v1.1]: getEventsFromVerovio backward-compatible via optional params -- SyncEditor unchanged
+- [v1.1]: Flush SVG stacking via CSS (lineHeight:0, fontSize:0, display:block) -- no negative margins
 
 ### Pending Todos
 
@@ -56,13 +58,12 @@ None.
 
 ### Blockers/Concerns
 
-- Single-page SVG causes 6GB+ memory on long scores -- Phase 6 addresses root cause
-- Paginated rendering changes coordinate systems -- event Y positions become page-relative + global offset
-- getBoundingClientRect coordinate space mismatch risk across page boundaries
+- Single-page SVG causes 6GB+ memory on long scores -- Phase 6 addresses root cause (Plans 01-02 done, Plan 03 remaining)
 - Puppeteer frame capture requires all animated elements in DOM at screenshot time
+- Coordinate system migration complete: global Y = pageOffsets[pageIndex] + localY
 
 ## Session Continuity
 
-Last session: 2026-02-04T17:21:43Z
-Stopped at: Completed 06-01-PLAN.md (multi-page useVerovio hook)
+Last session: 2026-02-04T17:26:10Z
+Stopped at: Completed 06-02-PLAN.md (paginated rendering with camera)
 Resume file: None
