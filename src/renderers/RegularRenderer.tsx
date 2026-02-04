@@ -63,6 +63,7 @@ export default function RegularRenderer({
   const cameraRef = useRef<HTMLDivElement>(null);
   const osmdRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const pageContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const [events, setEvents] = useState<MusicalEventWithY[]>([]);
   // Interpolated events with computed timestamps (when syncAnchors provided)
@@ -75,7 +76,7 @@ export default function RegularRenderer({
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
   const scoreWidth = scoreRegion?.width ?? containerWidth;
-  const { svgString, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale);
+  const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale);
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -210,9 +211,9 @@ export default function RegularRenderer({
 
   /* ---------------- Verovio SVG rendering ---------------- */
 
-  // When Verovio renders SVG, update DOM and reset noteheads
+  // When Verovio renders SVG pages, update DOM and reset noteheads
   useEffect(() => {
-    if (!svgString || !osmdRef.current) return;
+    if (svgPages.length === 0 || !osmdRef.current) return;
 
     // dangerouslySetInnerHTML updates the DOM synchronously during React's
     // commit phase, but this useEffect fires AFTER the commit. However,
@@ -231,9 +232,10 @@ export default function RegularRenderer({
       }
       resetNoteheadAnimations(osmdRef.current);
 
-      // Extract events from Verovio timemap + DOM positions
+      // Extract events from Verovio timemap + DOM positions (page-aware)
       if (toolkit) {
-        const extractedEvents = getEventsFromVerovio(toolkit, osmdRef.current);
+        const containers = pageContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
+        const extractedEvents = getEventsFromVerovio(toolkit, osmdRef.current, containers, pageOffsets);
         setEvents(extractedEvents);
       }
     });
@@ -241,7 +243,7 @@ export default function RegularRenderer({
     // Camera starts at top
     currentYRef.current = 0;
     applyCamera(0);
-  }, [svgString, toolkit]);
+  }, [svgPages, toolkit, pageOffsets]);
 
   /* ---------------- score color and styling ---------------- */
 
@@ -269,6 +271,9 @@ export default function RegularRenderer({
     .preview-score g.notehead {
       will-change: transform;
     }
+    .preview-score svg {
+      display: block;
+    }
     .preview-score svg,
     .preview-score svg *,
     .preview-score g.note,
@@ -282,7 +287,7 @@ export default function RegularRenderer({
   /* ---------------- camera (vertical) ---------------- */
 
   function applyCamera(targetY: number) {
-    const scoreHeight = osmdRef.current?.scrollHeight ?? 0;
+    const scoreHeight = totalHeight || (osmdRef.current?.scrollHeight ?? 0);
     const viewportHeight = scoreRegion?.height ?? containerHeight;
 
     // Keep the target Y position in the vertical center of the viewport
@@ -625,13 +630,13 @@ export default function RegularRenderer({
   useEffect(() => {
     // In render mode, expose controller as soon as Verovio is ready
     // In normal mode, require sync timing to be active
-    const shouldExpose = toolkit && svgString && interpolatedEvents.length > 0;
+    const shouldExpose = toolkit && svgPages.length > 0 && interpolatedEvents.length > 0;
 
     if (!shouldExpose) {
       console.log("[RegularRenderer] Not exposing controller yet:", {
         isRenderMode,
         hasToolkit: !!toolkit,
-        hasSvg: !!svgString,
+        hasSvg: svgPages.length > 0,
         eventsCount: interpolatedEvents.length,
       });
       return;
@@ -666,7 +671,7 @@ export default function RegularRenderer({
   }, [
     isRenderMode,
     toolkit,
-    svgString,
+    svgPages,
     interpolatedEvents,
     audioDuration,
     setTimestamp,
@@ -723,9 +728,20 @@ export default function RegularRenderer({
                 style={{
                   width: scoreRegion?.width ?? containerWidth,
                   cursor: "default",
+                  lineHeight: 0,
+                  fontSize: 0,
                 }}
-                dangerouslySetInnerHTML={svgString ? { __html: svgString } : undefined}
-              />
+              >
+                {svgPages.map((svg, i) => (
+                  <div
+                    key={i}
+                    ref={(el) => { pageContainerRefs.current[i] = el; }}
+                    className="preview-score"
+                    style={{ width: scoreRegion?.width ?? containerWidth }}
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
+                ))}
+              </div>
             </div>
 
           </div>
