@@ -76,7 +76,9 @@ export interface MusicalEventWithY extends MusicalEvent {
  */
 export function getEventsFromVerovio(
   toolkit: VerovioToolkit,
-  svgContainer: HTMLElement
+  svgContainer: HTMLElement,
+  pageContainers?: HTMLElement[],
+  pageOffsets?: number[]
 ): MusicalEventWithY[] {
   // Get the full timemap from Verovio (rests excluded by default)
   const timemap = toolkit.renderToTimemap();
@@ -104,16 +106,66 @@ export function getEventsFromVerovio(
     events[events.length - 1].beatDuration = 1; // Last event convention
   }
 
-  // Extract Y positions from DOM using getBoundingClientRect
-  const containerRect = svgContainer.getBoundingClientRect();
-  for (const event of events) {
-    if (event.svgIds.length > 0) {
-      const noteEl = svgContainer.querySelector(
-        `#${CSS.escape(event.svgIds[0])}`
-      );
-      if (noteEl) {
+  if (pageContainers && pageOffsets && pageContainers.length > 0) {
+    // Page-aware Y computation: use Verovio API to find which page each
+    // event lives on, then compute global Y as pageOffset + localY.
+    for (const event of events) {
+      if (event.svgIds.length === 0) continue;
+
+      // Use Verovio API to find which page this event is on (1-based)
+      const pageNum = toolkit.getPageWithElement(event.svgIds[0]);
+      if (pageNum === 0) continue; // Element not found
+
+      const pageIndex = pageNum - 1;
+      const container = pageContainers[pageIndex];
+      if (!container) continue;
+
+      const containerRect = container.getBoundingClientRect();
+      const noteEl = container.querySelector(`#${CSS.escape(event.svgIds[0])}`);
+      if (!noteEl) continue;
+
+      const systemEl = noteEl.closest('g.system');
+      if (systemEl) {
+        const sysRect = systemEl.getBoundingClientRect();
+        const localY = sysRect.top - containerRect.top + sysRect.height / 2;
+        event.y = pageOffsets[pageIndex] + localY;
+      } else {
         const noteRect = noteEl.getBoundingClientRect();
-        event.y = noteRect.top - containerRect.top + noteRect.height / 2;
+        const localY = noteRect.top - containerRect.top + noteRect.height / 2;
+        event.y = pageOffsets[pageIndex] + localY;
+      }
+    }
+  } else {
+    // Single-container Y computation (backward-compatible path for SyncEditor)
+    // Build a map from g.system element to its center Y position.
+    // Verovio wraps each staff system in a <g class="system"> — use that
+    // directly instead of guessing with threshold heuristics.
+    const containerRect = svgContainer.getBoundingClientRect();
+    const systemEls = svgContainer.querySelectorAll('g.system');
+    const systemCenterYMap = new Map<Element, number>();
+    for (const sysEl of systemEls) {
+      const sysRect = sysEl.getBoundingClientRect();
+      systemCenterYMap.set(sysEl, sysRect.top - containerRect.top + sysRect.height / 2);
+    }
+
+    // For each event, walk up from the note element to its parent g.system
+    // and assign that system's center Y. All events in the same system get
+    // the exact same Y — camera stays perfectly still within a system.
+    for (const event of events) {
+      if (event.svgIds.length > 0) {
+        const noteEl = svgContainer.querySelector(
+          `#${CSS.escape(event.svgIds[0])}`
+        );
+        if (noteEl) {
+          const systemEl = noteEl.closest('g.system');
+          if (systemEl && systemCenterYMap.has(systemEl)) {
+            event.y = systemCenterYMap.get(systemEl)!;
+          } else {
+            // Fallback: use note's own position
+            const noteRect = noteEl.getBoundingClientRect();
+            event.y = noteRect.top - containerRect.top + noteRect.height / 2;
+          }
+        }
       }
     }
   }
