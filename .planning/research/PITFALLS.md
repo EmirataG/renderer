@@ -1,157 +1,188 @@
-# Pitfalls Research
+# Pitfalls Research: Efficiency Features
 
-**Domain:** OSMD-to-Verovio migration in React/Vite music rendering app
-**Researched:** 2026-02-03
-**Confidence:** MEDIUM (verified against Verovio official docs and GitHub issues; some claims based on codebase analysis of existing OSMD integration)
+**Domain:** Paginated SVG rendering, virtual scrolling, and event caching for music notation renderer
+**Researched:** 2026-02-04
+**Confidence:** HIGH (based on direct codebase analysis, verified Verovio API documentation, and established SVG/DOM behavior)
 
 ## Critical Pitfalls
 
-### Pitfall 1: CSS Fill/Stroke Does Not Propagate Through `<use>` Elements
+### Pitfall 1: Animation Targets Unmounted SVG Elements
 
 **What goes wrong:**
-Verovio renders music glyphs (noteheads, clefs, accidentals) as `<use xlink:href="#E0A4">` elements referencing glyph definitions in `<defs>`. The existing codebase applies colors by setting `style.fill` and `style.stroke` on `.vf-notehead path` and `.vf-notehead ellipse` elements. In Verovio's SVG, there are no `path` or `ellipse` children inside the note `<g>` -- only `<use>` elements. Setting `fill` on a `<use>` element does not cascade into the shadow DOM of the referenced glyph if that glyph has presentation attributes (`fill`, `stroke`) set directly.
+The current `noteAnimation.ts` selects elements by ID: `root.querySelector('#${CSS.escape(id)}')`. With virtual scrolling, only pages near the camera viewport are mounted in the DOM. When the animation loop fires `animateNoteheads()` for an event whose SVG page is not mounted, the `querySelector` returns `null` and the animation silently fails. The notehead never scales or colors. Worse, in Puppeteer render mode, `setTimestamp()` iterates ALL events up to the current time (lines 525-605 of RegularRenderer.tsx) to calculate interpolated animation states. If any of those events reference unmounted elements, the frame capture produces incorrect output -- notes that should show mid-exit-animation appear unanimated.
 
 **Why it happens:**
-OSMD (via VexFlow) renders noteheads as actual `<path>` and `<ellipse>` SVG primitives that accept `fill`/`stroke` directly. Developers assume Verovio works the same way. SVG `<use>` elements create a cloned shadow DOM where presentation attributes on the source definition take precedence over inherited styles from the `<use>` parent.
+Virtual scrolling unmounts DOM elements to save memory. The animation system was designed under the assumption that every note in the score is always present in the DOM. This assumption is embedded in every animation path: real-time playback (`animateSync`), frame-accurate rendering (`setTimestamp`), and the animation controller (`animationController.ts` lines 45-56).
 
 **How to avoid:**
-1. Set both `fill` AND `color` on the parent `<g class="note">` element. Verovio glyphs use `currentColor` internally, so setting the CSS `color` property propagates through `<use>` references.
-2. Every existing selector targeting `.vf-notehead path, .vf-notehead ellipse` must be rewritten to target `g.note` or `g.note use` with both `fill` and `color`.
-3. Build a proof-of-concept coloring test BEFORE migrating the animation system. Verify with: `document.querySelector('g.note').style.fill = 'red'; document.querySelector('g.note').style.color = 'red';`
-4. As a fallback, Verovio's `svgCss` option can inject CSS into the SVG itself, e.g., `g.note.playing { fill: crimson; color: crimson; }`.
+1. Before animating, check if the target page is mounted. If not, mount it temporarily for animation and Puppeteer capture.
+2. For real-time playback, the camera position already determines which page is visible. Only animate events on the currently visible page. Events on other pages do not need animation since they are not on screen.
+3. For Puppeteer frame capture, the `setTimestamp` function must ensure ALL pages containing events in the current animation window are mounted before iterating. This means the Puppeteer path needs a "mount page for capture" step that the real-time playback path does not.
+4. Store the page number for each event in the event cache (see Pitfall 5). Use `toolkit.getPageWithElement(svgId)` during event extraction to build this mapping once.
 
 **Warning signs:**
-- Notes appear but refuse to change color when `style.fill` is set
-- Color changes work on stems (`<rect>` elements) but not on noteheads (`<use>` elements)
-- Noteheads all change color simultaneously (because all `<use>` elements reference the same `<defs>` glyph)
+- Notes near page boundaries occasionally fail to animate
+- Puppeteer frames show noteheads at default color/scale when they should be in exit-animation
+- `animateNoteheads` logs no errors but produces no visual change
+- Animation works perfectly when virtual scrolling is disabled (all pages mounted)
 
 **Phase to address:**
-Phase 1 (Core Verovio Integration) -- must be validated in the first rendering proof-of-concept before any animation work begins.
+Virtual Scrolling phase -- must be solved as part of the virtual scroll implementation, not deferred.
 
 ---
 
-### Pitfall 2: WASM Initialization Race Condition in Vite Dev Server
+### Pitfall 2: getBoundingClientRect Returns Wrong Values for Unmounted Pages
 
 **What goes wrong:**
-Verovio requires async WASM module initialization (`createVerovioModule().then(...)`) before any toolkit methods can be called. In Vite's dev server, WASM files from `node_modules` may fail to resolve with 404 errors or incorrect MIME types (`Expected 'application/wasm'`). The app appears to load but Verovio silently fails, leaving the SVG container empty.
+The current `getEventsFromVerovio()` uses `getBoundingClientRect()` on `g.system` elements to compute Y positions (lines 110-116 of `getEvents.ts`). With paginated rendering, each page is a separate SVG element. If pages are stacked vertically in the DOM, `getBoundingClientRect()` returns viewport-relative coordinates that include the cumulative height of all preceding pages. If virtual scrolling unmounts earlier pages, the coordinate space changes -- a system that was at Y=15000 in the single-SVG model is now at Y=500 relative to its own page's SVG root. The camera system (`applyCamera` in RegularRenderer.tsx, line 284) uses these Y values to compute `translateY`. Mixing coordinate spaces causes the camera to jump to wrong positions or oscillate between pages.
 
 **Why it happens:**
-Vite's dev server uses ESBuild for dependency pre-bundling, which handles WASM differently than production Rollup builds. Since Vite 4.3+, dynamic imports generated by Emscripten (`await import("module")`) can cause resolution failures. The project currently uses Vite 6.x, which may have its own WASM handling quirks. Additionally, React components may attempt to call `toolkit.loadData()` before the WASM Promise resolves, especially with `useEffect` dependencies that trigger re-renders.
+The current code operates in a single coordinate space: one SVG, one `containerRect`, all positions relative to the container top. Pagination introduces N coordinate spaces (one per page). The Y position of a system is no longer a global value -- it is page-local. Without explicit coordinate translation between page-local and global, all spatial queries break.
 
 **How to avoid:**
-1. Add `vite-plugin-wasm` and `vite-plugin-top-level-await` to `vite.config.ts`.
-2. Exclude verovio from Vite's dependency optimization: `optimizeDeps: { exclude: ['verovio'] }`.
-3. Create a singleton async initialization pattern (e.g., a module-level Promise that resolves to the toolkit) rather than initializing inside `useEffect`.
-4. Test BOTH `vite dev` AND `vite build && vite preview` -- WASM issues often manifest only in dev mode.
-5. Consider copying the `.wasm` file to `public/` as a fallback if bundler resolution fails.
+1. During event extraction, compute TWO Y values per event: `pageLocalY` (position within the page SVG) and `globalY` (cumulative position accounting for page height offsets).
+2. The `globalY` for an event on page N equals: `sum(heights of pages 1..N-1) + pageLocalY`.
+3. Pre-compute page height offsets once during extraction: render each page, measure its SVG height (from Verovio's output dimensions, not DOM measurement), and build a cumulative offset table.
+4. The camera system should use `globalY` for positioning, same as today.
+5. Do NOT call `getBoundingClientRect()` on elements across multiple pages in the same batch -- each page must be measured independently relative to its own SVG root, then translated to global coordinates.
+6. Verovio's `svgViewBox` option embeds explicit dimensions in the SVG element. Use these SVG-space values rather than DOM measurements where possible, since they are deterministic and not affected by mounting state.
 
 **Warning signs:**
-- App works in production build but fails in dev mode (or vice versa)
-- Console shows `Failed to resolve entry for package "verovio"` or MIME type errors
-- `createVerovioModule()` Promise never resolves (hangs silently)
-- Toolkit methods throw "module not initialized" errors
+- Camera jumps to top of score when crossing a page boundary
+- Y positions cluster into distinct groups separated by large gaps (page height boundaries)
+- Camera works correctly on first page but breaks on subsequent pages
+- `getBoundingClientRect().top` returns negative values or values larger than expected
 
 **Phase to address:**
-Phase 1 (Core Verovio Integration) -- the very first task. Nothing else works until WASM loads reliably in both dev and production.
+Paginated Rendering phase -- must establish the global coordinate system before virtual scrolling is added.
 
 ---
 
-### Pitfall 3: Lost Cursor API -- No Direct Y-Position Equivalent in Verovio
+### Pitfall 3: Puppeteer Frame Capture Misses Unmounted Content
 
 **What goes wrong:**
-The existing codebase extracts Y positions from OSMD's cursor element (`cursor.cursorElement.style.top`) to determine which "system" (line of music) each event is on. This Y position drives the camera scrolling system. Verovio has no cursor API -- it returns SVG strings, not live DOM elements with CSS positions. The entire camera/scroll system breaks without Y positions for each event.
+The current Puppeteer integration (`setTimestamp` in RegularRenderer.tsx, lines 483-609) directly manipulates SVG DOM elements to set precise animation states for each frame. It iterates through all events from the start of the score up to the current timestamp, applying inline styles to every note that should be in an active animation state. With virtual scrolling, notes on unmounted pages have no DOM elements to style. The captured frame shows blank space or default styling where animated notes should appear.
+
+Additionally, the camera system (`applyCamera`) uses `osmdRef.current.scrollHeight` (line 285) to compute the maximum scroll range. With virtual scrolling, `scrollHeight` reflects only the currently mounted pages, not the full score height. This produces incorrect camera clamping -- the camera cannot scroll to the end of the score.
 
 **Why it happens:**
-OSMD manages a live DOM cursor that has CSS `top`/`left` properties reflecting note positions in the rendered score. Verovio is stateless -- it renders SVG strings and provides timing via `getElementsAtTime()`, but no spatial coordinate information. There is no `getPositionForElement()` method in Verovio's toolkit API.
+Puppeteer's frame-by-frame rendering model assumes the entire score is in the DOM at all times. The `setTimestamp` function does a full backward scan to compute all active animations (line 525: `for (let i = 0; i <= currentIndex; i++)`). Virtual scrolling fundamentally breaks this assumption.
 
 **How to avoid:**
-1. After inserting Verovio's SVG into the DOM via `dangerouslySetInnerHTML` or `innerHTML`, query the actual SVG element positions using `getBoundingClientRect()` on `g.note` elements.
-2. Build a post-render extraction pass: `document.querySelectorAll('g.note').forEach(el => { const rect = el.getBoundingClientRect(); /* store position */ })`.
-3. Group notes into systems by Y-coordinate clustering (the existing `Y_THRESHOLD = 20` logic can be adapted).
-4. This extraction must happen AFTER the SVG is in the DOM and rendered -- cannot be done from the SVG string alone.
-5. Consider using Verovio's `svgBoundingBoxes` option to embed bounding box data directly in the SVG output, though this adds overhead.
+1. For Puppeteer render mode (`isRenderMode === true`), disable virtual scrolling entirely. Mount all pages. The memory cost is acceptable because Puppeteer runs in a controlled server environment with more available memory than a browser tab.
+2. Alternatively, implement a "render mode mount strategy" that mounts only the pages containing events in the current animation window (current event plus all events still in their exit-animation phase). This is more complex but uses less memory.
+3. Replace `osmdRef.current.scrollHeight` with a pre-computed total score height derived from the page height offset table (see Pitfall 2). This value is deterministic and does not depend on mounting state.
+4. The `animationController.ts` also needs the same fix -- it calls `clearNoteColor` and `applyNoteColor` on the container element (lines 45-56, 61-72), which fails silently for unmounted notes.
 
 **Warning signs:**
-- Camera scroll does nothing (all Y positions are 0 or undefined)
-- `getElementsAtTime()` returns note IDs but no position data
-- System grouping produces a single group (all notes at Y=0)
+- Rendered video has blank frames or frames with missing note highlights
+- Camera stops scrolling partway through the score in render mode
+- `scrollHeight` is smaller than expected when only a few pages are mounted
+- Frame capture tests pass when virtual scrolling is disabled but fail when enabled
 
 **Phase to address:**
-Phase 2 (Event System Migration) -- after basic rendering works, the position extraction system must be rebuilt before camera/animation can function.
+Virtual Scrolling phase -- but can be mitigated early by making render mode bypass virtual scrolling entirely.
 
 ---
 
-### Pitfall 4: Verovio Timing Model Mismatch (MIDI Milliseconds vs. Beat Fractions)
+### Pitfall 4: Event ID Consistency Across Page Re-renders
 
 **What goes wrong:**
-OSMD's cursor provides `currentTimeStamp.RealValue` as a beat fraction (e.g., 0.0, 0.25, 0.5 for quarter notes in 4/4). The existing interpolation system (`interpolateTimestamps`) maps these beat fractions to wall-clock seconds using sync anchors. Verovio's `getElementsAtTime()` operates on MIDI milliseconds, and `getTimeForElement()` returns MIDI milliseconds. These are NOT beat fractions -- they are absolute time values that depend on the tempo marking in the score. Mixing the two systems produces wildly incorrect timing.
+The current system generates event IDs sequentially during extraction: `id: 'evt-${index}'` (line 90 of `getEvents.ts`). Sync anchors reference these IDs: `syncAnchors.has('evt-0')` for the first event, `syncAnchors.has('evt-N')` for the last. If pagination changes which events are extracted (e.g., re-rendering with different page dimensions produces different line breaks, which changes the number of systems and potentially the number of events if Verovio merges tied notes differently), the event IDs shift and all existing sync anchors become orphaned. The user's carefully-set timing anchors point to events that no longer exist.
 
 **Why it happens:**
-Developers assume "time" means the same thing in both libraries. OSMD's beat fractions are tempo-independent (beat 1.0 is always the second beat regardless of BPM). Verovio's milliseconds are tempo-dependent (beat 2 at 120 BPM = 500ms, but at 60 BPM = 1000ms). The interpolation system was designed for beat-fraction inputs and breaks with millisecond inputs.
+The event ID scheme is index-based, not content-based. Any change to the event list order or count invalidates all anchor references. This is already a latent bug with the current system (changing score scale re-extracts events and could shift IDs), but pagination makes it more likely because page layout is more sensitive to dimensions.
 
 **How to avoid:**
-1. Decide on ONE timing coordinate system for the entire app. Recommendation: switch to Verovio's millisecond-based system since it aligns with audio `currentTime` (seconds * 1000).
-2. Replace `beatOnset` in the event model with `timeMs` from Verovio's `getTimeForElement()`.
-3. Rewrite `interpolateTimestamps` to work with millisecond anchors instead of beat-fraction anchors -- or simplify it since Verovio already provides absolute times.
-4. Call `renderToMIDI()` BEFORE using `getTimeForElement()` or `getElementsAtTime()` -- these methods require MIDI data to be generated first.
-5. Use `renderToTimemap()` to get a complete time-to-element mapping upfront, rather than querying per-element.
+1. Use Verovio's stable MEI element IDs as the event identifier instead of sequential indices. The `svgIds` array already contains these MEI IDs (e.g., `note-L14F1` or a UUID-style MEI ID). Use the first svgId as the event ID.
+2. When building the sync anchor map, key on MEI element IDs rather than `evt-N` indices.
+3. This requires a migration step for existing sync anchor data. If users have saved anchors keyed on `evt-N`, provide a one-time migration that maps old indices to MEI IDs based on order.
+4. Alternatively, maintain a stable mapping from `evt-N` to MEI IDs and regenerate it on each extraction. But this is fragile -- the MEI-ID approach is fundamentally better.
 
 **Warning signs:**
-- Notes highlight at wrong times (early or late by factors of tempo)
-- Sync anchors stop working after migration
-- `getTimeForElement()` returns 0 for all elements (forgot to call `renderToMIDI()` first)
+- Changing score scale or window size causes sync anchors to "forget" their positions
+- First and last anchor checks fail after re-render (`hasFirstAnchor` / `hasLastAnchor` in RegularRenderer.tsx line 382-383)
+- `interpolateTimestamps` produces timestamps of 0 for all events (because no anchors match)
 
 **Phase to address:**
-Phase 2 (Event System Migration) -- must be addressed alongside event extraction, before animation system is connected.
+Event Caching phase -- when building the persistent event cache, switch to MEI-based IDs. This is a prerequisite for stable caching.
 
 ---
 
-### Pitfall 5: `dangerouslySetInnerHTML` SVG Click Events Silently Fail in React 19
+### Pitfall 5: Cache Invalidation on Layout Changes
 
 **What goes wrong:**
-Verovio returns SVG as a string, which must be injected via `dangerouslySetInnerHTML` or `ref.current.innerHTML`. In React 19 (which this project uses), there is a known bug where SVG elements rendered via `dangerouslySetInnerHTML` do not trigger their first click event on focusable elements. Additionally, React synthetic events do not fire on content injected via `dangerouslySetInnerHTML` because React's event delegation does not know about these DOM nodes.
+Caching event positions (Y coordinates, page assignments) assumes the layout is stable. But Verovio layout depends on: `pageWidth`, `scale`, `breaks` mode, and container dimensions. Changing score scale (via the scale slider) or resizing the score region triggers a Verovio re-render with different options. If the cached event positions are not invalidated, the camera scrolls to stale Y positions, notes animate on wrong pages, and page assignments are incorrect.
+
+The current code re-extracts events on every SVG change (RegularRenderer.tsx lines 234-238, inside the `useEffect` that watches `svgString`). Caching introduces the risk that this re-extraction is skipped when it should not be.
 
 **Why it happens:**
-React attaches event handlers via delegation on the root container. Content injected via `dangerouslySetInnerHTML` bypasses React's virtual DOM, so React never registers these elements for event delegation. The current OSMD code works because OSMD renders into the DOM directly (not via innerHTML), and click handlers use `event.target.closest('.vf-stavenote')` on a React-managed parent div.
+Developers cache positions for performance but forget the many triggers that invalidate them. Score scale changes, window resize, score region resize, and even font loading can alter SVG layout and thus element positions. The invalidation surface is larger than it appears.
 
 **How to avoid:**
-1. Use native DOM event listeners via `useEffect` + `ref`, NOT React `onClick` on the SVG container.
-2. Attach listeners to the parent `div` (which React manages) and use event delegation: `containerRef.current.addEventListener('click', handler)`.
-3. Use `event.target.closest('g.note')` to find the clicked note in the Verovio SVG.
-4. Clean up listeners in `useEffect` return function to prevent memory leaks.
-5. Set `pointer-events: none` on `<use>` elements inside clickable notes to prevent click events being swallowed by `<use>` shadow DOM.
+1. Key the cache on a hash of rendering parameters: `{xml content hash, pageWidth, scale, breaks}`. Any change to these parameters invalidates the entire cache.
+2. Separate the cache into two layers: (a) timing data (beatOnset, svgIds, event IDs) which is stable across layout changes, and (b) spatial data (Y positions, page assignments) which changes with layout.
+3. On scale/resize, invalidate only the spatial cache and re-compute positions. The timing data (which requires `renderToTimemap()`) can be preserved if the XML content has not changed.
+4. Never cache `getBoundingClientRect()` results -- these are viewport-relative and change with scroll position. Cache SVG-space values instead (using `getBBox()` or computing from SVG attributes).
 
 **Warning signs:**
-- First click on a note does nothing (React 19 specific bug)
-- Clicks work on stems but not noteheads (events swallowed by `<use>`)
-- `onClick` handler on container div never fires for SVG child elements
+- Camera scrolls to wrong position after changing score scale
+- Events report page 1 when they should be on page 3 after a resize
+- "Works on first render, breaks after changing settings" pattern
+- Memory usage stays flat (cache never rebuilds) even after layout changes
 
 **Phase to address:**
-Phase 3 (SyncEditor Migration) -- the SyncEditor is the primary click-interactive component.
+Event Caching phase -- cache design must include invalidation strategy from the start.
 
 ---
 
-### Pitfall 6: renderToMIDI() Prerequisite Not Called -- Silent Timing Failures
+### Pitfall 6: Page Boundary Camera Transitions
 
 **What goes wrong:**
-`getElementsAtTime()`, `getTimeForElement()`, and `getMIDIValuesForElement()` all require `renderToMIDI()` to be called first. If this prerequisite is not met, these methods return empty/zero results without throwing errors. The app appears to work but all timing data is wrong or missing.
+The current camera system is smooth because all systems exist in one continuous coordinate space. With pagination, there is an implicit gap between the last system on page N and the first system on page N+1 (the gap between where one SVG ends and the next begins in the DOM). If virtual scrolling swaps pages, the camera `translateY` value must account for which pages are currently mounted and their positions. A naive implementation produces visible jumps: the score appears to teleport when crossing a page boundary because the DOM structure changes (one page unmounts, another mounts) and the `translateY` offset does not compensate.
 
 **Why it happens:**
-Verovio computes timing data lazily as part of MIDI generation. The toolkit API does not enforce calling order or throw errors for unmet prerequisites. Developers call `loadData()` + `renderToSVG()` and assume timing methods work immediately.
+The current `applyCamera` function (RegularRenderer.tsx line 284) applies a single `translateY` to the camera div, assuming a continuous layout. With multiple page elements, the `translateY` must either: (a) translate within a container that stacks all page SVGs vertically, or (b) translate the viewport position and swap which page SVG is visible. Both approaches can cause frame-of-jank during page transitions.
 
 **How to avoid:**
-1. Establish a strict initialization sequence: `loadData()` -> `renderToSVG()` -> `renderToMIDI()` -> then timing queries are safe.
-2. Create a wrapper/service class that enforces this order and prevents timing queries before MIDI generation.
-3. Store the result of `renderToMIDI()` even if you don't need the MIDI file -- the side effect of populating timing data is what matters.
-4. After any `loadData()` call (e.g., when the score changes), `renderToMIDI()` must be called again.
+1. Use a container div that represents the full score height (even if pages inside it are virtualized). Set the container height to the sum of all page heights. Position each mounted page absolutely at its correct Y offset within this container. The camera `translateY` then works against this full-height container, exactly like the current single-SVG approach.
+2. This is the "virtual scroll window" pattern: the outer container is the full height, the inner mounted content is positioned absolutely, and the viewport clips to the visible region.
+3. When a page mounts or unmounts, it should not affect the positions of other pages. Each page has a fixed Y offset in the virtual container.
+4. The camera `transition: transform 200ms ease-out` (RegularRenderer.tsx line 718) may cause visible artifacts during page transitions. Consider temporarily disabling the transition when crossing page boundaries, or ensure the page swap happens at least one frame before the camera starts moving to the new position.
 
 **Warning signs:**
-- `getTimeForElement()` returns 0 for all elements
-- `getElementsAtTime(5000)` returns an empty notes array
-- Timing works after a score reload but not on first load (race condition with initialization order)
+- Score "jumps" visibly when the camera crosses from one page to the next
+- Brief flash of blank space during page transitions
+- Camera overshoots or undershoots at page boundaries
+- The `transition: transform 200ms ease-out` on the camera div causes a delayed jump
 
 **Phase to address:**
-Phase 1 (Core Verovio Integration) -- establish the correct initialization sequence from the start.
+Virtual Scrolling phase -- the virtual scroll container structure must be designed to support smooth camera transitions.
+
+---
+
+### Pitfall 7: renderToSVG Per Page Is Not Free
+
+**What goes wrong:**
+Developers assume that since Verovio already computed the layout during `loadData()`, calling `renderToSVG(pageNum)` for each page is nearly instant. In reality, each `renderToSVG()` call generates the full SVG string for that page, including all glyph definitions in `<defs>`, coordinate calculations, and string serialization. For a 50-page score, rendering all pages sequentially takes 500ms-2s, blocking the UI thread. If pages are rendered on-demand during scrolling, each page swap can cause a 30-100ms jank spike.
+
+**Why it happens:**
+Verovio's `renderToSVG()` is implemented in C++ (WASM) and does real work -- it is not just returning a cached string. The SVG generation involves iterating the page's musical elements and serializing them to SVG markup. For pages with dense notation (many notes, chords, articulations), this is non-trivial.
+
+**How to avoid:**
+1. Pre-render all pages during the initial load phase, not on-demand during scrolling. Store the SVG strings in an array. The memory cost of SVG strings is much smaller than mounted DOM trees.
+2. Profile the actual render time for representative scores. If pre-rendering all pages takes too long (>2s), render pages in batches using `requestIdleCallback` or `setTimeout(0)` to avoid blocking the UI.
+3. For virtual scrolling, pre-render SVG strings but lazily mount them into the DOM. Mounting a pre-rendered SVG string via `innerHTML` is fast (~1-5ms). The expensive part is the `renderToSVG()` call, not the DOM insertion.
+4. Consider using a Web Worker for pre-rendering if profiling shows it is a bottleneck. Verovio can run in a Web Worker since it is pure WASM with no DOM dependency for rendering.
+
+**Warning signs:**
+- Visible pause or jank when scrolling to a new page
+- Frame drops during fast scrolling through a long score
+- Initial load takes significantly longer after switching to paginated rendering
+- `renderToSVG()` calls appearing in performance profiles during scroll handlers
+
+**Phase to address:**
+Paginated Rendering phase -- pre-render strategy must be part of the initial implementation.
 
 ---
 
@@ -159,98 +190,103 @@ Phase 1 (Core Verovio Integration) -- establish the correct initialization seque
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Using `innerHTML` instead of a React-aware SVG component | Fast integration, Verovio returns strings | No React reconciliation, manual event wiring, memory leaks if not cleaned up | Acceptable for MVP; consider a thin wrapper component later |
-| Single Verovio toolkit instance shared between RegularRenderer and SyncEditor | Less memory, faster init | Shared state means rendering one view can corrupt options for the other; `setOptions()` is global to the toolkit | Never -- use separate toolkit instances for each renderer |
-| Hardcoding `renderToMIDI()` call after every `renderToSVG()` | Timing always available | Unnecessary MIDI generation overhead on pure visual re-renders (zoom, resize) | Acceptable unless profiling shows MIDI generation is a bottleneck (it is fast) |
-| Copying the `.wasm` file to `public/` instead of fixing bundler config | Bypasses all Vite WASM issues | Manual file management, version drift, CI/CD complexity | Only as emergency fallback if `vite-plugin-wasm` fails |
-| Keeping both OSMD and Verovio in package.json during migration | Incremental migration, feature toggle | Bundle bloat (~10MB WASM + OSMD), confusion about which renderer is active | Acceptable during migration phases only; remove OSMD at end |
+| Disable virtual scrolling in render mode | Avoids complex Puppeteer/mounting interactions | Full DOM for long scores in Puppeteer; memory usage remains high for video export | Acceptable as v1.1 approach -- Puppeteer runs in controlled environment; optimize later if export OOMs |
+| Keep sequential event IDs (`evt-N`) instead of MEI IDs | No sync anchor migration needed | Anchor instability on layout changes (same latent bug as v1.0) | Acceptable ONLY if score scale cannot change after anchors are set; otherwise, fix the ID scheme |
+| Render all pages at load instead of lazy | Simple implementation, no on-demand rendering jank | Higher initial load time (500ms-2s for long scores) | Acceptable for v1.1 -- most scores are under 20 pages; optimize with lazy rendering in v1.2 if profiling shows need |
+| Use DOM `getBoundingClientRect` for Y positions instead of SVG-space math | Easier to implement, matches current code pattern | Forced reflow on each measurement, viewport-dependent values | Acceptable for initial implementation; migrate to SVG-space if profiling shows layout thrashing |
+| Single-page rendering for short scores (< 5 pages) | Skip pagination complexity for most user scores | Two code paths to maintain | Never -- always use the paginated path, even for short scores, to avoid divergent behavior |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Verovio + Vite dev server | Assuming WASM loads the same in dev and production | Test both modes; add `vite-plugin-wasm`; exclude verovio from `optimizeDeps` |
-| Verovio + React 19 | Using `dangerouslySetInnerHTML` and expecting React events to work | Use native DOM event listeners via `useEffect` + `ref` for all SVG interaction |
-| Verovio + Puppeteer frame capture | Calling `setTimestamp()` and screenshotting immediately | After injecting SVG via innerHTML, force a reflow (`void element.offsetHeight`) and use `requestAnimationFrame` to ensure paint completes before capture |
-| Verovio SVG + CSS color changes | Setting only `fill` on `<use>` elements | Set BOTH `fill` and `color` on the parent `<g>` element; Verovio glyphs use `currentColor` |
-| Verovio toolkit + score re-rendering | Calling `getTimeForElement()` after `loadData()` + `renderToSVG()` | Must also call `renderToMIDI()` before any timing queries |
-| Verovio + window resize | Expecting auto-resize like OSMD | Implement manual resize handler: update `pageWidth` option, call `loadData()` again, re-render |
+| Verovio `getPageWithElement()` | Calling after `loadData()` but before `renderToSVG()` -- returns 0 | Call only after at least one `renderToSVG()` to ensure layout is computed |
+| Verovio `renderToTimemap()` | Assuming it includes page numbers | It does NOT include page numbers. Use `getPageWithElement(id)` to map events to pages after timemap extraction |
+| Camera + virtual scroll | Using `scrollHeight` of the container to compute max scroll | `scrollHeight` reflects mounted content only. Use pre-computed total height from page dimensions |
+| `dangerouslySetInnerHTML` + page swaps | Re-rendering the container div causes React to re-create the entire subtree | Use separate div elements per page with independent `dangerouslySetInnerHTML`, so mounting/unmounting one page does not affect others |
+| Event extraction + pagination | Running `querySelectorAll('g.system')` on the container when only some pages are mounted | Run extraction on ALL pages (mount them temporarily if needed), then cache results. Do not extract incrementally per-page -- the event list must be complete for interpolation to work |
+| `resetNoteheadAnimations()` | Calling on the container div when some pages are unmounted -- silently skips unmounted notes, leaving stale animation state | Track which notes have active animations in JS state (not just DOM). On reset, clear the JS state. On mount, apply correct state from JS. |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Two separate WASM modules loaded (RegularRenderer + SyncEditor each init their own) | ~20MB memory for WASM alone, slow initial load | Share ONE `createVerovioModule()` call; create two `VerovioToolkit` instances from the same module | Immediately on load -- two WASM fetches of ~10MB each |
-| Re-rendering entire SVG on every frame during animation | Dropped frames, janky scrolling, high CPU | Render SVG once; animate by manipulating DOM (add/remove classes, change `style.fill`) on existing elements | At any FPS above ~15 with complex scores |
-| Calling `renderToSVG()` on score resize without debounce | UI freezes during slider drag (score scale, region resize) | Debounce resize/zoom triggers (existing 300ms pattern is good); show loading indicator | With scores >2 pages on mid-range hardware |
-| Full SVG string re-injection on color/style changes | Flash of un-styled content, lost scroll position, animation state reset | Modify existing DOM nodes in-place (querySelector + style changes) rather than re-rendering SVG | Every time a user changes score color |
-| Verovio `renderToTimemap()` called per-frame instead of cached | CPU spike on each animation frame | Call once after `loadData()` + `renderToMIDI()`, cache the result, only regenerate on score change | With scores >50 measures at 60fps |
+| Rendering all pages to DOM at once | 6GB+ memory, same as current single-SVG approach | Virtual scrolling: mount only visible pages + 1 buffer page on each side | Immediately on long scores (50+ pages) |
+| Calling `renderToSVG()` during scroll handler | 30-100ms jank per page, dropped frames, unresponsive UI | Pre-render all page SVG strings at load time, store in array, mount from cache | Any score with more than 3 pages during fast scrolling |
+| `getBoundingClientRect()` in a loop across many elements | Forced synchronous reflow per call if DOM is dirty | Batch all reads before any writes. Or compute positions from SVG attributes (no reflow needed) | Scores with 500+ events during event extraction |
+| Re-extracting events on every scroll position change | CPU spike, dropped frames, battery drain on laptops | Extract once, cache with layout-parameter key. Re-extract only when layout changes (scale, resize, new XML) | Any score during normal playback |
+| Mounting/unmounting pages causes full subtree reconciliation in React | React re-runs effects, refs reset, event listeners lost | Use `display: none` instead of conditional rendering for page visibility. Or use vanilla DOM manipulation (not React) for the page container | Scores with 10+ pages during fast scrolling |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| WASM loading delay with no feedback | User sees blank screen for 1-3 seconds, thinks app is broken | Show a loading spinner/skeleton during `createVerovioModule()` initialization |
-| Page-based rendering with no scroll continuity | Score jumps between pages during playback, jarring visual experience | Use `breaks: "none"` with `adjustPageHeight: true` to get continuous scrolling layout matching current OSMD behavior |
-| Glyph quality difference between OSMD and Verovio | Users notice the score "looks different" after migration | Verovio's SMuFL-based rendering is actually higher quality; communicate this as an upgrade, not a regression |
-| Font loading on Linux/Firefox | Wrong text font ("DejaVu Serif") causes layout issues | Include explicit font-family fallbacks in SVG CSS; test on Linux Firefox specifically |
+| Visible blank space during page transitions | User sees white gap flash between systems during playback | Pre-mount buffer pages (1 above, 1 below viewport) so content is ready before camera reaches it |
+| Score jumps on page boundary during playback | Jarring visual disruption breaks the "smooth scrolling video" aesthetic | Use the virtual-container pattern (Pitfall 6) so page boundaries are invisible to the camera |
+| Long initial load for pre-rendering all pages | User stares at loading spinner for 2+ seconds on very long scores | Show progressive rendering: display first page immediately, render remaining pages in background, show progress indicator |
+| Animation flicker when page mounts with stale state | Note appears at default state for one frame before animation applies | Apply correct animation state to page SVG BEFORE mounting it into the visible DOM (prepare off-screen, then swap in) |
+| Camera transition CSS interferes with page swaps | `transition: transform 200ms ease-out` causes camera to animate to wrong position during rapid page changes | Disable transition during page boundary crossings, or always keep enough pages mounted that the transition does not reveal unmounted content |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **SVG Color System:** Note colors change via CSS -- verify that BOTH noteheads (`<use>` elements) AND stems (`<rect>` elements) change color, not just one
-- [ ] **Animation System:** Notehead scale animation works -- verify `transform` on `<g class="note">` has correct `transform-origin` (Verovio's `<g>` elements may not have intrinsic bounding boxes like VexFlow's)
-- [ ] **Puppeteer Frame Capture:** Frames render correctly -- verify WASM is fully loaded before Puppeteer navigates to the page; `isAnimationReady()` must wait for both WASM init AND `renderToMIDI()`
-- [ ] **Camera Scroll:** Vertical scrolling works -- verify Y positions are extracted AFTER SVG DOM insertion (not from SVG string parsing)
-- [ ] **Timing Accuracy:** Sync anchors produce correct playback -- verify the interpolation system works with Verovio's millisecond-based timing, not OSMD's beat-fraction timing
-- [ ] **Multiple Renderers:** Both RegularRenderer and SyncEditor work simultaneously -- verify they use separate toolkit instances but share the WASM module
-- [ ] **Score Region:** Score region clipping works -- verify Verovio SVG viewBox/dimensions interact correctly with the CSS `overflow: hidden` clipping region
-- [ ] **Dev vs Prod:** App works in both `vite dev` and `vite build` -- WASM loading behavior differs between modes
+- [ ] **Paginated Rendering:** Score renders in pages -- verify that event extraction still produces the SAME number of events as the single-SVG approach. Pagination should not change what notes exist, only where they are positioned.
+- [ ] **Event Cache:** Events are cached -- verify cache invalidates when score scale changes. Change scale, play from beginning, confirm camera scrolls to correct positions on every system.
+- [ ] **Virtual Scrolling:** Only visible pages mounted -- verify Puppeteer frame capture still produces correct output. Render a 10-second clip and compare frame-by-frame with non-virtualized rendering.
+- [ ] **Page Boundary Camera:** Camera crosses page boundaries -- verify no visual jump or blank flash at any page boundary. Record playback and inspect frame-by-frame at every boundary.
+- [ ] **Sync Anchors:** User-set anchors survive re-render -- change score scale after setting anchors, verify all anchors still map to correct notes and playback timing is unchanged.
+- [ ] **Animation at Page Edges:** Notes at the last system of a page and first system of next page -- verify both animate correctly during playback. These are the elements most likely to be on an unmounted buffer page.
+- [ ] **Full-Note Coloring:** `colorFullNote` option colors stems and accidentals -- verify this works across page boundaries when the note group spans mounted/unmounted pages (unlikely but possible for very wide chords with accidentals).
+- [ ] **Reset After Page Change:** User plays to page 5, hits Reset -- verify camera returns to page 1, all noteheads on all pages are reset (not just mounted ones). The `resetNoteheadAnimations` function must handle unmounted pages.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| CSS fill not propagating through `<use>` | LOW | Switch all color selectors to target `g.note` with both `fill` and `color`; 1-2 hour fix |
-| WASM fails in Vite dev | MEDIUM | Add `vite-plugin-wasm`, reconfigure `optimizeDeps`; fallback: copy `.wasm` to `public/`; 2-4 hours |
-| No Y-position data for camera | MEDIUM | Build post-render DOM query pass using `getBoundingClientRect()`; 4-8 hours to implement + test system grouping |
-| Timing model mismatch | HIGH | Rewrite event model from beat-fractions to milliseconds; rewrite interpolation; 1-2 days |
-| React 19 click events broken on SVG | LOW | Switch to native DOM listeners via `useEffect`; 1-2 hours |
-| `renderToMIDI()` not called | LOW | Add single line to initialization sequence; 15 minutes |
-| Shared toolkit instance corrupted | MEDIUM | Refactor to separate toolkit instances with shared WASM module; 2-4 hours |
+| Animation targets unmounted elements | MEDIUM | Add page-awareness to `animateNoteheads`: check if page is mounted before querying, mount if needed for render mode. 4-8 hours. |
+| Coordinate space mismatch | HIGH | Retrofit global coordinate system: compute page height offsets, add `globalY` to event model, update camera to use globalY. 1-2 days. |
+| Puppeteer misses unmounted content | LOW | Disable virtual scrolling in render mode with a single flag. 1 hour. Quick fix, proper fix later. |
+| Event ID instability | MEDIUM | Migrate event IDs from `evt-N` to MEI element IDs. Requires sync anchor migration for existing data. 4-8 hours. |
+| Cache not invalidating | LOW | Add layout-parameter hash to cache key. When parameters change, cache misses automatically. 2 hours. |
+| Page boundary camera jumps | MEDIUM | Implement virtual container with absolute page positioning. Requires restructuring the camera container div. 4-8 hours. |
+| renderToSVG blocking UI during scroll | MEDIUM | Pre-render all pages at load time, store SVG strings in memory. 2-4 hours. |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| WASM init race condition | Phase 1: Core Verovio Integration | WASM loads in both `vite dev` and `vite build`; no console errors |
-| `renderToMIDI()` prerequisite | Phase 1: Core Verovio Integration | `getTimeForElement()` returns non-zero values for all notes |
-| CSS fill through `<use>` | Phase 1: Core Verovio Integration | Single note can be colored red via JS; verify both notehead and stem change |
-| Y-position extraction | Phase 2: Event System Migration | Camera scrolls to correct vertical position when advancing through events |
-| Timing model mismatch | Phase 2: Event System Migration | Sync anchors produce correct timestamps; audio playback matches note highlighting |
-| React 19 click events | Phase 3: SyncEditor Migration | Click on any note in SyncEditor selects it; first click works (not just second) |
-| `dangerouslySetInnerHTML` event delegation | Phase 3: SyncEditor Migration | Note selection, keyboard navigation, and anchor assignment all function |
-| Puppeteer frame capture | Phase 4: Animation + Render Pipeline | Exported frames show correct note highlighting and camera position at each timestamp |
-| Multiple toolkit instances | Phase 1: Core Verovio Integration | RegularRenderer and SyncEditor render independently; changing options in one does not affect the other |
-| WASM module sharing | Phase 1: Core Verovio Integration | Only one network request for the `.wasm` file in dev tools Network tab |
+| Animation targets unmounted elements | Virtual Scrolling | Play through a page boundary; notes on new page animate correctly on first frame of visibility |
+| getBoundingClientRect coordinate space | Paginated Rendering | Extract events, verify Y positions form a monotonically increasing sequence across all pages |
+| Puppeteer misses unmounted content | Virtual Scrolling | Run Puppeteer frame capture on a 3+ page score; diff frames against non-virtualized baseline |
+| Event ID consistency | Event Caching | Set sync anchors, change score scale, verify anchors still point to correct notes |
+| Cache invalidation on layout changes | Event Caching | Change scale slider 5 times; verify camera positions are correct each time without manual cache clear |
+| Page boundary camera transitions | Virtual Scrolling | Record playback; inspect every page boundary frame for visual discontinuity |
+| renderToSVG performance | Paginated Rendering | Profile initial load time; verify no `renderToSVG` calls appear in scroll handler flame graphs |
+
+## Ordering Implications for Roadmap
+
+The pitfalls reveal a strict dependency chain for the efficiency features:
+
+1. **Paginated Rendering FIRST** -- Establishes multi-page SVG output, global coordinate system, page height offset table, and pre-rendered SVG string cache. Without this foundation, virtual scrolling has no pages to virtualize and event caching has no page assignments to cache.
+
+2. **Event Caching SECOND** -- Once pages exist, extract all events across all pages, assign page numbers and global Y positions, and cache the result. The cache key includes layout parameters for automatic invalidation. This produces the stable event dataset that virtual scrolling depends on.
+
+3. **Virtual Scrolling THIRD** -- With pages rendered and events cached (with page assignments), implement the mount/unmount logic. The virtual scroll container uses the pre-computed page heights. Animation checks the event cache for page assignment before querying DOM. Puppeteer render mode disables virtual scrolling.
+
+4. **OSMD Cleanup can happen at any point** -- Removing dead OSMD code is independent of the above three features.
 
 ## Sources
 
-- [Verovio CSS and SVG reference](https://book.verovio.org/interactive-notation/css-and-svg.html) -- HIGH confidence (official docs)
-- [Verovio JavaScript/WASM installation](https://book.verovio.org/installing-or-building-from-sources/javascript-and-webassembly.html) -- HIGH confidence (official docs)
-- [Verovio toolkit methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) -- HIGH confidence (official docs)
-- [Verovio toolkit options](https://book.verovio.org/toolkit-reference/toolkit-options.html) -- HIGH confidence (official docs)
-- [Verovio MIDI playback](https://book.verovio.org/interactive-notation/playing-midi.html) -- HIGH confidence (official docs)
-- [Verovio GitHub issue #520: notehead/stem SVG structure](https://github.com/rism-digital/verovio/issues/520) -- HIGH confidence (official repo)
-- [Verovio GitHub discussion #2815: npm package improvements](https://github.com/rism-digital/verovio/discussions/2815) -- MEDIUM confidence
-- [Vite issue #4551: ESM WASM integration](https://github.com/vitejs/vite/issues/4551) -- MEDIUM confidence (Vite official repo)
-- [Vite issue #13314: WASM in dev server](https://github.com/vitejs/vite/issues/13314) -- MEDIUM confidence
-- [React issue #30994: SVG dangerouslySetInnerHTML click bug](https://github.com/facebook/react/issues/30994) -- MEDIUM confidence (React 19 specific)
-- [React issue #4963: SVG use element click events](https://github.com/facebook/react/issues/4963) -- MEDIUM confidence
-- [Codrops: Styling SVG use content with CSS](https://tympanus.net/codrops/2015/07/16/styling-svg-use-content-css/) -- MEDIUM confidence (well-known reference)
-- [MDN: SVG fills and strokes](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Fills_and_Strokes) -- HIGH confidence
-- [vite-plugin-wasm npm](https://www.npmjs.com/package/vite-plugin-wasm) -- MEDIUM confidence
-- Codebase analysis of existing OSMD integration (`RegularRenderer.tsx`, `SyncEditor.tsx`, `noteAnimation.ts`, `animationController.ts`, `getEvents.ts`) -- HIGH confidence (direct code review)
+- Verovio Reference Book: [Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) -- HIGH confidence (official docs, verified `getPageWithElement`, `getPageCount`, `renderToSVG` page parameter)
+- Verovio Reference Book: [Layout Options](https://book.verovio.org/first-steps/layout-options.html) -- HIGH confidence (official docs, verified `pageHeight`, `adjustPageHeight`, `breaks` options)
+- Verovio Reference Book: [MIDI Playback](https://book.verovio.org/interactive-notation/playing-midi.html) -- HIGH confidence (official docs, verified `getElementsAtTime` returns `{page, notes[]}`)
+- Verovio Reference Book: [Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) -- HIGH confidence (verified `pageHeight` range 100-60000, `breaks` choices)
+- MDN: [SVGGraphicsElement.getBBox()](https://developer.mozilla.org/en-US/docs/Web/API/SVGGraphicsElement/getBBox) -- HIGH confidence (SVG coordinate space vs viewport coordinates)
+- SitePoint: [DOM to SVG Coordinates](https://www.sitepoint.com/how-to-translate-from-dom-to-svg-coordinates-and-back-again/) -- MEDIUM confidence (explains `getScreenCTM()` for coordinate translation)
+- Paul Irish: [What Forces Layout/Reflow](https://gist.github.com/paulirish/5d52fb081b3570c81e3a) -- HIGH confidence (canonical reference for forced reflow triggers including `getBoundingClientRect`)
+- Puppeteer Docs: [Screenshots](https://pptr.dev/guides/screenshots) -- HIGH confidence (confirmed `ElementHandle.screenshot()` scrolls into view; detached elements throw)
+- GitHub Issue: [Puppeteer + Virtual Scrolling](https://github.com/puppeteer/puppeteer/issues/5194) -- MEDIUM confidence (confirms virtual scroll elements not in DOM cause "Node not visible" errors)
+- Direct codebase analysis: `RegularRenderer.tsx`, `getEvents.ts`, `noteAnimation.ts`, `animationController.ts`, `interpolation.ts`, `useVerovio.ts`, `verovioService.ts` -- HIGH confidence
 
 ---
-*Pitfalls research for: OSMD-to-Verovio migration in React/Vite music rendering app*
-*Researched: 2026-02-03*
+*Pitfalls research for: Efficiency features (paginated rendering, virtual scrolling, event caching) in Manuscript renderer*
+*Researched: 2026-02-04*

@@ -1,573 +1,238 @@
-# Feature Research: OSMD to Verovio Migration
+# Feature Research: Efficiency Optimizations
 
-**Domain:** Music notation rendering engine migration (OSMD -> Verovio)
-**Researched:** 2026-02-03
-**Confidence:** MEDIUM-HIGH (official Verovio docs verified most claims; some SVG structure details need runtime validation)
+**Domain:** Paginated SVG rendering, event caching, and virtual scrolling for browser-based music notation
+**Researched:** 2026-02-04
+**Confidence:** MEDIUM-HIGH
+
+## Context
+
+The Verovio migration is complete. The app currently renders the entire score as a single SVG
+by setting `pageHeight: 60000` with `adjustPageHeight: true`. For long scores (200+ measures),
+this produces a single SVG element with tens of thousands of DOM nodes, consuming 6GB+ of
+browser memory. The efficiency optimizations address this by switching to paginated rendering,
+caching computed event data, and only mounting visible SVG pages in the DOM.
+
+**Current architecture (the problem):**
+- `useVerovio` calls `tk.renderToSVG(1)` with `pageHeight: 60000` -- one giant SVG
+- `getEventsFromVerovio` walks the entire SVG DOM, calls `tk.renderToTimemap()`, builds `MusicalEventWithY[]`
+- All DOM nodes for all systems are present at all times
+- Camera scrolls via CSS `translateY` on a wrapper div
+- Animation/Puppeteer iterate over all events, query all SVG elements
 
 ## Feature Landscape
 
-This document maps every current OSMD feature to its Verovio equivalent, assessing complexity and risk for each migration path.
-
-### Table Stakes (Must Migrate -- App Breaks Without These)
-
-These features are currently implemented with OSMD and must have working Verovio equivalents for the migration to succeed.
-
-| # | Feature | OSMD Approach | Verovio Approach | Complexity | Risk | Confidence |
-|---|---------|---------------|------------------|------------|------|------------|
-| 1 | MusicXML loading | `osmd.load(xml)` returns Promise | `tk.loadData(xmlString)` with auto-format detection | LOW | LOW | HIGH |
-| 2 | SVG rendering | `osmd.render()` into container DOM node | `tk.renderToSVG(pageNum)` returns SVG string; insert via `innerHTML` | LOW | LOW | HIGH |
-| 3 | Event extraction (timing) | Cursor iteration: `cursor.Iterator.currentTimeStamp.RealValue` gives beat onset | `tk.getElementsAtTime(ms)` returns `{page, notes[]}` with element IDs at a given time; requires prior `tk.renderToMIDI()` | MEDIUM | MEDIUM | HIGH |
-| 4 | SVG element IDs for notes | `vf-{id}` prefix from VexFlow internals; extracted via `gNote.vfnote[0].getAttribute("id")` | MEI `xml:id` preserved directly as SVG `id` attribute on `<g>` elements; no prefix needed | LOW | LOW | HIGH |
-| 5 | Notehead targeting for animation | CSS selector `.vf-notehead` finds notehead `<g>` groups within `#vf-{id}` stavenotes | CSS selector `g.note` targets note groups; child shapes use `<use xlink:href>` referencing glyph `<defs>` | MEDIUM | MEDIUM | MEDIUM |
-| 6 | Score color (global) | Inject `<style>` targeting `.vf-stave path`, `[id^="osmdSvgPage"] path/ellipse/etc` | Inject `<style>` targeting `g.note`, `g.staff`, `g.rest` etc. with `fill`/`stroke` | LOW | LOW | HIGH |
-| 7 | Zoom / scale | `osmd.zoom = value; osmd.render()` | `tk.setOptions({scale: value}); tk.renderToSVG(page)` then re-insert SVG | LOW | LOW | HIGH |
-| 8 | Score layout options | OSMD constructor options: `drawTitle`, `drawComposer`, `drawPartNames`, `drawMeasureNumbers` | Verovio `setOptions()`: `header: 'none'`, `footer: 'none'`, plus MEI-level control | LOW | LOW | HIGH |
-| 9 | MusicXML validation | Load into hidden OSMD instance, catch errors on `load()`/`render()` | Call `tk.loadData(xml)`; check return value (empty string on failure) | LOW | LOW | MEDIUM |
-| 10 | Cursor X/Y position | `cursor.cursorElement.style.left/top` gives CSS pixel coordinates | No built-in cursor. Use `getElementsAtTime()` to get note IDs, then `getBoundingClientRect()` on SVG element | HIGH | HIGH | MEDIUM |
-
-### Detailed Feature Mapping
-
----
-
-#### Feature 1: MusicXML Loading
-
-**Current (OSMD):**
-```typescript
-const osmd = new OpenSheetMusicDisplay(container, { backend: 'svg' });
-await osmd.load(xmlString);
-osmd.render();
-```
-
-**Target (Verovio):**
-```typescript
-const tk = new verovio.toolkit();
-tk.setOptions({ /* rendering options */ });
-tk.loadData(xmlString); // auto-detects MusicXML format
-const svg = tk.renderToSVG(1); // page 1
-container.innerHTML = svg;
-```
-
-**Key Differences:**
-- OSMD renders directly into a DOM container; Verovio returns an SVG string that you insert into the DOM yourself
-- Verovio auto-detects MusicXML vs MEI vs Humdrum format from content
-- Verovio also supports compressed MXL via `loadZipDataBase64()` or `loadZipDataBuffer()`
-- Verovio paginates output -- you render one page at a time with `renderToSVG(pageNum)`
-
-**Migration complexity:** LOW. The API is simpler if anything.
-
----
-
-#### Feature 2: Event Extraction and Timing Data
-
-**Current (OSMD):**
-```typescript
-// Iterate cursor through every beat position
-cursor.show(); cursor.reset();
-while (!cursor.Iterator.EndReached) {
-  const beatOnset = cursor.Iterator.currentTimeStamp.RealValue;
-  const voiceEntries = cursor.Iterator.CurrentVoiceEntries;
-  // Extract SVG IDs from voice entries -> notes -> gNote -> vfnote
-  for (const ve of voiceEntries) {
-    for (const n of ve.Notes) {
-      const gNote = osmd.EngravingRules.GNote(n);
-      const id = gNote.vfnote[0].getAttribute("id");
-      svgIds.push(`vf-${id}`);
-    }
-  }
-  cursor.next();
-}
-```
-
-**Target (Verovio):**
-```typescript
-// Generate MIDI data first (required for time-based queries)
-const midiBase64 = tk.renderToMIDI();
-
-// Query: "what notes are playing at time X?"
-const elements = tk.getElementsAtTime(timeInMs);
-// Returns: { page: number, notes: string[] }
-// notes[] contains MEI xml:id values that are also SVG element IDs
-
-// Reverse query: "when does note X play?"
-const timeMs = tk.getTimeForElement(noteId);
-```
-
-**Key Differences:**
-- OSMD uses a cursor-based sequential iteration model. You walk through beat positions one by one.
-- Verovio uses a time-query model. You ask "what plays at time T?" or "when does element X play?"
-- Verovio requires `renderToMIDI()` before time queries work (it builds the timing map from MIDI data)
-- No cursor object in Verovio -- the entire iteration pattern must change
-
-**Building the event list in Verovio:** Instead of walking a cursor, you would:
-1. Call `renderToMIDI()` to build timing data
-2. Either: (a) iterate through all note elements in the SVG and call `getTimeForElement(id)` for each, or (b) sample time positions at regular intervals using `getElementsAtTime(ms)` to build the event list
-3. Approach (a) is more precise and recommended
-
-**Migration complexity:** MEDIUM. The conceptual model changes from "walk forward through beats" to "query timing for elements." The data structure (`MusicalEvent[]`) can remain similar, but the extraction logic is fundamentally different.
-
-**Risk:** MEDIUM. The MIDI-based timing may differ slightly from OSMD's beat-based timing for complex time signatures or tempo changes. Need to validate with test scores.
-
----
-
-#### Feature 3: SVG Element IDs and DOM Targeting
-
-**Current (OSMD):**
-- SVG IDs use VexFlow prefix: `vf-{auto-generated-id}`
-- Stavenote elements: `<g id="vf-auto12345" class="vf-stavenote">`
-- Notehead children: `<g class="vf-notehead">` containing `<path>` or `<ellipse>`
-
-**Target (Verovio):**
-- SVG IDs use MEI `xml:id`: `<g id="note-0000001234567" class="note">`
-- Note elements: `<g id="{meiId}" class="note">`
-- Notehead children: `<g class="notehead">` containing `<use xlink:href="#glyph-id">`
-
-**Key Differences:**
-- ID format changes: `vf-{hash}` becomes MEI-style IDs (e.g., `note-0000001234567`)
-- Class names change: `vf-stavenote` -> `note`, `vf-notehead` -> `notehead`, `vf-stave` -> `staff`
-- Shape primitives change: OSMD uses inline `<path>`/`<ellipse>` shapes; Verovio uses `<use xlink:href>` referencing SMuFL glyphs in `<defs>`
-
-**Impact on animation code:**
-- All CSS selectors must be updated (find-and-replace scope)
-- Notehead animation must target `<use>` elements instead of `<path>`/`<ellipse>` for color changes
-- The `<use>` element may need different styling approach -- `fill` on `<use>` should work, but needs testing since `<use>` inherits from referenced `<defs>` element
-
-**Migration complexity:** MEDIUM. Selector updates are mechanical, but the `<use>` vs inline shape difference for animations needs careful testing.
-
----
-
-#### Feature 4: Notehead Animation
-
-**Current (OSMD):**
-```typescript
-// Find notehead group, apply scale transform
-const noteheads = stavenote.querySelectorAll<SVGGElement>(".vf-notehead");
-nh.style.transform = `scale(${scale})`;
-
-// Color: target path/ellipse children directly
-const shapes = nh.querySelectorAll<SVGGraphicsElement>("path, ellipse");
-shapes.forEach(shape => { shape.style.fill = color; });
-```
-
-**Target (Verovio):**
-```typescript
-// Find note group by ID
-const noteEl = document.getElementById(noteId); // <g class="note">
-
-// Scale: apply to the note group or its notehead child
-const notehead = noteEl?.querySelector('.notehead');
-notehead.style.transform = `scale(${scale})`;
-
-// Color: target <use> elements or the notehead group itself
-// Option A: Set fill on notehead group (should cascade to <use>)
-notehead.style.fill = color;
-// Option B: Target <use> elements directly
-const uses = notehead?.querySelectorAll('use');
-uses.forEach(u => { u.style.fill = color; });
-```
-
-**Key Uncertainty:** How `<use>` elements respond to inline style overrides. In SVG, `<use>` clones the referenced element, and fill/stroke on the `<use>` element should override the referenced content. However, if the referenced glyph in `<defs>` has `fill` set as a presentation attribute (not inherited), the override may not work. This MUST be tested with actual Verovio SVG output.
-
-**Fallback approach:** If `<use>` styling is problematic, an alternative is to set `fill`/`stroke` on the parent `<g class="notehead">` and rely on CSS inheritance, or to use CSS `fill: color !important` scoped to the note ID.
-
-**Migration complexity:** MEDIUM. Core concept is the same (find element, apply CSS transform/color), but the SVG primitive differences need validation.
-
----
-
-#### Feature 5: Score Color (Global Styling)
-
-**Current (OSMD):**
-```css
-.preview-score [id^="osmdSvgPage"] path,
-.preview-score [id^="osmdSvgPage"] ellipse,
-.preview-score [id^="osmdSvgPage"] circle,
-.preview-score [id^="osmdSvgPage"] rect:not(.vf-bounding-box),
-.preview-score [id^="osmdSvgPage"] line { fill: ${color}; stroke: ${color}; }
-
-.preview-score [id^="osmdSvgPage"] .vf-stave path {
-  fill: none !important; stroke: ${color} !important;
-  stroke-width: 1 !important; shape-rendering: crispEdges !important;
-}
-```
-
-**Target (Verovio):**
-```css
-/* Verovio SVG uses class-based selectors */
-.preview-score svg path,
-.preview-score svg use,
-.preview-score svg line,
-.preview-score svg rect { fill: ${color}; stroke: ${color}; }
-
-/* Staff lines */
-.preview-score g.staff path { fill: none !important; stroke: ${color} !important; }
-```
-
-**Key Differences:**
-- Verovio wraps output in a single `<svg>` element (no `osmdSvgPage` prefix)
-- Must target `use` elements in addition to `path`/`ellipse` since Verovio uses SMuFL glyph references
-- Staff class is `g.staff` instead of `.vf-stave`
-- Verovio may not produce `ellipse` elements (uses `<use>` for noteheads instead)
-
-**Migration complexity:** LOW. CSS selector find-and-replace plus adding `use` to the selector list.
-
----
-
-#### Feature 6: Zoom / Scale
-
-**Current (OSMD):**
-```typescript
-osmd.zoom = scoreScale; // e.g., 1.0 = 100%
-osmd.render(); // re-renders with new zoom
-const events = getEventsWithY(osmd); // re-extract events since layout changed
-```
-
-**Target (Verovio):**
-```typescript
-tk.setOptions({ scale: Math.round(scoreScale * 100) }); // Verovio uses percentage (100 = 100%)
-const svg = tk.renderToSVG(currentPage);
-container.innerHTML = svg;
-// Re-extract events since layout changed
-```
-
-**Key Differences:**
-- OSMD zoom is a decimal multiplier (1.0 = 100%); Verovio scale is a percentage integer (100 = 100%)
-- OSMD re-renders in place; Verovio returns new SVG string that must be re-inserted
-- After scale change, all event data and element references must be rebuilt (same as current)
-- Verovio also supports `svgViewBox: true` option which adds a `viewBox` attribute to the SVG root, enabling pure CSS scaling without re-rendering
-
-**Alternative approach:** Use `svgViewBox: true` in initial options, then scale the SVG container via CSS `transform: scale(X)` without re-rendering. This would be faster than re-rendering but may affect element positioning calculations.
-
-**Migration complexity:** LOW. Direct mapping with a unit conversion (decimal -> percentage).
-
----
-
-#### Feature 7: Cursor Position / Camera Scrolling
-
-**Current (OSMD):**
-```typescript
-// Get Y position from cursor's CSS
-const cssTop = cursor.cursorElement.style.top;
-const y = Number(cssTop.substring(0, cssTop.length - 2));
-
-// Group events by Y (system detection)
-// Calculate center Y per system
-// Use Y for vertical camera scrolling
-```
-
-**Target (Verovio):**
-Verovio has no built-in cursor element. To get element positions:
-
-```typescript
-// Option A: Use SVG element bounding box (RECOMMENDED)
-const noteEl = document.getElementById(noteId);
-const bbox = noteEl.getBoundingClientRect();
-const y = bbox.top + bbox.height / 2; // center Y of note
-
-// Option B: Use SVG native getBBox()
-const svgEl = document.getElementById(noteId) as SVGGraphicsElement;
-const svgBBox = svgEl.getBBox(); // returns {x, y, width, height} in SVG coords
-```
-
-**Key Differences:**
-- OSMD provides a visible cursor element with CSS positioning; Verovio has no cursor
-- Position must be derived from the SVG elements themselves via `getBoundingClientRect()` or `getBBox()`
-- `getBoundingClientRect()` returns screen coordinates (affected by CSS transforms); `getBBox()` returns SVG coordinate space values
-- System detection (grouping events by Y) works the same way once Y values are extracted
-
-**Impact on camera/scrolling:**
-- The vertical scrolling animation system (camera) remains conceptually identical
-- Y extraction method changes from "read cursor CSS" to "read element bounding box"
-- May need to account for SVG coordinate system vs pixel coordinate system differences
-- Multi-page scores: Verovio paginates, so "scrolling" may need to change to page-flipping for multi-page layouts, OR render all pages in one long SVG using `adjustPageHeight: true` + large `pageHeight`
-
-**Migration complexity:** HIGH. No cursor equivalent means building position extraction from scratch. Multi-page handling adds complexity.
-
-**Risk:** HIGH. This is the most architecturally different feature. The current system relies heavily on OSMD's cursor for both X and Y positioning.
-
----
-
-#### Feature 8: MusicXML Validation
-
-**Current (OSMD):**
-```typescript
-// Create hidden OSMD instance, attempt load + render, catch errors
-const osmd = new OpenSheetMusicDisplay(hiddenContainer, { ... });
-await osmd.load(xmlContent);
-osmd.render(); // throws on invalid content
-return { valid: true, measureCount: osmd.Sheet.SourceMeasures.length };
-```
-
-**Target (Verovio):**
-```typescript
-const tk = new verovio.toolkit();
-const loaded = tk.loadData(xmlContent);
-// loadData returns a boolean or the loaded content
-// If it fails, it returns false/empty
-
-if (!loaded) {
-  return { valid: false, error: "Invalid MusicXML" };
-}
-
-// Attempt render to catch rendering errors
-const svg = tk.renderToSVG(1);
-if (!svg) {
-  return { valid: false, error: "Cannot render score" };
-}
-
-// Get page count as proxy for measure count
-const pageCount = tk.getPageCount();
-return { valid: true, pageCount };
-```
-
-**Key Differences:**
-- OSMD validation requires DOM container and full render cycle; Verovio can validate without DOM (headless)
-- Verovio's `loadData()` is synchronous (no Promise needed)
-- Verovio does not throw on invalid input -- it returns empty/false
-- Getting exact measure count may require parsing the MEI output (`tk.getMEI()`) or using `select()` to probe measure ranges
-
-**Improvement opportunity:** Verovio validation is lighter weight since it does not need a DOM container, making the "hidden container" pattern unnecessary.
-
-**Migration complexity:** LOW. Simpler API, fewer moving parts.
-
----
-
-#### Feature 9: Click-to-Select (SyncEditor)
-
-**Current (OSMD):**
-```typescript
-// Event delegation on container
-const stavenote = target.closest('.vf-stavenote');
-const noteId = stavenote.id;
-const event = events.find(evt => evt.svgIds.some(id => id === noteId));
-```
-
-**Target (Verovio):**
-```typescript
-// Event delegation on container
-const note = target.closest('g.note');
-const noteId = note?.id;
-// Look up event by noteId
-// Can also use tk.getTimeForElement(noteId) to get timing directly
-```
-
-**Key Differences:**
-- Selector changes from `.vf-stavenote` to `g.note`
-- Verovio provides `getTimeForElement(id)` which can give timing directly from click without maintaining a separate event list
-- Additional MEI attributes available via `tk.getElementAttr(noteId)` for pitch, duration, etc.
-
-**Migration complexity:** LOW. Nearly identical pattern with updated selectors.
-
----
-
-### Differentiators (New Capabilities Verovio Enables)
-
-Features that Verovio makes possible or easier that OSMD does not support (or supports poorly).
+### Table Stakes (Must Have for Efficiency Milestone)
+
+These features are non-negotiable for the optimization to be meaningful. Without all of them,
+memory usage does not meaningfully decrease.
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Paginated Verovio rendering | Core of the optimization -- render per-page SVGs instead of one monolith | MEDIUM | Verovio already supports `renderToSVG(pageNumber)` and `getPageCount()`. Switch from `pageHeight: 60000` to standard A4-ish page dimensions. Each page SVG is small and independent. |
+| Page-aware viewport (mount/unmount) | Only visible pages should exist in the DOM | HIGH | Without this, paginated rendering just creates N small SVGs instead of 1 large SVG -- same total DOM cost. IntersectionObserver or scroll-position math determines which pages to mount. Placeholder divs with known heights maintain scroll position for unmounted pages. |
+| Event position cache | Pre-compute all event data (timing, Y positions, page assignment) once after render, store in a lookup structure | MEDIUM | Currently `getEventsFromVerovio` walks the DOM on every render. The timemap data (`renderToTimemap`) and page assignment (`getPageWithElement`) are stable after `loadData` -- cache them. Only DOM positions need re-querying when pages mount. |
+| Camera scrolling on paginated layout | Vertical scroll must work identically to current behavior | MEDIUM | Currently CSS `translateY` on a wrapper. With paginated layout, must translate to "scroll to page N, offset Y within page." System-boundary snapping logic must map from event Y to page+offset. |
+| Puppeteer frame capture compatibility | `setTimestamp()` / `setFrame()` must still work for video export | HIGH | Puppeteer needs the active page's SVG in the DOM to screenshot. `setTimestamp` must: (1) determine which page contains the current event, (2) ensure that page is mounted, (3) apply animations, (4) position camera. Must be synchronous for screenshot timing. |
+| Notehead animation on paginated pages | Scale/color animations must work on whichever page is visible | MEDIUM | Animation code (`animateNoteheads`) already operates on DOM refs. Must target the correct page's SVG container. No fundamental change to animation logic -- just scope the querySelector to the active page element. |
+
+### Differentiators (Competitive Advantage)
+
+Features that go beyond solving the memory problem and provide additional value.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Headless validation | Validate MusicXML without DOM, enables server-side validation | LOW | Verovio runs in Node.js and Web Workers |
-| `getTimeForElement()` direct query | Get timing for any clicked note without maintaining event list | LOW | Simplifies SyncEditor significantly |
-| `getElementAttr()` rich metadata | Get pitch name, octave, duration, articulation from any note | LOW | Enables pitch-aware features (color by pitch, etc.) |
-| `svgAdditionalAttribute` data attrs | Expose MEI attributes as `data-*` on SVG elements for CSS selection | LOW | Enables `g[data-pname="c"]` selectors |
-| `svgViewBox` CSS-based scaling | Scale score via CSS transform instead of re-rendering | LOW | Faster zoom with no re-render cost |
-| Multi-format support | Load Humdrum, ABC, MEI directly | LOW | Broader file support if desired |
-| `select()` measure ranges | Render only measures 1-10, for example | LOW | Useful for focused practice views |
-| MEI export | `getMEI()` exports clean MEI from any input format | LOW | Enables format conversion workflows |
-| Web Worker rendering | Offload rendering to background thread | MEDIUM | Prevents UI thread blocking for large scores |
+| Predictive page pre-rendering | Pre-render next page SVG before scroll reaches it | LOW | Verovio `renderToSVG(n+1)` is fast (~5-20ms). Call it when current playback approaches page boundary. Eliminates flash of empty content during scroll. Store rendered SVG strings in a Map cache. |
+| Event-to-page index | O(1) lookup: given an event ID or timestamp, return page number | LOW | Build once from `renderToTimemap()` + `getPageWithElement()`. Stored as `Map<string, number>` (eventId -> pageNum) and sorted array for binary search by timestamp. Eliminates sequential scan through events. |
+| SVG string cache | Cache rendered SVG strings so re-mounting a page does not call `renderToSVG` again | LOW | `Map<number, string>` keyed by page number. Invalidated only on `loadData()` or `setOptions()`. Verovio rendering is pure (same input = same output), so cache is always valid between reflows. |
+| Smooth page transitions | Cross-fade or instant-swap between pages during playback so transition is invisible | MEDIUM | During playback, mount current + next page, position them vertically, let camera translateY handle the visual continuity. User should not perceive page boundaries. |
+| Web Worker for Verovio rendering | Offload `renderToSVG()` calls to a background thread | HIGH | Verovio WASM can run in a Web Worker. Post MusicXML + options to worker, receive SVG strings back. Main thread stays responsive during large score rendering. Significant complexity -- toolkit instance management, message passing, WASM loading in worker context. |
+| Render-mode page sequencer | In Puppeteer mode, automatically mount each page as needed during frame export | MEDIUM | Instead of having all pages in DOM, the sequencer mounts only the page needed for the current frame. Keeps Puppeteer memory low even for very long scores. Works with existing `setTimestamp` API. |
 
-### Anti-Features (Patterns to Avoid During Migration)
+### Anti-Features (Commonly Requested, Often Problematic)
 
-Features or approaches that seem good but will create problems.
+Features that seem like good optimizations but create more problems than they solve in this specific app.
 
-| Anti-Feature | Why Requested | Why Problematic | Alternative |
-|--------------|---------------|-----------------|-------------|
-| Per-page rendering for scrolling scores | Verovio natively paginates | Page-flipping breaks the vertical scroll camera model the app depends on | Use `adjustPageHeight: true` with large `pageHeight` to get single continuous SVG output |
-| Re-rendering SVG on every animation frame | Could update note colors via re-render | Extremely expensive; Verovio re-render is ~10-50ms | Manipulate SVG DOM directly (current approach, just update selectors) |
-| Using MIDI timing as sole source of truth | Verovio MIDI export is convenient | MIDI timing may not account for tempo changes, fermatas, or rubato that sync anchors handle | Keep the existing anchor-based interpolation system; use Verovio MIDI only for building initial event list |
-| Wrapping Verovio in React state | Tempting to store Verovio toolkit in useState | Verovio toolkit is a WASM-backed C++ object; re-creating it is expensive | Use useRef for toolkit instance, same pattern as current osmdRef |
-| Using Verovio's MIDI player for audio | Verovio can generate MIDI for playback | MIDI playback sounds robotic; app already has real audio sync | Keep existing audio sync architecture; use Verovio only for rendering and timing queries |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Canvas rendering instead of SVG | Canvas has O(1) memory regardless of score size | Breaks all existing DOM-based animation code (querySelector, inline styles, getBoundingClientRect). Would require rewriting animation, color, and Puppeteer capture from scratch. SVG is needed for crisp scaling and element-level interaction. | Keep SVG, reduce DOM via pagination + virtual mounting. Canvas is a v3 consideration if pagination is insufficient. |
+| Infinite scroll with measure-level granularity | Mount/unmount individual measures for finest-grained control | Verovio renders by PAGE, not by measure. There is no `renderMeasureToSVG()` API. Breaking pages into individual measures would require parsing SVG internals, which is extremely fragile. System breaks within a page are not individually addressable. | Use page-level granularity (Verovio's natural unit). Each page contains 2-6 systems, which is fine-grained enough. |
+| Re-rendering only changed pages on options change | When zoom/scale changes, only re-render affected pages | Verovio's `setOptions` + `redoLayout` changes ALL page layouts (different measures per page, different page count). There is no incremental layout -- every page is potentially different after a reflow. | Invalidate the full SVG cache on options change. Re-render visible pages immediately, others lazily. Use debounced scale slider (already implemented) to minimize reflows. |
+| SVG `<use>` deduplication across pages | Share glyph `<defs>` between pages to reduce total SVG size | Each page SVG from Verovio is self-contained with its own `<defs>`. Merging defs across pages requires SVG post-processing and creates ID collision risks. The memory savings are minimal compared to just not mounting distant pages. | Leave each page SVG self-contained. The virtual mounting strategy already ensures only 2-3 pages are in DOM at once. |
+| Streaming/progressive SVG rendering | Render SVG incrementally as measures are parsed | Verovio's C++/WASM rendering pipeline is synchronous and produces complete page SVGs. There is no streaming API. The render call blocks but is fast (5-50ms per page). | Pre-render pages in background or Web Worker. The per-page render time is fast enough that streaming is unnecessary. |
 
 ## Feature Dependencies
 
 ```
-MusicXML Loading
+Paginated Verovio Rendering (switch from pageHeight:60000 to normal pages)
     |
-    v
-SVG Rendering  ----->  Score Color (CSS styling)
-    |                       |
-    v                       v
-Event Extraction  <---  SVG Element IDs
+    +------> Event Position Cache
+    |             |
+    |             +------> Event-to-Page Index
+    |             |             |
+    |             |             v
+    |             |        Camera Scrolling (page-aware)
+    |             |             |
+    |             |             v
+    |             |        Smooth Page Transitions
+    |             |
+    |             +------> Puppeteer Frame Capture (page-aware setTimestamp)
     |
-    +-------> Cursor Position / Y extraction
-    |              |
-    |              v
-    |         Camera Scrolling (vertical)
+    +------> SVG String Cache
+    |             |
+    |             v
+    |        Predictive Page Pre-rendering
     |
-    +-------> Notehead Animation
-    |              |
-    |              v
-    |         Animation Controller (Puppeteer)
-    |
-    +-------> Click-to-Select (SyncEditor)
-    |              |
-    |              v
-    |         Timestamp Interpolation (unchanged)
-    |
-    v
-Zoom / Scale ------> Re-extract events after layout change
+    +------> Page-aware Viewport (mount/unmount)
+                  |
+                  +------> Notehead Animation (scoped to active page)
+                  |
+                  +------> Render-mode Page Sequencer (Puppeteer)
 ```
 
 ### Dependency Notes
 
-- **SVG Rendering must precede everything else:** All DOM interaction depends on SVG being in the DOM
-- **Event Extraction depends on SVG Element IDs:** Need to know the ID format to build event list
-- **Notehead Animation depends on Event Extraction:** Need svgIds from events to target noteheads
-- **Camera Scrolling depends on Y position extraction:** This is the hardest dependency -- Y extraction requires new approach
-- **Zoom/Scale triggers full re-extraction:** Same as current OSMD behavior; after zoom, events and positions change
-- **Timestamp Interpolation is engine-agnostic:** The interpolation.ts module works on `MusicalEvent[]` and does not depend on OSMD or Verovio directly -- no migration needed
+- **Paginated rendering is the foundation:** Everything else depends on Verovio producing per-page SVGs. This is a configuration change (`pageHeight` from 60000 to ~2970, remove `adjustPageHeight`), not a code rewrite.
+- **Event cache must be built before viewport:** The viewport needs to know which page to show at a given timestamp. The event cache provides this mapping.
+- **SVG string cache is independent of event cache:** Can be built in parallel. Stores rendered SVG strings keyed by page number.
+- **Camera scrolling depends on event-to-page index:** Must translate "event at Y=4500" to "page 3, offset 200px within page."
+- **Puppeteer depends on page-aware mounting:** `setTimestamp` must ensure the correct page is in the DOM before applying animations and taking a screenshot.
+- **Animation scoping is trivial once viewport works:** Just pass the active page's DOM element instead of the full container.
+- **Smooth transitions require both camera and viewport:** Must coordinate page mounting with camera position.
 
 ## MVP Definition
 
-### Phase 1: Core Rendering (Launch With)
+### Launch With (v1 -- Core Optimization)
 
-Minimum to get Verovio rendering and basic interaction working.
+Minimum to solve the 6GB memory problem for long scores.
 
-- [ ] **MusicXML loading via Verovio** -- Replace `OpenSheetMusicDisplay` with Verovio toolkit
-- [ ] **SVG rendering into container** -- `renderToSVG()` + innerHTML insertion
-- [ ] **Layout options** -- Match current OSMD config (no title, no composer, no part names)
-- [ ] **Score color (global CSS)** -- Update selectors for Verovio class names
-- [ ] **Zoom/scale** -- `setOptions({scale})` + re-render
-- [ ] **MusicXML validation** -- Replace OSMD-based validation with Verovio `loadData()` check
+- [ ] **Paginated rendering** -- Switch `useVerovio` from `pageHeight: 60000` to standard page dimensions; render via `renderToSVG(pageNumber)` per page
+- [ ] **SVG string cache** -- Store rendered page SVGs in `Map<number, string>`; invalidate on score load or options change
+- [ ] **Event position cache** -- Build full `MusicalEventWithY[]` from `renderToTimemap()` once; assign page numbers via `getPageWithElement()`; cache Y positions per-page via DOM query when page is first mounted
+- [ ] **Page-aware viewport** -- Mount only visible pages + 1 buffer page above and below; use placeholder divs with computed heights for unmounted pages; update on scroll/playback
+- [ ] **Camera scrolling (page-aware)** -- Translate event Y to page+offset; scroll container to correct page; apply intra-page translateY for system-boundary snapping
+- [ ] **Puppeteer compatibility** -- `setTimestamp` mounts the required page, applies animation, positions camera; synchronous for screenshot
 
-### Phase 2: Event System (Critical Path)
+### Add After Validation (v1.x)
 
-Build the event extraction pipeline that everything else depends on.
+Features to add once core pagination works and memory is verified low.
 
-- [ ] **Event extraction via Verovio** -- Build event list using `getTimeForElement()` for each note element
-- [ ] **SVG ID mapping** -- Map Verovio's MEI-style IDs to `MusicalEvent.svgIds`
-- [ ] **Y position extraction** -- Use `getBBox()` or `getBoundingClientRect()` to get note Y positions
-- [ ] **System detection** -- Group notes by Y (same algorithm, new data source)
-- [ ] **Verify `MusicalEvent` interface compatibility** -- Ensure output matches what interpolation.ts expects
-
-### Phase 3: Animation and Interaction
-
-Restore all interactive features with new SVG structure.
-
-- [ ] **Notehead animation** -- Update selectors, validate `<use>` element styling
-- [ ] **Camera scrolling** -- Plug new Y positions into existing camera system
-- [ ] **Animation controller** -- Update DOM queries for Puppeteer frame capture
-- [ ] **Click-to-select (SyncEditor)** -- Update event delegation selectors
-- [ ] **Audio sync playback** -- Verify timing alignment between Verovio MIDI times and audio
-
-### Phase 4: Polish and Validation
-
-- [ ] **Cross-score testing** -- Test with 10+ diverse MusicXML files
-- [ ] **Performance comparison** -- Benchmark Verovio vs OSMD render times
-- [ ] **Edge cases** -- Multi-voice, chords, grace notes, tuplets, key/time signature changes
-- [ ] **Puppeteer render pipeline** -- Validate frame-accurate rendering with new engine
+- [ ] **Predictive pre-rendering** -- Pre-render next/prev page SVG when playback approaches boundary
+- [ ] **Smooth page transitions** -- Mount current+next page for seamless visual transition during playback
+- [ ] **Render-mode page sequencer** -- Optimize Puppeteer flow to mount only the needed page per frame
 
 ### Future Consideration (v2+)
 
-- [ ] **Web Worker rendering** -- Offload Verovio to background thread for large scores
-- [ ] **`svgAdditionalAttribute` enrichment** -- Expose pitch/octave data for advanced features
-- [ ] **MEI round-trip** -- Edit/annotate scores using Verovio's MEI capabilities
-- [ ] **Multi-page navigation** -- Support very long scores with page-flipping (currently using scroll)
+Features to defer until the optimization is validated in production.
+
+- [ ] **Web Worker rendering** -- Offload `renderToSVG()` to background thread; significant complexity, defer unless profiling shows main thread blocking
+- [ ] **Measure-level virtual scroll** -- If page-level granularity is insufficient, investigate finer-grained mounting (likely requires upstream Verovio changes)
 
 ## Feature Prioritization Matrix
 
-| Feature | User Value | Implementation Cost | Migration Risk | Priority |
-|---------|------------|---------------------|----------------|----------|
-| MusicXML loading | HIGH | LOW | LOW | P1 |
-| SVG rendering | HIGH | LOW | LOW | P1 |
-| Score color | HIGH | LOW | LOW | P1 |
-| Zoom/scale | HIGH | LOW | LOW | P1 |
-| MusicXML validation | MEDIUM | LOW | LOW | P1 |
-| Layout options | MEDIUM | LOW | LOW | P1 |
-| Event extraction | HIGH | MEDIUM | MEDIUM | P1 |
-| SVG element IDs | HIGH | LOW | LOW | P1 |
-| Y position extraction | HIGH | HIGH | HIGH | P1 |
-| Notehead animation | HIGH | MEDIUM | MEDIUM | P1 |
-| Camera scrolling | HIGH | MEDIUM | HIGH | P1 |
-| Click-to-select | MEDIUM | LOW | LOW | P2 |
-| Animation controller | HIGH | MEDIUM | MEDIUM | P2 |
-| Audio sync | HIGH | LOW | MEDIUM | P2 |
-| Web Worker rendering | LOW | MEDIUM | LOW | P3 |
-| svgAdditionalAttribute | LOW | LOW | LOW | P3 |
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Paginated rendering | HIGH | LOW | P1 |
+| SVG string cache | HIGH | LOW | P1 |
+| Event position cache | HIGH | MEDIUM | P1 |
+| Page-aware viewport | HIGH | HIGH | P1 |
+| Camera scrolling (page-aware) | HIGH | MEDIUM | P1 |
+| Puppeteer compatibility | HIGH | HIGH | P1 |
+| Notehead animation (scoped) | HIGH | LOW | P1 |
+| Event-to-page index | MEDIUM | LOW | P1 |
+| Predictive pre-rendering | MEDIUM | LOW | P2 |
+| Smooth page transitions | MEDIUM | MEDIUM | P2 |
+| Render-mode page sequencer | MEDIUM | MEDIUM | P2 |
+| Web Worker rendering | LOW | HIGH | P3 |
 
 **Priority key:**
-- P1: Must migrate -- app is broken without it
-- P2: Should migrate promptly -- key workflows depend on it
-- P3: Nice to have -- enables future features
+- P1: Must have for launch -- solves the memory problem
+- P2: Should have, add when possible -- improves UX
+- P3: Nice to have, future consideration
 
-## Competitor Feature Analysis (OSMD vs Verovio)
+## Competitor Feature Analysis
 
-| Feature | OSMD | Verovio | Impact on Migration |
-|---------|------|---------|---------------------|
-| MusicXML support | Full | Full (auto-detection) | Neutral |
-| SVG output | Inline DOM rendering | SVG string return | Minor refactor |
-| Cursor/iterator | Built-in cursor with DOM element | No cursor; time-based queries instead | Major refactor |
-| Note timing | Beat-based (RealValue fractions) | Millisecond-based (from MIDI) | Unit conversion needed |
-| Element IDs | VexFlow auto-generated | MEI xml:id (stable, meaningful) | Better -- IDs are stable across re-renders |
-| SVG structure | VexFlow primitives (path, ellipse) | SMuFL glyphs via `<use>` refs | CSS selector updates needed |
-| Zoom | Decimal multiplier (1.0 = 100%) | Integer percentage (100 = 100%) | Trivial conversion |
-| Package size | ~2MB | ~4MB (WASM) | Larger bundle |
-| Render speed | DOM-based (fast incremental) | WASM-based (fast initial, full re-render) | Comparable for this use case |
-| TypeScript | Good types | Types available in package | Neutral |
-| Maintenance | Less actively maintained | Actively maintained (v6.0.1, Jan 2026) | Verovio is better long-term bet |
-| MEI support | None | Native | Enables future features |
-| Rich metadata | Limited | `getElementAttr()` returns all MEI attrs | Verovio advantage |
+How similar apps handle large score rendering.
 
-## Critical Migration Observations
+| Feature | Flat.io | MuseScore (web) | Noteflight | Our Approach |
+|---------|---------|-----------------|------------|--------------|
+| Rendering engine | Custom SVG (migrating to WebGL) | Qt/Canvas (desktop), SVG (web) | VexFlow SVG | Verovio SVG (paginated) |
+| Large score handling | Separate formatting from painting; only paint visible pages | Desktop: canvas viewport; Web: pagination | DOM-based, limited optimization | Page-level virtual mounting with SVG cache |
+| Scroll model | Page-based with virtual rendering | Continuous scroll (desktop); page-based (web) | Continuous scroll | Virtual scroll with page-level granularity, continuous scroll UX |
+| Memory optimization | Skip painting non-visible pages | Canvas viewport (fixed buffer) | N/A (performance issues on long scores) | Mount only 3 pages at a time; SVG string cache for instant re-mount |
+| Animation during playback | Cursor highlight | Cursor highlight | Cursor highlight | Per-notehead scale/color animation with CSS transitions |
+| Video export | N/A | N/A | N/A | Puppeteer frame capture with page-aware mounting |
 
-### 1. The Cursor Gap is the Biggest Challenge
+**Key insight from competitors:** Flat.io's recent engine rewrite confirms that separating layout computation from DOM painting is the correct pattern. Their approach (compute all page layouts, paint only visible ones) maps directly to our strategy of using Verovio for layout (all pages computed via `loadData` + page options) and virtual mounting for painting (only visible page SVGs in DOM).
 
-OSMD's cursor is deeply integrated into the current architecture. It provides:
-- Sequential note iteration (beat-by-beat walking)
-- SVG IDs per beat position
-- CSS position (X, Y) for each beat
+## Implementation Notes
 
-Verovio has NO equivalent. The replacement requires:
-- Building the event list from SVG DOM + `getTimeForElement()`
-- Extracting positions from SVG element bounding boxes
-- Handling the beat-onset -> millisecond time model change
+### Verovio API Surface for Pagination
 
-**Recommendation:** Build and thoroughly test the event extraction layer BEFORE migrating any animation or camera code. This is the foundational dependency.
+These existing Verovio methods directly support the optimization:
 
-### 2. The `<use>` Element Styling Question
+| Method | Purpose | When to Call |
+|--------|---------|-------------|
+| `getPageCount()` | Total pages after layout | After `loadData()` + `setOptions()` |
+| `renderToSVG(pageNo)` | Render one page as SVG string | When page enters viewport or is needed |
+| `getPageWithElement(xmlId)` | Which page contains a note | During event cache construction |
+| `renderToTimemap()` | All events with timing + note IDs | Once after `loadData()` + `renderToMIDI()` |
+| `getTimeForElement(xmlId)` | Onset time for a specific note | Fallback for individual queries |
+| `redoLayout()` | Recompute layout after options change | After `setOptions()` with dimension changes |
 
-Verovio's SVG uses `<use xlink:href>` to reference glyph shapes from `<defs>`. Whether inline CSS styles (fill, stroke, transform) apply correctly to `<use>` elements in all browsers needs runtime validation. This is a blocking question for the notehead animation feature.
+### Page Height Calculation
 
-**Recommendation:** Create a minimal Verovio test harness early in Phase 1 to validate `<use>` element styling behavior before committing to the animation implementation approach.
+Verovio's default page height is 2970 (A4 portrait in 0.1mm units = pixels). At scale 40 (current app default), each page would contain roughly 3-5 systems of music. A 200-measure score might produce 8-15 pages instead of one 60,000px SVG.
 
-### 3. Time Unit Mismatch
+The exact page dimensions should match the viewport height when possible, so that one page fills the visible area. This minimizes the number of pages that need to be mounted simultaneously.
 
-OSMD uses beat fractions (0.0, 0.25, 0.5, 1.0 for quarter notes in 4/4). Verovio uses milliseconds. The current interpolation system works in beat-space. This needs careful handling:
-- `MusicalEvent.beatOnset` currently stores beat fractions from OSMD
-- Verovio's `getTimeForElement()` returns milliseconds
-- The interpolation system can work with either unit, but the mapping to audio timestamps changes
+### Scroll Position Mapping
 
-**Recommendation:** The `MusicalEvent` interface may need a `timeMs` field alongside or instead of `beatOnset`, or the extraction layer should convert Verovio ms to beat fractions for compatibility.
+Current: `event.y` is a pixel offset within the single giant SVG.
+New: `event.y` must encode both page number and offset within that page.
 
-### 4. Single-Page vs Multi-Page
+Approach: Store events with `{ pageNumber, pageOffsetY, globalY }` where:
+- `pageNumber` = which page (from `getPageWithElement`)
+- `pageOffsetY` = Y offset within that page (from `getBoundingClientRect` relative to page SVG)
+- `globalY` = cumulative Y across all pages (for scroll position calculation)
 
-Verovio natively paginates scores. The current app renders one long scrollable score. To preserve the scrolling behavior:
-- Set `pageHeight` to a very large value (e.g., 60000)
-- Set `adjustPageHeight: true` to trim to actual content height
-- Set `breaks: 'auto'` for system breaks within the single page
+The camera system uses `globalY` to set the scroll container's scroll position, which naturally positions the correct page in the viewport.
 
-This forces Verovio to produce a single-page output matching the current scroll model.
+### Puppeteer Frame Capture Workflow
+
+Current flow:
+1. `setTimestamp(seconds)` -- find event, apply animation, position camera
+2. Puppeteer screenshots the viewport
+
+New flow:
+1. `setTimestamp(seconds)` -- find event, determine page number
+2. Ensure target page SVG is mounted in DOM
+3. Apply animation to elements on that page
+4. Position camera (scroll to page + intra-page offset)
+5. Force reflow (`void element.offsetHeight`)
+6. Puppeteer screenshots the viewport
+
+The key addition is step 2 -- mounting the page on demand. This must be synchronous (no `requestAnimationFrame` delay) for frame-accurate capture.
 
 ## Sources
 
-- Verovio Reference Book: https://book.verovio.org (v6.0, January 28, 2026) -- HIGH confidence
-- Verovio toolkit methods: https://book.verovio.org/toolkit-reference/toolkit-methods.html -- HIGH confidence
-- Verovio toolkit options: https://book.verovio.org/toolkit-reference/toolkit-options.html -- HIGH confidence
-- Verovio input formats: https://book.verovio.org/toolkit-reference/input-formats.html -- HIGH confidence
-- Verovio CSS and SVG: https://book.verovio.org/interactive-notation/css-and-svg.html -- HIGH confidence
-- Verovio MIDI playback tutorial (getElementsAtTime pattern): https://book.verovio.org/interactive-notation/playing-midi.html -- HIGH confidence
-- Verovio GitHub (version info): https://github.com/rism-digital/verovio -- HIGH confidence
-- Verovio npm registry (v6.0.1): npm package `verovio` -- HIGH confidence
-- Current codebase analysis: RegularRenderer.tsx, getEvents.ts, noteAnimation.ts, musicxmlValidation.ts, animationController.ts, SyncEditor.tsx -- HIGH confidence (direct source code review)
+### Primary (HIGH confidence)
+- [Verovio Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) -- `getPageCount`, `renderToSVG(pageNo)`, `getPageWithElement`, `renderToTimemap` API
+- [Verovio Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) -- `pageHeight` (max: 60000), `adjustPageHeight`, `breaks`, `svgViewBox`
+- [Verovio Score Navigation](https://book.verovio.org/first-steps/score-navigation.html) -- Prev/Next page pattern with `getPageCount()` and `renderToSVG(pageNo)`
+- [Verovio Layout Options](https://book.verovio.org/first-steps/layout-options.html) -- Page dimension configuration, `redoLayout()` usage
+- Existing codebase: `useVerovio.ts`, `getEvents.ts`, `RegularRenderer.tsx`, `animationController.ts` -- direct code review
+
+### Secondary (MEDIUM confidence)
+- [Flat.io Editor Performance Update](https://blog.flat.io/flat-music-notation-software-lightning-fast-editor-update/) -- Confirms separation of formatting/painting pattern; virtual page rendering approach
+- [Improving SVG Runtime Performance (CodePen)](https://codepen.io/tigt/post/improving-svg-rendering-performance) -- SVG DOM node count impact on memory and reflow
+- [DOM Size Optimization (DebugBear)](https://www.debugbear.com/blog/excessive-dom-size) -- Browser threshold recommendations for DOM nodes
+- [Virtual Scrolling Patterns (LogRocket)](https://blog.logrocket.com/virtual-scrolling-core-principles-and-basic-implementation-in-react/) -- IntersectionObserver and virtual scroll implementation patterns
+- [Puppeteer SVG Rendering Issue #791](https://github.com/puppeteer/puppeteer/issues/791) -- Known delay requirement between SVG insertion and screenshot
+
+### Tertiary (LOW confidence)
+- [Canvas Virtualization (gedge.ca)](https://gedge.ca/blog/2024-11-03-virtualizing-the-canvas/) -- Guitar tab renderer progression from DOM to SVG to canvas with virtual viewport; confirms SVG DOM scaling issues for music notation
+- [110K DOM Nodes with SVGs (Medium)](https://mmomtchev.medium.com/updating-a-dom-tree-with-110k-nodes-while-scrolling-with-animated-svgs-88d962661405) -- Real-world case study of large SVG DOM performance
 
 ---
-*Feature research for: OSMD to Verovio migration*
-*Researched: 2026-02-03*
+*Feature research for: Efficiency optimizations (paginated rendering, event caching, virtual scrolling)*
+*Researched: 2026-02-04*
