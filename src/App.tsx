@@ -100,6 +100,7 @@ export default function App() {
   const [activeNoteheadEntryMs, setActiveNoteheadEntryMs] = useState(50);
   const [activeNoteheadHoldMs, setActiveNoteheadHoldMs] = useState(200);
   const [activeNoteheadExitMs, setActiveNoteheadExitMs] = useState(500);
+  const [colorFullNote, setColorFullNote] = useState(false);
 
   // Upload handlers
   const handleMusicXMLUpload = (
@@ -351,22 +352,38 @@ export default function App() {
                 </div>
 
                 {activeNoteheadColor !== null && (
-                  <div className="space-y-2">
-                    <label className="block text-xs text-neutral-300 font-medium">
-                      Highlight Color
-                    </label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="color"
-                        value={activeNoteheadColor}
-                        onChange={(e) => setActiveNoteheadColor(e.target.value)}
-                        className="grunge-color-picker"
-                      />
-                      <span className="text-xs text-neutral-400 font-mono">
-                        {activeNoteheadColor}
-                      </span>
+                  <>
+                    <div className="space-y-2">
+                      <label className="block text-xs text-neutral-300 font-medium">
+                        Highlight Color
+                      </label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="color"
+                          value={activeNoteheadColor}
+                          onChange={(e) => setActiveNoteheadColor(e.target.value)}
+                          className="grunge-color-picker"
+                        />
+                        <span className="text-xs text-neutral-400 font-mono">
+                          {activeNoteheadColor}
+                        </span>
+                      </div>
                     </div>
-                  </div>
+
+                    <div className="pt-1">
+                      <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={colorFullNote}
+                          onChange={(e) => setColorFullNote(e.target.checked)}
+                          className="grunge-checkbox"
+                        />
+                        <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
+                          Color Stems & Accidentals
+                        </span>
+                      </label>
+                    </div>
+                  </>
                 )}
 
                 <div className="space-y-2">
@@ -501,6 +518,7 @@ export default function App() {
                       activeNoteheadAnimationEntryMs={activeNoteheadEntryMs}
                       activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
                       activeNoteheadAnimationExitMs={activeNoteheadExitMs}
+                      colorFullNote={colorFullNote}
                     />
                     {/* Score Region Editor Overlay - positioned relative to RegularRenderer */}
                     {currentView === 'renderer' && isEditingRegion && regionContainerDims && (

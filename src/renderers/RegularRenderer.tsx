@@ -16,7 +16,6 @@ import {
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
-const SYSTEM_JUMP_THRESHOLD = 50; // px — Y delta above this indicates a system transition
 
 interface Props {
   // core
@@ -40,6 +39,7 @@ interface Props {
   activeNoteheadAnimationEntryMs?: number;
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
+  colorFullNote?: boolean;
 }
 
 export default function RegularRenderer({
@@ -58,6 +58,7 @@ export default function RegularRenderer({
   activeNoteheadAnimationEntryMs = 50,
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
+  colorFullNote = false,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const osmdRef = useRef<HTMLDivElement>(null);
@@ -352,28 +353,14 @@ export default function RegularRenderer({
           holdMs: activeNoteheadAnimationHoldMs,
           exitMs: activeNoteheadAnimationExitMs,
           color: activeNoteheadColor,
+          colorFullNote,
         });
       }
     }
 
-    // Calculate Y position — detect system jumps and snap instead of interpolating
-    const nextEvent = interpolatedEvents[index + 1];
-    if (nextEvent && nextEvent.computedTimestamp > event.computedTimestamp) {
-      const yDelta = Math.abs(nextEvent.y - event.y);
-      if (yDelta > SYSTEM_JUMP_THRESHOLD) {
-        // Cross-system: stay on current event's Y until we actually reach the next event
-        currentYRef.current = event.y;
-      } else {
-        // Same system: smooth interpolation
-        const progress =
-          (currentTime - event.computedTimestamp) /
-          (nextEvent.computedTimestamp - event.computedTimestamp);
-        currentYRef.current =
-          event.y + (nextEvent.y - event.y) * Math.min(1, progress);
-      }
-    } else {
-      currentYRef.current = event.y;
-    }
+    // Camera Y: events in the same system share identical Y values
+    // (grouped in getEventsFromVerovio), so this only changes at system boundaries
+    currentYRef.current = event.y;
 
     applyCamera(currentYRef.current);
 
@@ -519,28 +506,8 @@ export default function RegularRenderer({
       // Update event index and Y position
       eventIndexRef.current = currentIndex;
 
-      // Calculate interpolated Y position — with system jump detection
-      const nextEvent = events[currentIndex + 1];
-      if (
-        nextEvent &&
-        nextEvent.computedTimestamp > currentEvent.computedTimestamp
-      ) {
-        const yDelta = Math.abs(nextEvent.y - currentEvent.y);
-        if (yDelta > SYSTEM_JUMP_THRESHOLD) {
-          // Cross-system: snap to current event's Y
-          currentYRef.current = currentEvent.y;
-        } else {
-          // Same system: smooth interpolation
-          const progress =
-            (seconds - currentEvent.computedTimestamp) /
-            (nextEvent.computedTimestamp - currentEvent.computedTimestamp);
-          currentYRef.current =
-            currentEvent.y +
-            (nextEvent.y - currentEvent.y) * Math.min(1, progress);
-        }
-      } else {
-        currentYRef.current = currentEvent.y;
-      }
+      // Camera Y: events in the same system share identical Y values
+      currentYRef.current = currentEvent.y;
 
       applyCamera(currentYRef.current);
 
@@ -617,6 +584,23 @@ export default function RegularRenderer({
               });
             }
           });
+
+          // Full note coloring (stems, accidentals, etc.)
+          if (color && colorFullNote) {
+            const extras = stavenote.querySelectorAll<SVGGraphicsElement>(
+              "g.stem, g.accid, g.flag, g.dots, g.artic"
+            );
+            extras.forEach((group) => {
+              group.style.fill = color;
+              group.style.stroke = color;
+              group.style.color = color;
+              group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line").forEach((child) => {
+                child.style.fill = color;
+                child.style.stroke = color;
+                child.style.color = color;
+              });
+            });
+          }
         }
       }
 
@@ -631,6 +615,7 @@ export default function RegularRenderer({
       activeNoteheadColor,
       activeNoteheadAnimationHoldMs,
       activeNoteheadAnimationExitMs,
+      colorFullNote,
       scoreColor,
       interpolateColor,
     ],
