@@ -16,6 +16,7 @@ import {
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
+const SYSTEM_JUMP_THRESHOLD = 50; // px — Y delta above this indicates a system transition
 
 interface Props {
   // core
@@ -355,14 +356,21 @@ export default function RegularRenderer({
       }
     }
 
-    // Calculate Y position with interpolation between events
+    // Calculate Y position — detect system jumps and snap instead of interpolating
     const nextEvent = interpolatedEvents[index + 1];
     if (nextEvent && nextEvent.computedTimestamp > event.computedTimestamp) {
-      const progress =
-        (currentTime - event.computedTimestamp) /
-        (nextEvent.computedTimestamp - event.computedTimestamp);
-      currentYRef.current =
-        event.y + (nextEvent.y - event.y) * Math.min(1, progress);
+      const yDelta = Math.abs(nextEvent.y - event.y);
+      if (yDelta > SYSTEM_JUMP_THRESHOLD) {
+        // Cross-system: stay on current event's Y until we actually reach the next event
+        currentYRef.current = event.y;
+      } else {
+        // Same system: smooth interpolation
+        const progress =
+          (currentTime - event.computedTimestamp) /
+          (nextEvent.computedTimestamp - event.computedTimestamp);
+        currentYRef.current =
+          event.y + (nextEvent.y - event.y) * Math.min(1, progress);
+      }
     } else {
       currentYRef.current = event.y;
     }
@@ -511,18 +519,25 @@ export default function RegularRenderer({
       // Update event index and Y position
       eventIndexRef.current = currentIndex;
 
-      // Calculate interpolated Y position
+      // Calculate interpolated Y position — with system jump detection
       const nextEvent = events[currentIndex + 1];
       if (
         nextEvent &&
         nextEvent.computedTimestamp > currentEvent.computedTimestamp
       ) {
-        const progress =
-          (seconds - currentEvent.computedTimestamp) /
-          (nextEvent.computedTimestamp - currentEvent.computedTimestamp);
-        currentYRef.current =
-          currentEvent.y +
-          (nextEvent.y - currentEvent.y) * Math.min(1, progress);
+        const yDelta = Math.abs(nextEvent.y - currentEvent.y);
+        if (yDelta > SYSTEM_JUMP_THRESHOLD) {
+          // Cross-system: snap to current event's Y
+          currentYRef.current = currentEvent.y;
+        } else {
+          // Same system: smooth interpolation
+          const progress =
+            (seconds - currentEvent.computedTimestamp) /
+            (nextEvent.computedTimestamp - currentEvent.computedTimestamp);
+          currentYRef.current =
+            currentEvent.y +
+            (nextEvent.y - currentEvent.y) * Math.min(1, progress);
+        }
       } else {
         currentYRef.current = currentEvent.y;
       }
@@ -715,7 +730,7 @@ export default function RegularRenderer({
           >
             <div
               ref={cameraRef}
-              style={{ display: "flex", width: "100%", pointerEvents: "none" }}
+              style={{ display: "flex", width: "100%", pointerEvents: "none", transition: "transform 200ms ease-out" }}
             >
               <div
                 ref={osmdRef}
