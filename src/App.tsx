@@ -28,7 +28,6 @@ export default function App() {
 
   // Playback settings
   const [fps, setFps] = useState(60);
-  const [bpm, setBpm] = useState(20);
   const [scoreColor, setScoreColor] = useState("#000000");
   const [scoreShadowDistance, setScoreShadowDistance] = useState(0);
   const [hideUnplayedNotes, setHideUnplayedNotes] = useState(true);
@@ -195,24 +194,6 @@ export default function App() {
                 Playback
               </h2>
               <div className="p-3 space-y-4">
-                <div className="space-y-2">
-                  <label className="flex justify-between text-xs font-medium">
-                    <span className="text-neutral-300">Tempo (BPM)</span>
-                    <span className="text-white font-mono tabular-nums">
-                      {bpm}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min={10}
-                    max={120}
-                    step={1}
-                    value={bpm}
-                    onChange={(e) => setBpm(Number(e.target.value))}
-                    className="grunge-range"
-                  />
-                </div>
-
                 <div className="space-y-2">
                   <label className="flex justify-between text-xs font-medium">
                     <span className="text-neutral-300">Frame Rate (FPS)</span>
@@ -507,7 +488,6 @@ export default function App() {
                     <RegularRenderer
                       xml={musicXMLFile.xml}
                       bgUrl={bgUrl || undefined}
-                      bpm={bpm}
                       fps={fps}
                       scoreColor={scoreColor}
                       syncAnchors={anchors.size > 0 ? anchors : undefined}
