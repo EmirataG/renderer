@@ -2,11 +2,24 @@ import { useState, useEffect, useRef } from 'react';
 import { VerovioToolkit } from 'verovio/esm';
 import { createToolkit } from '../lib/verovioService';
 
-interface UseVerovioResult {
-  svgString: string | null;
+export interface UseVerovioResult {
+  svgPages: string[];
+  pageHeights: number[];
+  pageOffsets: number[];
+  totalHeight: number;
+  pageCount: number;
   toolkit: VerovioToolkit | null;
   isLoading: boolean;
   error: string | null;
+}
+
+function extractPageHeight(svgString: string): number {
+  const match = svgString.match(/height="(\d+(?:\.\d+)?)px"/);
+  if (match) return parseFloat(match[1]);
+  // Fallback: parse viewBox
+  const vbMatch = svgString.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/);
+  if (vbMatch) return parseFloat(vbMatch[1]);
+  return 0;
 }
 
 export function useVerovio(
@@ -14,14 +27,22 @@ export function useVerovio(
   containerWidth: number,
   scale: number = 40
 ): UseVerovioResult {
-  const [svgString, setSvgString] = useState<string | null>(null);
+  const [svgPages, setSvgPages] = useState<string[]>([]);
+  const [pageHeights, setPageHeights] = useState<number[]>([]);
+  const [pageOffsets, setPageOffsets] = useState<number[]>([]);
+  const [totalHeight, setTotalHeight] = useState<number>(0);
+  const [pageCount, setPageCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const toolkitRef = useRef<VerovioToolkit | null>(null);
 
   useEffect(() => {
     if (!xml || containerWidth <= 0) {
-      setSvgString(null);
+      setSvgPages([]);
+      setPageHeights([]);
+      setPageOffsets([]);
+      setTotalHeight(0);
+      setPageCount(0);
       setIsLoading(false);
       return;
     }
@@ -40,9 +61,10 @@ export function useVerovio(
 
         toolkit.setOptions({
           pageWidth: (containerWidth * 100) / scale,
-          pageHeight: 60000,
-          adjustPageHeight: true,
+          pageHeight: 2970,
           scale: scale,
+          pageMarginTop: 0,
+          pageMarginBottom: 0,
           svgViewBox: true,
           svgRemoveXlink: true,
           breaks: 'auto',
@@ -54,25 +76,50 @@ export function useVerovio(
         if (!loaded) {
           if (!cancelled) {
             setError('Failed to load MusicXML data');
-            setSvgString(null);
+            setSvgPages([]);
+            setPageHeights([]);
+            setPageOffsets([]);
+            setTotalHeight(0);
+            setPageCount(0);
             setIsLoading(false);
           }
           return;
         }
 
-        const svg = toolkit.renderToSVG(1);
-        // Must call renderToMIDI for timing queries to work later
+        // Must call renderToMIDI after loadData for timing queries to work
         toolkit.renderToMIDI();
 
+        const count = toolkit.getPageCount();
+        const pages: string[] = [];
+        for (let i = 1; i <= count; i++) {
+          pages.push(toolkit.renderToSVG(i));
+        }
+
+        const heights = pages.map(extractPageHeight);
+        const offsets: number[] = [];
+        let cumulative = 0;
+        for (const h of heights) {
+          offsets.push(cumulative);
+          cumulative += h;
+        }
+
         if (!cancelled) {
-          setSvgString(svg);
+          setSvgPages(pages);
+          setPageHeights(heights);
+          setPageOffsets(offsets);
+          setTotalHeight(cumulative);
+          setPageCount(count);
           setIsLoading(false);
         }
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : String(err);
           setError(message);
-          setSvgString(null);
+          setSvgPages([]);
+          setPageHeights([]);
+          setPageOffsets([]);
+          setTotalHeight(0);
+          setPageCount(0);
           setIsLoading(false);
         }
       }
@@ -86,7 +133,11 @@ export function useVerovio(
   }, [xml, containerWidth, scale]);
 
   return {
-    svgString,
+    svgPages,
+    pageHeights,
+    pageOffsets,
+    totalHeight,
+    pageCount,
     toolkit: toolkitRef.current,
     isLoading,
     error,
