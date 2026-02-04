@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { OpenSheetMusicDisplay } from 'opensheetmusicdisplay';
+import { useVerovio } from '../hooks/useVerovio';
+import { getEventsFromVerovio } from '../lib/getEvents';
 import { useSyncStore } from '../stores/syncStore';
 import { TimestampInput } from './TimestampInput';
 import { interpolateTimestamps } from '../lib/interpolation';
@@ -8,7 +9,7 @@ import {
   destroyAnimationController,
 } from '../lib/animationController';
 import type { InterpolatedEvent } from '../lib/interpolation';
-import type { MusicalEvent } from '../lib/getEvents';
+import type { MusicalEventWithY } from '../lib/getEvents';
 import type {} from '../types/global';
 
 interface SyncEditorProps {
@@ -28,9 +29,9 @@ function formatTime(seconds: number): string {
 export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEditorProps) {
   const osmdRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
-  const [osmd, setOsmd] = useState<OpenSheetMusicDisplay | null>(null);
-  const [events, setEvents] = useState<MusicalEvent[]>([]);
+  const [events, setEvents] = useState<MusicalEventWithY[]>([]);
   const [interpolatedEvents, setInterpolatedEvents] = useState<InterpolatedEvent[]>([]);
+  const [containerWidth, setContainerWidth] = useState(0);
 
   // Detect render mode from URL parameters
   const isRenderMode = typeof window !== 'undefined' &&
@@ -47,78 +48,34 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Zustand store
   const { anchors, selectedEventId, setAnchor, selectEvent } = useSyncStore();
 
-  // Get events from OSMD (similar to RegularRenderer)
-  const getEventsFromOsmd = useCallback((osmd: OpenSheetMusicDisplay): MusicalEvent[] => {
-    const cursor = osmd.Cursor;
-    cursor.show();
-    cursor.reset();
-
-    const events: MusicalEvent[] = [];
-    const OFFSET = 15;
-
-    while (!cursor.Iterator.EndReached) {
-      const beatOnset = cursor.Iterator.currentTimeStamp.RealValue;
-
-      const svgIds: string[] = [];
-      for (const ve of cursor.Iterator.CurrentVoiceEntries) {
-        for (const n of ve.Notes) {
-          if (n.isRest()) continue;
-          const gNote = osmd.EngravingRules.GNote(n);
-          const id: string = (gNote as any).vfnote[0].getAttribute('id');
-          if (id) {
-            svgIds.push(`vf-${id}`);
-          }
-        }
+  // Measure container width for Verovio
+  useEffect(() => {
+    if (!osmdRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w > 0) setContainerWidth(w);
       }
-
-      const cssLeft = cursor.cursorElement.style.left;
-      const posStr = cssLeft.substring(0, cssLeft.length - 2);
-      const x = Number(posStr) + OFFSET;
-
-      events.push({
-        id: `evt-${events.length}`,
-        beatOnset,
-        beatDuration: 0,
-        svgIds,
-        x: x ?? 0,
-      });
-
-      cursor.next();
-    }
-
-    // Calculate beat durations
-    for (let i = 0; i < events.length - 1; i++) {
-      events[i].beatDuration = events[i + 1].beatOnset - events[i].beatOnset;
-    }
-    if (events.length > 0) {
-      events[events.length - 1].beatDuration = 1;
-    }
-
-    cursor.hide();
-    return events;
+    });
+    ro.observe(osmdRef.current);
+    return () => ro.disconnect();
   }, []);
 
-  // Initialize OSMD
+  // Verovio hook - renders score to SVG
+  const { svgString, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
+
+  // Extract events when Verovio renders
   useEffect(() => {
-    if (!osmdRef.current || osmd) return;
+    if (!svgString || !osmdRef.current || !toolkit) return;
 
-    const inst = new OpenSheetMusicDisplay(osmdRef.current, {
-      backend: 'svg',
-      renderSingleHorizontalStaffline: false,
-      drawTitle: false,
-      drawComposer: false,
-      drawPartNames: false,
-      drawMeasureNumbers: true, // Show measure numbers for reference
+    requestAnimationFrame(() => {
+      if (!osmdRef.current || !toolkit) return;
+      const verovioSvg = osmdRef.current.querySelector('svg.definition-scale');
+      if (!verovioSvg) return;
+      const extractedEvents = getEventsFromVerovio(toolkit, osmdRef.current);
+      setEvents(extractedEvents);
     });
-
-    setOsmd(inst);
-
-    inst.load(xml).then(() => {
-      inst.render();
-      const evts = getEventsFromOsmd(inst);
-      setEvents(evts);
-    });
-  }, [xml, osmd, getEventsFromOsmd]);
+  }, [svgString, toolkit]);
 
   // Recalculate interpolated events when anchors change
   useEffect(() => {
@@ -135,7 +92,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // Expose animation controller on window for Puppeteer frame control
   useEffect(() => {
-    // Need OSMD container to be ready
+    // Need Verovio container to be ready
     // In render mode, we don't need audio element (Puppeteer controls frame position)
     // In normal mode, we need audio for preview playback
     if (!osmdRef.current || events.length === 0) {
@@ -178,21 +135,21 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
       delete window.getAnimationDuration;
       delete window.isAnimationReady;
     };
-  }, [osmd, events.length, isRenderMode]);
+  }, [toolkit, svgString, events.length, isRenderMode]);
 
   // Handle click on score to select note
   const handleScoreClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     // Use event delegation to find clicked note
     const target = event.target as Element;
-    const stavenote = target.closest('.vf-stavenote');
+    const noteGroup = target.closest('g.note');
 
-    if (!stavenote) {
+    if (!noteGroup) {
       // Clicked on empty space - deselect
       selectEvent(null);
       return;
     }
 
-    const noteId = stavenote.id;
+    const noteId = noteGroup.id;
 
     // Find matching event by svgIds
     const clickedEvent = events.find(evt =>
@@ -207,16 +164,17 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Serialize anchors for proper dependency tracking (Maps don't trigger re-renders well)
   const anchorsKey = Array.from(anchors.entries()).map(([k, v]) => `${k}:${v}`).join(',');
 
-  // Helper to apply color to notehead shapes (like noteAnimation.ts does)
+  // Helper to apply color to notehead shapes (Verovio uses <use> elements in g.notehead)
   const applyNoteColor = (svgIds: string[], color: string) => {
     if (!osmdRef.current) return;
     svgIds.forEach(svgId => {
-      const stavenote = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
-      if (!stavenote) return;
-      const shapes = stavenote.querySelectorAll<SVGGraphicsElement>('.vf-notehead path, .vf-notehead ellipse');
+      const noteGroup = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
+      if (!noteGroup) return;
+      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>('g.notehead use');
       shapes.forEach(shape => {
         shape.style.fill = color;
         shape.style.stroke = color;
+        shape.style.color = color;
       });
     });
   };
@@ -225,12 +183,13 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const clearNoteColor = (svgIds: string[]) => {
     if (!osmdRef.current) return;
     svgIds.forEach(svgId => {
-      const stavenote = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
-      if (!stavenote) return;
-      const shapes = stavenote.querySelectorAll<SVGGraphicsElement>('.vf-notehead path, .vf-notehead ellipse');
+      const noteGroup = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
+      if (!noteGroup) return;
+      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>('g.notehead use');
       shapes.forEach(shape => {
         shape.style.removeProperty('fill');
         shape.style.removeProperty('stroke');
+        shape.style.removeProperty('color');
       });
     });
   };
@@ -247,11 +206,10 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
     // Only hover styles via CSS (inline styles for selection/anchor)
     styleRef.current.innerHTML = `
-      .vf-stavenote {
+      g.note {
         cursor: pointer;
       }
-      .vf-stavenote:hover .vf-notehead path,
-      .vf-stavenote:hover .vf-notehead ellipse {
+      g.note:hover g.notehead use {
         filter: brightness(0.7);
       }
     `;
@@ -581,7 +539,10 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         className="flex-1 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
-        <div ref={osmdRef} />
+        <div
+          ref={osmdRef}
+          dangerouslySetInnerHTML={svgString ? { __html: svgString } : undefined}
+        />
       </div>
 
       {/* Audio controls */}
