@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-03)
 
 **Core value:** Scores render correctly with Verovio and all existing animation/sync features work identically -- better engraving with zero feature regression.
-**Current focus:** Phase 2 - Event System Migration
+**Current focus:** Phase 2.1 - Sync-Only Playback and SyncEditor Verovio
 
 ## Current Position
 
-Phase: 2 of 5 (Event System Migration)
-Plan: 1 of 1 in current phase
-Status: Phase complete
-Last activity: 2026-02-03 -- Completed 02-01-PLAN.md
+Phase: 2.1 of 5 (Sync-Only Playback and SyncEditor Verovio)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-04 -- Completed 02.1-01-PLAN.md
 
-Progress: [████......] 43%
+Progress: [█████.....] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 2 min
-- Total execution time: 5 min
+- Total execution time: 7 min
 
 **By Phase:**
 
@@ -29,10 +29,11 @@ Progress: [████......] 43%
 |-------|-------|-------|----------|
 | 1 - Core Verovio Integration | 2/2 | 4 min | 2 min |
 | 2 - Event System Migration | 1/1 | 1 min | 1 min |
+| 2.1 - Sync-Only Playback | 1/2 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2 min), 01-02 (2 min), 02-01 (1 min)
-- Trend: stable/improving
+- Last 5 plans: 01-01 (2 min), 01-02 (2 min), 02-01 (1 min), 02.1-01 (2 min)
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -51,6 +52,14 @@ Recent decisions affecting current work:
 - [02-01]: qstamp / 4 converts quarter-note units to whole-note fractions (RealValue convention for interpolation)
 - [02-01]: Rests excluded from timemap by default, matching existing OSMD behavior
 - [02-01]: First svgId used for Y position extraction per event (representative note in chord)
+- [02.1-01]: BPM playback permanently removed; sync-only mode is the sole playback path
+- [02.1-01]: Transport gating requires audio + first AND last event sync anchors
+
+### Roadmap Evolution
+
+- Phase 2.1 inserted after Phase 2: Remove BPM playback entirely, sync-only playback, migrate SyncEditor to Verovio (URGENT)
+  - Impact: Phase 3 (Animation and Camera) VAL-03 (BPM-based animation) is now removed -- Phase 3 success criteria need updating
+  - Impact: Phase 4 (SyncEditor Migration) work absorbed into Phase 2.1
 
 ### Pending Todos
 
@@ -64,6 +73,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-03T22:23:47Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-02-04T00:56:39Z
+Stopped at: Completed 02.1-01-PLAN.md
 Resume file: None
