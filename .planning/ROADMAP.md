@@ -42,11 +42,12 @@ Replaced OSMD rendering engine with Verovio across the entire application. Five 
   3. System-boundary snapping works correctly using paginated global coordinates (camera locks to system tops, not page tops)
   4. Changing the score scale slider re-renders all pages at the new size and camera/playback continue to work correctly
   5. Transport controls (play, stop, reset) function identically to v1.0 behavior on the paginated layout
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md -- useVerovio multi-page rendering + type augments
+- [ ] 06-02-PLAN.md -- RegularRenderer paginated rendering + camera + events
+- [ ] 06-03-PLAN.md -- SyncEditor pagination + visual verification
 
 ### Phase 7: Event Position Caching
 **Goal**: Musical events are extracted once per score load with page assignments and global Y positions, eliminating redundant DOM queries
