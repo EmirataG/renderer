@@ -21,10 +21,9 @@ interface Props {
   // core
   xml: string;
   bgUrl?: string;
-  bpm?: number;
   fps?: number;
   scoreColor?: string;
-  // sync anchors for timing (optional - uses BPM if not provided)
+  // sync anchors for timing
   syncAnchors?: Map<string, number>;
   // audio for synced playback (optional)
   audioUrl?: string;
@@ -45,7 +44,6 @@ interface Props {
 export default function RegularRenderer({
   xml,
   bgUrl,
-  bpm = 20,
   fps = 60,
   scoreColor = "#000000",
   syncAnchors,
@@ -85,11 +83,6 @@ export default function RegularRenderer({
 
   const eventIndexRef = useRef(-1); // -1 so first event (index 0) triggers animation
   const currentYRef = useRef(0);
-  const velocityRef = useRef(0);
-  const eventEndTimeRef = useRef(0);
-
-  // Track if we're using sync-based timing
-  const useSyncTiming = syncAnchors && syncAnchors.size > 0;
 
   function setDims(w: number, h: number) {
     const f = WIDTH / w;
@@ -142,14 +135,7 @@ export default function RegularRenderer({
       }));
       setInterpolatedEvents(merged);
     } else {
-      // No sync anchors - use BPM-based timing (computedTimestamp = 0 for all)
-      setInterpolatedEvents(
-        events.map((evt) => ({
-          ...evt,
-          computedTimestamp: 0,
-          isAnchor: false,
-        })),
-      );
+      setInterpolatedEvents([]);
     }
   }, [events, syncAnchors]);
 
@@ -312,33 +298,6 @@ export default function RegularRenderer({
 
   /* ---------------- motion ---------------- */
 
-  // BPM-based timing: setup event with relative timing
-  function setupEventBPM(index: number, now: number): boolean {
-    const current = events[index];
-    const next = events[index + 1];
-    if (!current) return false;
-
-    currentYRef.current = current.y;
-
-    const durationMs = (60_000 / bpm) * current.beatDuration;
-    eventEndTimeRef.current = now + durationMs;
-
-    // Calculate vertical velocity
-    velocityRef.current = next ? (next.y - current.y) / durationMs : 0;
-
-    if (current.svgIds?.length) {
-      animateNoteheads(osmdRef.current, current.svgIds, {
-        scale: activeNoteheadScale,
-        entryMs: activeNoteheadAnimationEntryMs,
-        holdMs: activeNoteheadAnimationHoldMs,
-        exitMs: activeNoteheadAnimationExitMs,
-        color: activeNoteheadColor,
-      });
-    }
-
-    return true;
-  }
-
   // Sync-based timing: find event at given timestamp
   function getEventAtTimestamp(timestampSec: number): {
     event: (typeof interpolatedEvents)[0] | null;
@@ -361,7 +320,7 @@ export default function RegularRenderer({
 
   // Sync-based animation: driven by audio currentTime
   function animateSync() {
-    if (!audioRef.current || !useSyncTiming) return;
+    if (!audioRef.current) return;
 
     const frameInterval = 1000 / fps;
     const now = performance.now();
@@ -419,50 +378,28 @@ export default function RegularRenderer({
     animationFrameRef.current = requestAnimationFrame(animateSync);
   }
 
-  // BPM-based animation loop
-  function animateBPM(now: number) {
-    const frameInterval = 1000 / fps;
-    const last = lastFrameTimeRef.current;
-
-    if (now - last < frameInterval) {
-      animationFrameRef.current = requestAnimationFrame(animateBPM);
-      return;
-    }
-
-    lastFrameTimeRef.current = now;
-    const dt = last ? now - last : 0;
-
-    currentYRef.current += velocityRef.current * dt;
-
-    while (now >= eventEndTimeRef.current) {
-      eventIndexRef.current++;
-      if (!setupEventBPM(eventIndexRef.current, eventEndTimeRef.current)) {
-        stop();
-        return;
-      }
-    }
-
-    applyCamera(currentYRef.current);
-    animationFrameRef.current = requestAnimationFrame(animateBPM);
-  }
-
   /* ---------------- controls ---------------- */
 
-  function play() {
-    if (isPlaying || !events.length) return;
+  // Transport gating: Play requires audio + first and last anchors
+  const hasAudio = !!audioUrl && !!audioRef.current;
+  const firstEventId = events.length > 0 ? events[0].id : null;
+  const lastEventId = events.length > 0 ? events[events.length - 1].id : null;
+  const hasFirstAnchor = !!(firstEventId && syncAnchors?.has(firstEventId));
+  const hasLastAnchor = !!(lastEventId && syncAnchors?.has(lastEventId));
+  const canPlay = hasAudio && hasFirstAnchor && hasLastAnchor;
 
+  const transportMessage = !hasAudio
+    ? "Upload audio to enable playback"
+    : (!hasFirstAnchor || !hasLastAnchor)
+      ? "Set first and last sync anchors to enable playback"
+      : null;
+
+  function play() {
+    if (isPlaying || !canPlay) return;
     setIsPlaying(true);
     lastFrameTimeRef.current = performance.now();
-
-    if (useSyncTiming && audioRef.current) {
-      // Sync-based timing: start audio and sync animation
-      audioRef.current.play().catch(console.error);
-      animationFrameRef.current = requestAnimationFrame(animateSync);
-    } else {
-      // BPM-based timing: traditional animation loop
-      setupEventBPM(eventIndexRef.current, lastFrameTimeRef.current);
-      animationFrameRef.current = requestAnimationFrame(animateBPM);
-    }
+    audioRef.current!.play().catch(console.error);
+    animationFrameRef.current = requestAnimationFrame(animateSync);
   }
 
   function stop() {
@@ -550,9 +487,9 @@ export default function RegularRenderer({
   // Expose setTimestamp for frame-by-frame rendering
   const setTimestamp = useCallback(
     (seconds: number) => {
-      // In render mode, we need this to work even if useSyncTiming isn't set yet
-      // For normal mode, require sync timing
-      if (!isRenderMode && !useSyncTiming) return;
+      // In render mode, allow even without interpolated events
+      // For normal mode, require interpolated events
+      if (!isRenderMode && interpolatedEvents.length === 0) return;
 
       // Capture array reference to ensure consistent usage throughout
       const events = interpolatedEvents;
@@ -674,7 +611,6 @@ export default function RegularRenderer({
     },
     [
       isRenderMode,
-      useSyncTiming,
       interpolatedEvents,
       activeNoteheadScale,
       activeNoteheadColor,
@@ -689,9 +625,7 @@ export default function RegularRenderer({
   useEffect(() => {
     // In render mode, expose controller as soon as Verovio is ready
     // In normal mode, require sync timing to be active
-    const shouldExpose = isRenderMode
-      ? toolkit && svgString && interpolatedEvents.length > 0
-      : useSyncTiming && toolkit && svgString && interpolatedEvents.length > 0;
+    const shouldExpose = toolkit && svgString && interpolatedEvents.length > 0;
 
     if (!shouldExpose) {
       console.log("[RegularRenderer] Not exposing controller yet:", {
@@ -699,7 +633,6 @@ export default function RegularRenderer({
         hasToolkit: !!toolkit,
         hasSvg: !!svgString,
         eventsCount: interpolatedEvents.length,
-        useSyncTiming,
       });
       return;
     }
@@ -732,7 +665,6 @@ export default function RegularRenderer({
     };
   }, [
     isRenderMode,
-    useSyncTiming,
     toolkit,
     svgString,
     interpolatedEvents,
@@ -854,27 +786,32 @@ export default function RegularRenderer({
 
       {/* Transport bar - hidden in render mode */}
       {!isRenderMode && (
-        <div className="mt-3 flex items-center justify-center gap-2 px-3 py-2">
-          <button
-            onClick={play}
-            disabled={isPlaying}
-            className="grunge-btn grunge-btn-sm flex-1"
-          >
-            Play
-          </button>
-          <button
-            onClick={stop}
-            disabled={!isPlaying}
-            className="grunge-btn grunge-btn-sm flex-1"
-          >
-            Pause
-          </button>
-          <button
-            onClick={reset}
-            className="grunge-btn grunge-btn-sm flex-1"
-          >
-            Reset
-          </button>
+        <div className="mt-3 px-3 py-2">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={play}
+              disabled={!canPlay || isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Play
+            </button>
+            <button
+              onClick={stop}
+              disabled={!isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Pause
+            </button>
+            <button
+              onClick={reset}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Reset
+            </button>
+          </div>
+          {transportMessage && (
+            <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
+          )}
         </div>
       )}
     </div>
