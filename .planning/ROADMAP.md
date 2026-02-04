@@ -1,186 +1,152 @@
-# Roadmap: OSMD-to-Verovio Migration
+# Roadmap: Manuscript Renderer
 
-## Overview
+## Milestones
 
-This roadmap replaces the OpenSheetMusicDisplay (OSMD) rendering engine with Verovio across a React music score renderer with animated playback. The migration follows a strict dependency chain: WASM foundation and basic rendering first, then event extraction (the critical path that everything else depends on), then animation/camera restoration, then the secondary SyncEditor view, and finally OSMD removal. Each phase validates its foundational assumptions before the next phase builds on them. The goal is zero feature regression with better engraving quality.
+- **v1.0 Migration** - Phases 1-5 (shipped 2026-02-04)
+- **v1.1 Efficiency** - Phases 6-9 (in progress)
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>v1.0 Migration (Phases 1-5) - SHIPPED 2026-02-04</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+Replaced OSMD rendering engine with Verovio across the entire application. Five phases: Core Verovio Integration, Event System Migration, Sync-Only Playback (inserted), Animation and Camera, SyncEditor Migration. All validated requirements confirmed working. OSMD removal deferred to v1.1 cleanup.
 
-- [x] **Phase 1: Core Verovio Integration** - WASM setup, basic rendering, color/scale validation
-- [x] **Phase 2: Event System Migration** - Rebuild event extraction using Verovio APIs
-- [x] **Phase 2.1: Sync-Only Playback & SyncEditor Verovio** - Remove BPM mode, sync-only playback, migrate SyncEditor to Verovio (INSERTED)
-- [ ] **Phase 3: Animation and Camera** - Restore playback, notehead animation, camera scrolling
-- [ ] **Phase 4: SyncEditor Migration** - Apply migration patterns to the sync editor view
-- [ ] **Phase 5: Validation and Cleanup** - Remove OSMD, full regression testing
+- [x] Phase 1: Core Verovio Integration (2 plans)
+- [x] Phase 2: Event System Migration (1 plan)
+- [x] Phase 2.1: Sync-Only Playback & SyncEditor Verovio (2 plans, inserted)
+- [x] Phase 3: Animation and Camera (completed informally)
+- [x] Phase 4: SyncEditor Migration (absorbed into Phase 2.1)
+- [x] Phase 5: Validation and Cleanup (completed informally, OSMD removal deferred)
+
+</details>
+
+### v1.1 Efficiency (In Progress)
+
+**Milestone Goal:** Reduce memory usage and improve rendering performance for long scores through paginated rendering, event position caching, and virtual scrolling. Remove the legacy OSMD dependency.
+
+- [ ] **Phase 6: Paginated Rendering & Camera** - Multi-page SVG output with working camera and playback
+- [ ] **Phase 7: Event Position Caching** - Extract events once, cache with page assignments, reuse everywhere
+- [ ] **Phase 8: Virtual Scrolling** - Mount only visible pages, with Puppeteer compatibility
+- [ ] **Phase 9: OSMD Cleanup** - Remove all OSMD code and dependencies
 
 ## Phase Details
 
-### Phase 1: Core Verovio Integration
-**Goal**: Verovio renders MusicXML scores in the browser with correct styling, proving the WASM foundation works
-**Depends on**: Nothing (first phase)
-**Requirements**: MIG-01, MIG-04, MIG-05, MIG-08, VAL-01, VAL-02, VAL-07, VAL-08
+### Phase 6: Paginated Rendering & Camera
+**Goal**: Score renders as multiple smaller SVG pages with a global coordinate system, and camera/playback work seamlessly across page boundaries
+**Depends on**: v1.0 complete
+**Requirements**: PAG-01, PAG-02, PAG-03, PAG-04, CAM-01, CAM-02, CAM-03
 **Success Criteria** (what must be TRUE):
-  1. A MusicXML file uploaded via drag-drop renders as an SVG score in the browser using Verovio (both `vite dev` and `vite build` modes)
-  2. The score recolors to a user-chosen color, including noteheads rendered as `<use>` elements
-  3. Changing the score scale slider causes the score to re-render at the new size with correct layout reflow
-  4. An invalid MusicXML file shows a validation error toast without crashing
-  5. The Verovio initialization sequence (`loadData` -> `renderToSVG` -> `renderToMIDI`) completes without errors, and `getTimeForElement()` returns non-zero values for note elements
-**Plans**: 2 plans
-
-Plans:
-- [x] 01-01-PLAN.md -- Verovio WASM setup, service layer, useVerovio hook, and validation migration
-- [x] 01-02-PLAN.md -- RegularRenderer rendering swap, CSS color migration, and animation selector updates
-
-### Phase 2: Event System Migration
-**Goal**: Musical events are extracted from Verovio output with timing and position data, compatible with the existing interpolation system
-**Depends on**: Phase 1
-**Requirements**: MIG-02, VAL-14
-**Success Criteria** (what must be TRUE):
-  1. A `MusicalEvent[]` array is built from the rendered Verovio SVG containing note IDs, onset times, and Y positions for every note in the score
-  2. The event count matches the number of distinct beat positions in the score (no missing or duplicate events)
-  3. Y positions extracted via `getBoundingClientRect()` correctly group notes into systems (lines of music) with the existing threshold logic
-  4. The `interpolateTimestamps()` function produces correct computed timestamps when given Verovio-sourced events and user-set sync anchors
-**Plans**: 1 plan
-
-Plans:
-- [x] 02-01-PLAN.md -- Verovio timemap event extraction and RegularRenderer wiring
-
-### Phase 2.1: Sync-Only Playback & SyncEditor Verovio (INSERTED)
-**Goal**: Remove BPM-based playback entirely; playback is solely based on sync anchors and interpolation. Migrate SyncEditor to use Verovio instead of OSMD.
-**Depends on**: Phase 2
-**Requirements**: MIG-06, VAL-04, VAL-12, VAL-13
-**Success Criteria** (what must be TRUE):
-  1. BPM mode is completely removed — no BPM slider, no BPM-based animation loop, no `setupEventBPM()` function
-  2. Playback works only when sync anchors are set — pressing Play with anchors starts audio-synced scrolling with note highlighting
-  3. The SyncEditor renders the score using Verovio (not OSMD) with all note events displayed in the timeline
-  4. Clicking a note in the SyncEditor selects it and shows it in the timeline; setting a timestamp anchor persists to the sync store
-  5. Transport controls (play, stop, reset) work in sync mode only
-**Plans**: 2 plans
-
-Plans:
-- [x] 02.1-01-PLAN.md -- BPM removal from RegularRenderer/App.tsx + transport gating (sync-only playback)
-- [x] 02.1-02-PLAN.md -- SyncEditor migration from OSMD to Verovio
-
-### Phase 3: Animation and Camera
-**Goal**: Fix camera jitter during system transitions and verify sync playback works end-to-end
-**Depends on**: Phase 2, Phase 2.1
-**Requirements**: VAL-04, VAL-05, VAL-06, VAL-18
-**Note**: Scope reduced from original — BPM mode removed (Phase 2.1), notehead animation already working (MIG-03/VAL-05 satisfied), Puppeteer deferred (MIG-07/VAL-15/VAL-16 out of scope). VAL-03 permanently removed.
-**Success Criteria** (what must be TRUE):
-  1. Camera snaps cleanly from one staff system to the next during sync playback without jittery up/down nudges
-  2. Within-system camera Y position tracks smoothly between events
-  3. Notehead animation (scale, color, timing, chord behavior) is identical before and after camera changes
-  4. Transport controls (play, pause, reset) work correctly in sync-only mode
-  5. After reset then play, camera starts at correct position and noteheads animate from beginning
-**Plans**: 1 plan
-
-Plans:
-- [ ] 03-01-PLAN.md -- Camera system-boundary detection fix and transport verification
-
-### Phase 4: SyncEditor Migration
-**Goal**: The Sync Editor view works with Verovio, allowing users to set timestamp anchors on notes
-**Depends on**: Phase 1, Phase 2
-**Requirements**: MIG-06, VAL-12, VAL-13
-**Success Criteria** (what must be TRUE):
-  1. Opening the Sync Editor renders the score using Verovio with all note events displayed in the timeline
-  2. Clicking a note in the rendered score selects it (highlighting it) and shows it in the timeline
-  3. Setting a timestamp anchor on a selected note persists to the sync store and is consumed by RegularRenderer for interpolation
-  4. Audio preview playback in the Sync Editor plays and highlights the current position in the timeline
+  1. Loading a MusicXML file produces multiple SVG page elements in the DOM instead of one continuous SVG (visible in DevTools as separate page containers)
+  2. Camera scrolls smoothly across page boundaries during sync playback with no visual discontinuity or jump at the transition between pages
+  3. System-boundary snapping works correctly using paginated global coordinates (camera locks to system tops, not page tops)
+  4. Changing the score scale slider re-renders all pages at the new size and camera/playback continue to work correctly
+  5. Transport controls (play, stop, reset) function identically to v1.0 behavior on the paginated layout
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: SyncEditor Verovio integration
+- [ ] 06-01: TBD
+- [ ] 06-02: TBD
 
-### Phase 5: Validation and Cleanup
-**Goal**: OSMD is fully removed, and the complete application works without regression across diverse scores
-**Depends on**: Phase 1, Phase 2, Phase 3, Phase 4
-**Requirements**: MIG-09, VAL-09, VAL-10, VAL-11, VAL-17
+### Phase 7: Event Position Caching
+**Goal**: Musical events are extracted once per score load with page assignments and global Y positions, eliminating redundant DOM queries
+**Depends on**: Phase 6
+**Requirements**: EVT-01, EVT-02, EVT-03, EVT-04
 **Success Criteria** (what must be TRUE):
-  1. The `opensheetmusicdisplay` package is removed from `package.json` and no OSMD imports remain in the codebase
-  2. Score region editor (drag/resize overlay) works correctly with Verovio SVG dimensions
-  3. Score border styles (line, ornate, flourish) render correctly above and below the Verovio score
-  4. Background image display and score shadow distance controls work unchanged
-  5. The application builds and runs without errors after OSMD removal (`npm run build` succeeds, `npm run dev` serves correctly)
+  1. After loading a score, event data (timing, page assignment, Y position) is extracted once and reused across playback sessions without re-extraction
+  2. Each event knows which page it belongs to, enabling O(1) page lookup by event ID or timestamp
+  3. Global Y positions computed from the page offset map match the actual rendered positions (camera scrolls to the correct vertical location for any event)
+  4. Changing scale or reloading a score invalidates the cache and rebuilds it automatically (no stale position data)
 **Plans**: TBD
 
 Plans:
-- [ ] 05-01: OSMD removal and regression testing
+- [ ] 07-01: TBD
+
+### Phase 8: Virtual Scrolling
+**Goal**: Only pages near the current camera position are mounted in the DOM, bounding memory usage regardless of score length
+**Depends on**: Phase 6, Phase 7
+**Requirements**: VIR-01, VIR-02, VIR-03, VIR-04, VIR-05, CAM-04
+**Success Criteria** (what must be TRUE):
+  1. During playback, inspecting the DOM shows only 3-4 page SVGs mounted at any time, with placeholder divs maintaining correct heights for unmounted pages
+  2. Notehead animations (scale, color, timing) work correctly on the currently visible page during playback -- no missing or broken animations
+  3. In Puppeteer render mode, all pages are mounted and `setTimestamp()` correctly applies animations and captures frames identical to v1.0 output
+  4. Scrolling through a long score (50+ systems) maintains consistent memory usage instead of scaling linearly with score length
+**Plans**: TBD
+
+Plans:
+- [ ] 08-01: TBD
+- [ ] 08-02: TBD
+
+### Phase 9: OSMD Cleanup
+**Goal**: All traces of OpenSheetMusicDisplay are removed from the codebase
+**Depends on**: Nothing (independent, but scheduled after efficiency work)
+**Requirements**: CLN-01, CLN-02, CLN-03
+**Success Criteria** (what must be TRUE):
+  1. `opensheetmusicdisplay` does not appear in `package.json` or `node_modules`
+  2. No OSMD imports, references, or dead code paths exist anywhere in the codebase (grep returns zero results)
+  3. `npm run build` succeeds and `npm run dev` serves the application without errors after removal
+**Plans**: TBD
+
+Plans:
+- [ ] 09-01: TBD
 
 ## Requirement Coverage
 
-### Active Requirements (Migration Tasks)
+### v1.1 Requirements
 
 | ID | Requirement | Phase |
 |----|-------------|-------|
-| MIG-01 | Replace OSMD with Verovio for MusicXML-to-SVG rendering | Phase 1 |
-| MIG-02 | Extract musical events from Verovio output | Phase 2 |
-| MIG-03 | Adapt notehead animation to Verovio SVG structure | Phase 3 |
-| MIG-04 | Adapt score color styling to Verovio conventions | Phase 1 |
-| MIG-05 | Adapt MusicXML validation to use Verovio | Phase 1 |
-| MIG-06 | Adapt SyncEditor event extraction to use Verovio | Phase 4 |
-| MIG-07 | Adapt Puppeteer animation controller to Verovio SVG | Phase 3 |
-| MIG-08 | Implement zoom/scale via Verovio's scale option | Phase 1 |
-| MIG-09 | Remove OSMD dependency entirely | Phase 5 |
+| PAG-01 | Verovio renders score as multiple page SVGs | Phase 6 |
+| PAG-02 | All page SVG strings pre-rendered and cached | Phase 6 |
+| PAG-03 | Page heights computed into global coordinate system | Phase 6 |
+| PAG-04 | Score re-renders all pages on scale change | Phase 6 |
+| EVT-01 | Events extracted once from timemap and cached | Phase 7 |
+| EVT-02 | Events assigned to pages via getPageWithElement() | Phase 7 |
+| EVT-03 | Global Y positions pre-computed from page offsets | Phase 7 |
+| EVT-04 | Event cache invalidates on data/layout change | Phase 7 |
+| VIR-01 | Only 3-4 SVG pages mounted near camera position | Phase 8 |
+| VIR-02 | Unmounted pages represented by placeholder divs | Phase 8 |
+| VIR-03 | Page mount/unmount updates during playback | Phase 8 |
+| VIR-04 | Virtual scrolling disabled in Puppeteer render mode | Phase 8 |
+| VIR-05 | Notehead animation targets correct mounted page | Phase 8 |
+| CAM-01 | Camera scrolling works across page boundaries | Phase 6 |
+| CAM-02 | System-boundary snapping with paginated coordinates | Phase 6 |
+| CAM-03 | Transport controls work with paginated layout | Phase 6 |
+| CAM-04 | Puppeteer setTimestamp() mounts correct page | Phase 8 |
+| CLN-01 | OSMD package removed from package.json | Phase 9 |
+| CLN-02 | All OSMD imports and dead code removed | Phase 9 |
+| CLN-03 | Application builds and runs after removal | Phase 9 |
 
-### Validated Requirements (Feature Parity)
-
-| ID | Requirement | Phase |
-|----|-------------|-------|
-| VAL-01 | MusicXML file upload with drag-drop and validation | Phase 1 |
-| VAL-02 | Score rendering from MusicXML to SVG | Phase 1 |
-| VAL-03 | BPM-based animation | Phase 3 |
-| VAL-04 | Sync-based animation | Phase 3 |
-| VAL-05 | Notehead animation | Phase 3 |
-| VAL-06 | Camera system | Phase 3 |
-| VAL-07 | Score color customization | Phase 1 |
-| VAL-08 | Score scale/zoom | Phase 1 |
-| VAL-09 | Score region editor | Phase 5 |
-| VAL-10 | Score border styles | Phase 5 |
-| VAL-11 | Background image support | Phase 5 |
-| VAL-12 | Audio upload and preview playback | Phase 4 |
-| VAL-13 | Sync Editor | Phase 4 |
-| VAL-14 | Timestamp interpolation | Phase 2 |
-| VAL-15 | Puppeteer animation controller | Phase 3 |
-| VAL-16 | Render mode | Phase 3 |
-| VAL-17 | Score shadow distance control | Phase 5 |
-| VAL-18 | Transport controls | Phase 3 |
-
-**Coverage: 27/27 requirements mapped (9 active + 18 validated)**
+**Coverage: 20/20 requirements mapped**
 
 ### Dependency Chain
 
 ```
-Phase 1: Core Verovio Integration
+Phase 6: Paginated Rendering & Camera
     |
     v
-Phase 2: Event System Migration  (requires rendered SVG DOM from Phase 1)
+Phase 7: Event Position Caching  (requires page coordinate system from Phase 6)
     |
-    +-------> Phase 3: Animation and Camera  (requires MusicalEvent[] from Phase 2)
-    |
-    +-------> Phase 4: SyncEditor Migration  (requires useVerovio + events from Phase 1-2)
-                 |
-                 v
-Phase 5: Validation and Cleanup  (requires all phases complete)
-```
+    v
+Phase 8: Virtual Scrolling  (requires cached events with page assignments from Phase 7)
 
-Note: Phase 3 and Phase 4 could execute in parallel since they have independent component boundaries (RegularRenderer vs SyncEditor), but Phase 3 is sequenced first because it validates animation patterns that Phase 4 reuses.
+Phase 9: OSMD Cleanup  (independent, scheduled last)
+```
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in order: 6 -> 7 -> 8 -> 9
 
-| Phase | Plans Complete | Status | Completed |
-|-------|---------------|--------|-----------|
-| 1. Core Verovio Integration | 2/2 | Complete | 2026-02-03 |
-| 2. Event System Migration | 1/1 | Complete | 2026-02-03 |
-| 2.1. Sync-Only Playback & SyncEditor Verovio | 2/2 | Complete | 2026-02-04 |
-| 3. Animation and Camera | 0/1 | Not started | - |
-| 4. SyncEditor Migration | 0/1 | Not started | - |
-| 5. Validation and Cleanup | 0/1 | Not started | - |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Core Verovio Integration | v1.0 | 2/2 | Complete | 2026-02-03 |
+| 2. Event System Migration | v1.0 | 1/1 | Complete | 2026-02-03 |
+| 2.1. Sync-Only Playback | v1.0 | 2/2 | Complete | 2026-02-04 |
+| 3. Animation and Camera | v1.0 | -- | Complete | 2026-02-04 |
+| 4. SyncEditor Migration | v1.0 | -- | Complete | 2026-02-04 |
+| 5. Validation and Cleanup | v1.0 | -- | Complete | 2026-02-04 |
+| 6. Paginated Rendering & Camera | v1.1 | 0/? | Not started | - |
+| 7. Event Position Caching | v1.1 | 0/? | Not started | - |
+| 8. Virtual Scrolling | v1.1 | 0/? | Not started | - |
+| 9. OSMD Cleanup | v1.1 | 0/? | Not started | - |

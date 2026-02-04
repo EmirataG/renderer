@@ -4,17 +4,17 @@
 
 See: .planning/PROJECT.md (updated 2026-02-04)
 
-**Core value:** Scores render correctly and efficiently — high-quality engraving with smooth playback, even on long scores.
-**Current focus:** Milestone v1.1 - Efficiency (defining requirements)
+**Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
+**Current focus:** Phase 6 - Paginated Rendering & Camera
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements for v1.1
-Last activity: 2026-02-04 — Milestone v1.1 started (merged remaining migration cleanup)
+Phase: 6 of 9 (Paginated Rendering & Camera)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-02-04 -- Roadmap created for v1.1 Efficiency milestone
 
-Progress: New milestone
+Progress: [######....] 60% (v1.0 complete, v1.1 starting)
 
 ## Performance Metrics
 
@@ -40,23 +40,12 @@ Progress: New milestone
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- [v1.0]: Lazy singleton WASM pattern (ensureModule) for single-load guarantee
-- [v1.0]: renderToMIDI() called after every render to pre-populate timing data
-- [v1.0]: qstamp / 4 converts quarter-note units to whole-note fractions
-- [v1.0]: BPM playback permanently removed; sync-only mode is the sole playback path
-- [v1.0]: Transport gating requires audio + first AND last event sync anchors
 - [v1.0]: Camera uses g.system DOM elements for Y positions (no threshold heuristics)
-- [v1.0]: CSS.escape() used for SVG ID selectors to handle Verovio's ID format
-- [v1.1]: Canvas rendering rejected — paginated SVG is the efficiency path
-- [v1.1]: Remaining OSMD cleanup merged into efficiency milestone
-
-### Roadmap Evolution
-
-- v1.0 migration Phases 1, 2, 2.1 completed via GSD workflow
-- v1.0 Phase 3 (camera fix, animation verification) completed via quick fixes
-- v1.0 Phase 4 (SyncEditor) absorbed into Phase 2.1
-- v1.0 Phase 5 (OSMD removal) merged into v1.1 as CLN-01
-- v1.1 milestone started: efficiency + cleanup
+- [v1.0]: BPM playback permanently removed; sync-only mode is the sole playback path
+- [v1.1]: Canvas rendering rejected -- paginated SVG is the efficiency path
+- [v1.1]: No new npm dependencies needed -- Verovio pagination API + React + Zustand suffice
+- [v1.1]: Virtual scroll libraries rejected -- CSS transform camera incompatible with scroll-based models
+- [v1.1]: Puppeteer render mode disables virtual scrolling (all pages mounted)
 
 ### Pending Todos
 
@@ -64,12 +53,13 @@ None.
 
 ### Blockers/Concerns
 
-- Current single-page SVG approach causes 6GB+ memory on long scores — primary motivation for v1.1
-- Paginated rendering requires adapting camera, event extraction, and animation systems that all assume single continuous SVG
-- Verovio page-by-page rendering changes coordinate systems — event Y positions become page-relative
+- Single-page SVG causes 6GB+ memory on long scores -- Phase 6 addresses root cause
+- Paginated rendering changes coordinate systems -- event Y positions become page-relative + global offset
+- getBoundingClientRect coordinate space mismatch risk across page boundaries
+- Puppeteer frame capture requires all animated elements in DOM at screenshot time
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Starting v1.1 milestone — defining requirements
+Stopped at: Roadmap created for v1.1 -- ready to plan Phase 6
 Resume file: None

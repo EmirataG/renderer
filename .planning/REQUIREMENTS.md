@@ -1,7 +1,7 @@
 # Requirements: Manuscript Renderer v1.1 Efficiency
 
 **Defined:** 2026-02-04
-**Core Value:** Scores render correctly and efficiently — high-quality engraving with smooth playback, even on long scores.
+**Core Value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
 
 ## v1.1 Requirements
 
@@ -44,8 +44,8 @@
 
 Deferred to later milestones:
 
-- **Web Worker rendering** — Offload `renderToSVG()` to background thread for main-thread responsiveness. Defer until profiling shows render blocking is a problem.
-- **Render-mode page sequencer** — In Puppeteer mode, mount only the needed page per frame instead of all pages. Defer until memory in Puppeteer becomes a constraint.
+- **Web Worker rendering** -- Offload `renderToSVG()` to background thread for main-thread responsiveness. Defer until profiling shows render blocking is a problem.
+- **Render-mode page sequencer** -- In Puppeteer mode, mount only the needed page per frame instead of all pages. Defer until memory in Puppeteer becomes a constraint.
 
 ## Out of Scope
 
@@ -61,32 +61,32 @@ Deferred to later milestones:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PAG-01 | TBD | Pending |
-| PAG-02 | TBD | Pending |
-| PAG-03 | TBD | Pending |
-| PAG-04 | TBD | Pending |
-| EVT-01 | TBD | Pending |
-| EVT-02 | TBD | Pending |
-| EVT-03 | TBD | Pending |
-| EVT-04 | TBD | Pending |
-| VIR-01 | TBD | Pending |
-| VIR-02 | TBD | Pending |
-| VIR-03 | TBD | Pending |
-| VIR-04 | TBD | Pending |
-| VIR-05 | TBD | Pending |
-| CAM-01 | TBD | Pending |
-| CAM-02 | TBD | Pending |
-| CAM-03 | TBD | Pending |
-| CAM-04 | TBD | Pending |
-| CLN-01 | TBD | Pending |
-| CLN-02 | TBD | Pending |
-| CLN-03 | TBD | Pending |
+| PAG-01 | Phase 6 | Pending |
+| PAG-02 | Phase 6 | Pending |
+| PAG-03 | Phase 6 | Pending |
+| PAG-04 | Phase 6 | Pending |
+| EVT-01 | Phase 7 | Pending |
+| EVT-02 | Phase 7 | Pending |
+| EVT-03 | Phase 7 | Pending |
+| EVT-04 | Phase 7 | Pending |
+| VIR-01 | Phase 8 | Pending |
+| VIR-02 | Phase 8 | Pending |
+| VIR-03 | Phase 8 | Pending |
+| VIR-04 | Phase 8 | Pending |
+| VIR-05 | Phase 8 | Pending |
+| CAM-01 | Phase 6 | Pending |
+| CAM-02 | Phase 6 | Pending |
+| CAM-03 | Phase 6 | Pending |
+| CAM-04 | Phase 8 | Pending |
+| CLN-01 | Phase 9 | Pending |
+| CLN-02 | Phase 9 | Pending |
+| CLN-03 | Phase 9 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20 (pending roadmap creation)
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 after initial definition*
+*Last updated: 2026-02-04 after roadmap creation*
