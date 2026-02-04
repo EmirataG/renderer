@@ -234,6 +234,11 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         applyNoteColor(event.svgIds, '#3b82f6');
       }
     }
+
+    // Re-apply playing color (orange) to currently playing note so it persists
+    if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
+      applyNoteColor(playingSvgIdsRef.current, '#f59e0b');
+    }
   }, [selectedEventId, events, anchors, anchorsKey]);
 
   // Keyboard navigation for efficient sync workflow
