@@ -68,20 +68,20 @@ Plans:
 - [x] 02.1-02-PLAN.md -- SyncEditor migration from OSMD to Verovio
 
 ### Phase 3: Animation and Camera
-**Goal**: Playback preview works end-to-end with note highlighting, camera scrolling, and Puppeteer frame capture
-**Depends on**: Phase 2
-**Requirements**: MIG-03, MIG-07, VAL-03, VAL-04, VAL-05, VAL-06, VAL-15, VAL-16, VAL-18
+**Goal**: Fix camera jitter during system transitions and verify sync playback works end-to-end
+**Depends on**: Phase 2, Phase 2.1
+**Requirements**: VAL-04, VAL-05, VAL-06, VAL-18
+**Note**: Scope reduced from original — BPM mode removed (Phase 2.1), notehead animation already working (MIG-03/VAL-05 satisfied), Puppeteer deferred (MIG-07/VAL-15/VAL-16 out of scope). VAL-03 permanently removed.
 **Success Criteria** (what must be TRUE):
-  1. Pressing Play in BPM mode scrolls the score vertically at the configured tempo, highlighting active noteheads with scale and color animation
-  2. Pressing Play in sync mode (with audio and anchors) highlights notes in time with the audio, and the camera smoothly tracks the current playback position
-  3. The Puppeteer `window.animationController` API works: calling `setTimestamp(seconds)` highlights the correct notes and positions the camera, producing frame-accurate output in render mode
-  4. Transport controls (play, stop, reset) function correctly in both BPM and sync modes
-  5. Notehead animation entry/hold/exit timing matches the pre-migration behavior (noteheads scale up on onset, hold during duration, scale back on exit)
-**Plans**: TBD
+  1. Camera snaps cleanly from one staff system to the next during sync playback without jittery up/down nudges
+  2. Within-system camera Y position tracks smoothly between events
+  3. Notehead animation (scale, color, timing, chord behavior) is identical before and after camera changes
+  4. Transport controls (play, pause, reset) work correctly in sync-only mode
+  5. After reset then play, camera starts at correct position and noteheads animate from beginning
+**Plans**: 1 plan
 
 Plans:
-- [ ] 03-01: Notehead animation and selector migration
-- [ ] 03-02: Camera system and Puppeteer controller
+- [ ] 03-01-PLAN.md -- Camera system-boundary detection fix and transport verification
 
 ### Phase 4: SyncEditor Migration
 **Goal**: The Sync Editor view works with Verovio, allowing users to set timestamp anchors on notes
@@ -181,6 +181,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Core Verovio Integration | 2/2 | Complete | 2026-02-03 |
 | 2. Event System Migration | 1/1 | Complete | 2026-02-03 |
 | 2.1. Sync-Only Playback & SyncEditor Verovio | 2/2 | Complete | 2026-02-04 |
-| 3. Animation and Camera | 0/2 | Not started | - |
+| 3. Animation and Camera | 0/1 | Not started | - |
 | 4. SyncEditor Migration | 0/1 | Not started | - |
 | 5. Validation and Cleanup | 0/1 | Not started | - |
