@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Core Verovio Integration** - WASM setup, basic rendering, color/scale validation
 - [x] **Phase 2: Event System Migration** - Rebuild event extraction using Verovio APIs
-- [ ] **Phase 2.1: Sync-Only Playback & SyncEditor Verovio** - Remove BPM mode, sync-only playback, migrate SyncEditor to Verovio (INSERTED)
+- [x] **Phase 2.1: Sync-Only Playback & SyncEditor Verovio** - Remove BPM mode, sync-only playback, migrate SyncEditor to Verovio (INSERTED)
 - [ ] **Phase 3: Animation and Camera** - Restore playback, notehead animation, camera scrolling
 - [ ] **Phase 4: SyncEditor Migration** - Apply migration patterns to the sync editor view
 - [ ] **Phase 5: Validation and Cleanup** - Remove OSMD, full regression testing
@@ -64,8 +64,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02.1-01-PLAN.md -- BPM removal from RegularRenderer/App.tsx + transport gating (sync-only playback)
-- [ ] 02.1-02-PLAN.md -- SyncEditor migration from OSMD to Verovio
+- [x] 02.1-01-PLAN.md -- BPM removal from RegularRenderer/App.tsx + transport gating (sync-only playback)
+- [x] 02.1-02-PLAN.md -- SyncEditor migration from OSMD to Verovio
 
 ### Phase 3: Animation and Camera
 **Goal**: Playback preview works end-to-end with note highlighting, camera scrolling, and Puppeteer frame capture
@@ -180,7 +180,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|---------------|--------|-----------|
 | 1. Core Verovio Integration | 2/2 | Complete | 2026-02-03 |
 | 2. Event System Migration | 1/1 | Complete | 2026-02-03 |
-| 2.1. Sync-Only Playback & SyncEditor Verovio | 0/? | Not started | - |
+| 2.1. Sync-Only Playback & SyncEditor Verovio | 2/2 | Complete | 2026-02-04 |
 | 3. Animation and Camera | 0/2 | Not started | - |
 | 4. SyncEditor Migration | 0/1 | Not started | - |
 | 5. Validation and Cleanup | 0/1 | Not started | - |
