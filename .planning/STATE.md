@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-04)
 ## Current Position
 
 Phase: 7 of 9 (Event Position Caching)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-02-04 -- Completed Phase 6 (Paginated Rendering & Camera)
+Plan: 1 of 2
+Status: In progress
+Last activity: 2026-02-04 -- Completed 07-01-PLAN.md (Event Cache Infrastructure)
 
-Progress: [########..] 80% (v1.0 complete, v1.1 Phase 6 complete)
+Progress: [########..] 85% (v1.0 complete, v1.1 Phase 7 Plan 1 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 2 min
-- Total execution time: 15 min
+- Total execution time: 18 min
 
 **By Phase:**
 
@@ -31,6 +31,7 @@ Progress: [########..] 80% (v1.0 complete, v1.1 Phase 6 complete)
 | 2 - Event System Migration | 1/1 | 1 min | 1 min |
 | 2.1 - Sync-Only Playback | 2/2 | 4 min | 2 min |
 | 6 - Paginated Rendering | 3/3 | 6 min | 2 min |
+| 7 - Event Position Caching | 1/2 | 3 min | 3 min |
 
 *Updated after each plan completion*
 
@@ -51,6 +52,8 @@ Recent decisions affecting current work:
 - [v1.1]: Removed adjustPageHeight -- incompatible with fixed-height pagination mode
 - [v1.1]: getEventsFromVerovio backward-compatible via optional params -- SyncEditor unchanged
 - [v1.1]: Flush SVG stacking via CSS (lineHeight:0, fontSize:0, display:block) -- no negative margins
+- [v1.1]: Lookup indices (eventById, eventsByPage) built at setEvents time, not in selectors
+- [v1.1]: Two-phase extraction: pure timemap first, DOM positions second
 
 ### Pending Todos
 
@@ -60,10 +63,9 @@ None.
 
 - Memory still high with paginated rendering -- all pages mounted. Phase 8 (virtual scrolling) will bound memory.
 - Puppeteer frame capture requires all animated elements in DOM at screenshot time
-- Event extraction happens on every render -- Phase 7 will cache events
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed Phase 6 -- ready for Phase 7 planning
+Stopped at: Completed 07-01-PLAN.md -- ready for 07-02 (RegularRenderer integration)
 Resume file: None
