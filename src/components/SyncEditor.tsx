@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useVerovio } from '../hooks/useVerovio';
 import { useSyncStore } from '../stores/syncStore';
-import { useEventStore } from '../stores/eventStore';
-import { extractTimemapEvents } from '../lib/getEvents';
+import { extractTimemapEvents, type TimemapEvent } from '../lib/getEvents';
 import { TimestampInput } from './TimestampInput';
 import { interpolateTimestamps } from '../lib/interpolation';
 import {
@@ -29,13 +28,13 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const osmdRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
 
-  // Read events from shared eventStore cache (populated by RegularRenderer or fallback below)
-  const events = useEventStore((state) => state.events);
-  const setEventsInStore = useEventStore((state) => state.setEvents);
+  // SyncEditor maintains its own local events extracted from its own toolkit
+  // (Verovio generates different IDs per toolkit instance, so we can't share with RegularRenderer)
+  const [events, setEvents] = useState<TimemapEvent[]>([]);
 
   // Interpolated events with computed timestamps
   const [interpolatedEvents, setInterpolatedEvents] = useState<
-    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean })[]
+    (TimemapEvent & { computedTimestamp: number; isAnchor: boolean })[]
   >([]);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -70,24 +69,14 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Verovio hook - renders score to SVG
   const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
 
-  // Fallback: Populate event cache ONLY if cache is completely empty
-  // (e.g., user loads score while on Sync Editor tab before RegularRenderer runs)
-  // This is a fallback - RegularRenderer is the primary cache populator with proper Y positions
+  // Extract events from SyncEditor's own toolkit when SVG is ready
+  // (Verovio generates different random IDs per toolkit, so SyncEditor must use its own)
   useEffect(() => {
-    // Only act as fallback if cache is completely empty
-    if (events.length > 0) return;
     if (svgPages.length === 0 || !toolkit) return;
 
-    // Extract events without Y positions (SyncEditor doesn't need them)
     const timemapEvents = extractTimemapEvents(toolkit);
-    const cachedEvents = timemapEvents.map(evt => ({
-      ...evt,
-      pageIndex: 0,  // Placeholder - SyncEditor doesn't use this
-      globalY: 0,    // Placeholder - SyncEditor doesn't use this
-    }));
-
-    setEventsInStore(cachedEvents, svgPages);
-  }, [svgPages, toolkit, events.length, setEventsInStore]);
+    setEvents(timemapEvents);
+  }, [svgPages, toolkit]);
 
   // Recalculate interpolated events when anchors change
   // Events come from shared eventStore cache (populated by RegularRenderer)
