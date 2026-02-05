@@ -4,6 +4,7 @@ import {
   EngravingRules,
 } from "opensheetmusicdisplay";
 import type { VerovioToolkit } from "verovio/esm";
+import type { CachedEvent } from "../stores/eventStore";
 
 const OFFSET = 15;
 
@@ -192,4 +193,117 @@ function getStavenoteIds(
   }
 
   return stavenoteIds;
+}
+
+// ============================================================================
+// Two-phase extraction functions for event caching
+// ============================================================================
+
+/**
+ * Intermediate event type from timemap extraction (no DOM dependency).
+ */
+export interface TimemapEvent {
+  id: string;
+  beatOnset: number;
+  beatDuration: number;
+  svgIds: string[];
+}
+
+/**
+ * Phase 1: Extract events from Verovio's timemap API (no DOM dependency).
+ *
+ * This function is pure and can be called immediately after loading MEI data.
+ * It extracts timing and note ID information without requiring rendered SVG.
+ *
+ * Prerequisites:
+ * - toolkit.loadData() must have been called
+ * - toolkit.renderToMIDI() must have been called (populates timing data)
+ *
+ * @param toolkit - Verovio toolkit instance with loaded score
+ * @returns Array of timemap events (no position data yet)
+ */
+export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
+  // Get the full timemap from Verovio (rests excluded by default)
+  const timemap = toolkit.renderToTimemap();
+
+  // Filter to note onset entries only (entries with `on` array)
+  const onsetEntries = timemap.filter(
+    (entry) => entry.on && entry.on.length > 0
+  );
+
+  // Build TimemapEvent array from onset entries
+  const events: TimemapEvent[] = onsetEntries.map((entry, index) => ({
+    id: `evt-${index}`,
+    beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
+    beatDuration: 0, // Calculated below
+    svgIds: entry.on!, // Verovio note xml:id values
+  }));
+
+  // Calculate beatDuration for each event
+  for (let i = 0; i < events.length - 1; i++) {
+    events[i].beatDuration = events[i + 1].beatOnset - events[i].beatOnset;
+  }
+  if (events.length > 0) {
+    events[events.length - 1].beatDuration = 1; // Last event convention
+  }
+
+  return events;
+}
+
+/**
+ * Phase 2: Compute page indices and global Y positions for timemap events.
+ *
+ * This function requires DOM access to measure positions. Call after SVG
+ * pages are rendered and mounted in the DOM.
+ *
+ * @param timemapEvents - Events from extractTimemapEvents()
+ * @param toolkit - Verovio toolkit instance (for getPageWithElement API)
+ * @param pageContainers - Array of DOM elements containing each page's SVG
+ * @param pageOffsets - Cumulative Y offset for each page (for global coordinates)
+ * @returns Array of CachedEvents with pageIndex and globalY populated
+ */
+export function computeEventPositions(
+  timemapEvents: TimemapEvent[],
+  toolkit: VerovioToolkit,
+  pageContainers: HTMLElement[],
+  pageOffsets: number[]
+): CachedEvent[] {
+  const cachedEvents: CachedEvent[] = timemapEvents.map((event) => ({
+    ...event,
+    pageIndex: 0,
+    globalY: 0,
+  }));
+
+  for (const event of cachedEvents) {
+    if (event.svgIds.length === 0) continue;
+
+    // Use Verovio API to find which page this event is on (1-based)
+    const pageNum = toolkit.getPageWithElement(event.svgIds[0]);
+    if (pageNum === 0) continue; // Element not found
+
+    const pageIndex = pageNum - 1;
+    event.pageIndex = pageIndex;
+
+    const container = pageContainers[pageIndex];
+    if (!container) continue;
+
+    const containerRect = container.getBoundingClientRect();
+    const noteEl = container.querySelector(`#${CSS.escape(event.svgIds[0])}`);
+    if (!noteEl) continue;
+
+    // Find parent g.system element for consistent Y positioning
+    const systemEl = noteEl.closest('g.system');
+    if (systemEl) {
+      const sysRect = systemEl.getBoundingClientRect();
+      const localY = sysRect.top - containerRect.top + sysRect.height / 2;
+      event.globalY = pageOffsets[pageIndex] + localY;
+    } else {
+      // Fallback: use note's own position
+      const noteRect = noteEl.getBoundingClientRect();
+      const localY = noteRect.top - containerRect.top + noteRect.height / 2;
+      event.globalY = pageOffsets[pageIndex] + localY;
+    }
+  }
+
+  return cachedEvents;
 }
