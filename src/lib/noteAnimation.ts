@@ -7,10 +7,6 @@ export interface NoteheadAnimationOptions {
   colorFullNote?: boolean;
 }
 
-// Track active animation timeouts for cleanup
-const activeTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
-let timeoutIdCounter = 0;
-
 // Selectors for note sub-elements beyond the notehead (stems, accidentals, etc.)
 const FULL_NOTE_SELECTORS = "g.stem, g.accid, g.flag, g.dots, g.artic";
 
@@ -70,9 +66,7 @@ export function animateNoteheads(
 
       const totalDelay = entryMs + holdMs;
 
-      const timeoutId = ++timeoutIdCounter;
-      const timeout = window.setTimeout(() => {
-        activeTimeouts.delete(timeoutId);
+      window.setTimeout(() => {
         nh.style.transition = `transform ${exitMs}ms ease-in`;
         nh.style.transform = "scale(1)";
 
@@ -82,7 +76,6 @@ export function animateNoteheads(
           }
         });
       }, totalDelay);
-      activeTimeouts.set(timeoutId, timeout);
     });
 
     /* ---------------- full note coloring (stem, accidentals, etc.) ---------------- */
@@ -98,32 +91,19 @@ export function animateNoteheads(
       });
 
       const totalDelay = entryMs + holdMs;
-      const extraTimeoutId = ++timeoutIdCounter;
-      const extraTimeout = window.setTimeout(() => {
-        activeTimeouts.delete(extraTimeoutId);
+      window.setTimeout(() => {
         extras.forEach((group) => {
           const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line");
           children.forEach((child) => clearColorFromElement(child, exitMs, "ease-in"));
           clearColorFromElement(group as SVGGraphicsElement, exitMs, "ease-in");
         });
       }, totalDelay);
-      activeTimeouts.set(extraTimeoutId, extraTimeout);
     }
   });
 }
 
-export function clearAnimationTimeouts(): void {
-  activeTimeouts.forEach((timeout) => {
-    window.clearTimeout(timeout);
-  });
-  activeTimeouts.clear();
-}
-
 export function resetNoteheadAnimations(root: HTMLElement | null) {
   if (!root) return;
-
-  // Clear pending timeouts to prevent callbacks on reset
-  clearAnimationTimeouts();
 
   root.querySelectorAll<SVGGElement>("g.notehead").forEach((nh) => {
     // Reset scale

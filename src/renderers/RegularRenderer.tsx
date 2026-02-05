@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useVerovio } from "../hooks/useVerovio";
 import { extractTimemapEvents, computeEventPositions } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
@@ -13,7 +13,6 @@ import { useEventStore } from "../stores/eventStore";
 import {
   animateNoteheads,
   resetNoteheadAnimations,
-  clearAnimationTimeouts,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
@@ -86,7 +85,6 @@ export default function RegularRenderer({
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
-  const [cameraY, setCameraY] = useState(0); // Track camera Y for virtual scrolling visibility
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
@@ -154,44 +152,6 @@ export default function RegularRenderer({
   const isRenderMode =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("render") === "true";
-
-  /* ---------------- virtual scrolling: visible pages ---------------- */
-
-  const visiblePageIndices = useMemo(() => {
-    // Short scores: mount all pages
-    if (pageCount <= 3) {
-      return new Set(Array.from({ length: pageCount }, (_, i) => i));
-    }
-
-    // Render mode: mount all pages for Puppeteer frame capture
-    if (isRenderMode) {
-      return new Set(Array.from({ length: pageCount }, (_, i) => i));
-    }
-
-    // Find which page the camera Y position is on
-    let currentPage = 0;
-    for (let i = 0; i < pageOffsets.length; i++) {
-      const pageEnd = pageOffsets[i + 1] ?? totalHeight;
-      if (cameraY < pageEnd) {
-        currentPage = i;
-        break;
-      }
-    }
-
-    // Build window: current page +/- 1
-    const visible = new Set<number>();
-    for (let i = Math.max(0, currentPage - 1); i <= Math.min(pageCount - 1, currentPage + 1); i++) {
-      visible.add(i);
-    }
-    return visible;
-  }, [cameraY, pageOffsets, pageCount, totalHeight, isRenderMode]);
-
-  // Clear pending animation timeouts when visible pages change
-  useEffect(() => {
-    return () => {
-      clearAnimationTimeouts();
-    };
-  }, [visiblePageIndices]);
 
   /* ---------------- background / dimensions ---------------- */
 
@@ -341,18 +301,15 @@ export default function RegularRenderer({
 
     // Keep the target Y position in the vertical center of the viewport
     // Exception: at the beginning and end, don't scroll past the edges
-    let newCameraY = targetY - viewportHeight / 2;
+    let cameraY = targetY - viewportHeight / 2;
 
     // Clamp to valid range: don't scroll above 0 or below the maximum scroll
-    newCameraY = Math.max(0, newCameraY);
-    newCameraY = Math.min(newCameraY, Math.max(0, scoreHeight - viewportHeight));
+    cameraY = Math.max(0, cameraY);
+    cameraY = Math.min(cameraY, Math.max(0, scoreHeight - viewportHeight));
 
     if (cameraRef.current) {
-      cameraRef.current.style.transform = `translateY(${-newCameraY}px)`;
+      cameraRef.current.style.transform = `translateY(${-cameraY}px)`;
     }
-
-    // Update state for virtual scrolling visibility calculation
-    setCameraY(newCameraY);
   }
 
   /* ---------------- motion ---------------- */
@@ -785,24 +742,13 @@ export default function RegularRenderer({
                 }}
               >
                 {svgPages.map((svg, i) => (
-                  visiblePageIndices.has(i) ? (
-                    <div
-                      key={i}
-                      ref={(el) => { pageContainerRefs.current[i] = el; }}
-                      className="preview-score"
-                      style={{ width: scoreRegion?.width ?? containerWidth }}
-                      dangerouslySetInnerHTML={{ __html: svg }}
-                    />
-                  ) : (
-                    <div
-                      key={i}
-                      ref={(el) => { pageContainerRefs.current[i] = null; }}
-                      style={{
-                        width: scoreRegion?.width ?? containerWidth,
-                        height: pageHeights[i],
-                      }}
-                    />
-                  )
+                  <div
+                    key={i}
+                    ref={(el) => { pageContainerRefs.current[i] = el; }}
+                    className="preview-score"
+                    style={{ width: scoreRegion?.width ?? containerWidth }}
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
                 ))}
               </div>
             </div>
