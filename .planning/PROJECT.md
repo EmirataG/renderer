@@ -39,13 +39,20 @@ Capabilities shipped and confirmed working:
 - ✓ MIG-06: SyncEditor event extraction via Verovio — v1.0
 - ✓ MIG-08: Zoom/scale via Verovio scale option — v1.0
 - ✓ Color stems & accidentals option for note animation — v1.0 (quick task)
+- ✓ EFF-01: Paginated SVG rendering (render pages on demand instead of one giant SVG) — v1.1
+- ✓ EFF-02: Cache event positions after extraction (avoid repeated DOM queries) — v1.1
+- ✓ EFF-03: Virtual scrolling (only mount SVG pages near current camera position) — v1.1
+- ✓ CLN-01: Remove OSMD dependency entirely (package.json, dead imports, old code) — v1.1
 
 ### Active
 
-- EFF-01: Paginated SVG rendering (render pages on demand instead of one giant SVG)
-- EFF-02: Cache event positions after extraction (avoid repeated DOM queries)
-- EFF-03: Virtual scrolling (only mount SVG pages near current camera position)
-- CLN-01: Remove OSMD dependency entirely (package.json, dead imports, old code)
+- SLR-01: SingleLineRenderer component displaying score as one horizontal line
+- SLR-02: Horizontal camera system keeping active note centered in score region
+- SLR-03: Section-based rendering via Verovio for performance optimization
+- SLR-04: Lazy section loading (only visible sections mounted in DOM)
+- SLR-05: Seamless section transitions (breaks invisible to users)
+- SLR-06: Notehead animation working on horizontal layout
+- SLR-07: Score region bounds controlling animation viewport
 
 ### Out of Scope
 
@@ -57,23 +64,30 @@ Capabilities shipped and confirmed working:
 - Canvas rendering — investigated, poor cost-benefit vs paginated SVG
 - Web Worker rendering — defer until profiling shows need
 
-## Current Milestone: v1.1 Efficiency
+## Current Milestone: v1.2 SingleLineRenderer
 
-**Goal:** Reduce memory usage and improve rendering performance for long scores through paginated rendering, event position caching, and virtual scrolling. Also remove the legacy OSMD dependency.
+**Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance.
 
 **Target features:**
-- Paginated SVG rendering (Verovio page-by-page output)
-- Event position caching (extract once, reuse)
-- Virtual scrolling (mount only visible pages)
-- OSMD dependency removal (cleanup)
+- SingleLineRenderer component with horizontal layout
+- Horizontal camera tracking (active note stays centered)
+- Section-based Verovio rendering for performance
+- Lazy section loading (only visible sections in DOM)
+- Seamless section transitions (invisible breaks)
+- Same notehead animation as RegularRenderer
+- Score region bounds control animation viewport
 
 ## Context
 
-**Current architecture:** React SPA with Verovio (WASM) rendering MusicXML to a single 60,000px-tall SVG. Events are extracted via Verovio's timemap API with Y positions from `getBoundingClientRect()` on `g.system` elements. Camera scrolling uses CSS `transform: translateY()` with system-boundary snapping.
+**Current architecture (post-v1.1):** React SPA with Verovio (WASM) rendering MusicXML to paginated SVGs. Events are extracted once via Verovio's timemap API and cached with page assignments. Virtual scrolling mounts only 3-4 pages near the camera position. Camera uses CSS `transform: translateY()` with system-boundary snapping.
 
-**Performance problem:** Long scores (50+ systems) generate a single massive SVG with thousands of elements. Event extraction calls `getBoundingClientRect()` per note, and the entire SVG stays in the DOM. This causes 6GB+ memory usage on longer scores.
+**RegularRenderer:** Vertical paginated layout with smooth camera scrolling. Uses page-based virtual scrolling for memory efficiency. This is the existing renderer and should remain available.
 
-**Verovio pagination support:** Verovio natively supports page-by-page rendering via `renderToSVG(pageNumber)`. The current setup uses `pageHeight: 60000` with `adjustPageHeight: true` to force a single page. Switching to multiple pages is a configuration change, but the camera, event extraction, and animation systems all assume a single continuous SVG and need adaptation.
+**SingleLineRenderer (new):** Horizontal single-line layout. Camera moves horizontally to keep active note centered. Needs section-based rendering for performance (long horizontal lines would have same memory issues as pre-v1.1 vertical layout).
+
+**Verovio rendering modes:**
+- Current: `pageHeight: 2970` (A4) produces vertical pages
+- Single-line: Need to research Verovio options for horizontal/single-system output, or measure-range rendering
 
 **Verovio SVG structure:**
 - Systems: `<g class="system">` — one per staff system line
@@ -84,10 +98,10 @@ Capabilities shipped and confirmed working:
 ## Constraints
 
 - **Tech stack**: Verovio WASM — already integrated
-- **No feature regression**: All v1.0 features must continue working
-- **No UI changes**: Sidebar controls and user interactions remain unchanged
+- **RegularRenderer preserved**: Existing vertical renderer must remain functional
 - **SVG compatibility**: Must maintain DOM queryability for animation and event extraction
-- **Browser WASM**: Verovio WASM loads reliably in modern browsers (validated in v1.0)
+- **Score region**: Animation viewport controlled by existing score region editor
+- **Skip Puppeteer**: SingleLineRenderer does not need Puppeteer support for v1.2
 
 ## Key Decisions
 
@@ -99,7 +113,8 @@ Capabilities shipped and confirmed working:
 | Camera uses g.system DOM elements for Y | Eliminates threshold heuristics, no jitter | ✓ Good |
 | 5-phase sequential migration | Strict dependency chain worked well | ✓ Good |
 | No Canvas migration | SVG DOM APIs too deeply integrated, paginated SVG is better path | ✓ Good |
-| Paginated rendering over Web Workers | Addresses root cause (DOM size) not symptom (render speed) | — Pending |
+| Paginated rendering over Web Workers | Addresses root cause (DOM size) not symptom (render speed) | ✓ Good |
+| Virtual scrolling with CSS transform camera | Custom visibility manager, not scroll-based libraries | ✓ Good |
 
 ---
-*Last updated: 2026-02-04 after v1.1 milestone start*
+*Last updated: 2026-02-05 after v1.2 milestone start*
