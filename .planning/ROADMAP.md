@@ -54,7 +54,9 @@ Reduced memory usage and improved rendering performance for long scores through 
   2. Long scores are divided into 10-20 measure sections, each rendered as a separate SVG via `select({ measureRange })`
   3. Section SVGs can be laid out horizontally with correct widths from viewBox dimensions
   4. Changing the score produces new sections with correct measure assignments
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 10-01-PLAN.md — Type augments + useSingleLineVerovio hook
 
 ### Phase 11: Single-Line Event Extraction
 **Goal**: Musical events are extracted with X coordinates and section assignments for horizontal positioning
@@ -145,7 +147,7 @@ Phases execute in order: 10 -> 11 -> 12 -> 13
 | 7. Event Position Caching | v1.1 | 2/2 | Complete | 2026-02-04 |
 | 8. Virtual Scrolling | v1.1 | 1/1 | Complete | 2026-02-05 |
 | 9. OSMD Cleanup | v1.1 | 1/1 | Complete | 2026-02-05 |
-| 10. Single-Line Verovio Hook | v1.2 | 0/? | Pending | -- |
+| 10. Single-Line Verovio Hook | v1.2 | 0/1 | Pending | -- |
 | 11. Single-Line Event Extraction | v1.2 | 0/? | Pending | -- |
 | 12. SingleLineRenderer Core | v1.2 | 0/? | Pending | -- |
 | 13. Section Virtualization | v1.2 | 0/? | Pending | -- |
