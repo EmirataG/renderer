@@ -58,10 +58,11 @@ Plans:
   2. Each event knows which page it belongs to, enabling O(1) page lookup by event ID or timestamp
   3. Global Y positions computed from the page offset map match the actual rendered positions (camera scrolls to the correct vertical location for any event)
   4. Changing scale or reloading a score invalidates the cache and rebuilds it automatically (no stale position data)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
+- [ ] 07-01-PLAN.md -- Event cache infrastructure (eventStore + extraction functions)
+- [ ] 07-02-PLAN.md -- Wire components to use event cache
 
 ### Phase 8: Virtual Scrolling
 **Goal**: Only pages near the current camera position are mounted in the DOM, bounding memory usage regardless of score length
@@ -148,6 +149,6 @@ Phases execute in order: 6 -> 7 -> 8 -> 9
 | 4. SyncEditor Migration | v1.0 | -- | Complete | 2026-02-04 |
 | 5. Validation and Cleanup | v1.0 | -- | Complete | 2026-02-04 |
 | 6. Paginated Rendering & Camera | v1.1 | 3/3 | Complete | 2026-02-04 |
-| 7. Event Position Caching | v1.1 | 0/? | Not started | - |
+| 7. Event Position Caching | v1.1 | 0/2 | Not started | - |
 | 8. Virtual Scrolling | v1.1 | 0/? | Not started | - |
 | 9. OSMD Cleanup | v1.1 | 0/? | Not started | - |
