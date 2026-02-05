@@ -149,9 +149,9 @@ function getFps(): number {
 
 /**
  * Initialize the animation controller with required references.
- * Call this after OSMD instance is ready and audio is loaded.
+ * Call this after Verovio instance is ready and audio is loaded.
  *
- * @param controllerConfig - Configuration with audio, OSMD, and event getter
+ * @param controllerConfig - Configuration with audio, Verovio, and event getter
  * @returns AnimationController interface for frame control
  */
 export function initAnimationController(

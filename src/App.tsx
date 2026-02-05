@@ -52,7 +52,7 @@ export default function App() {
   const [debouncedScoreScale, setDebouncedScoreScale] = useState(1.0);
   const [debouncedScoreRegion, setDebouncedScoreRegion] = useState<ScoreRegion | null>(null);
 
-  // Debounce scoreScale to avoid OSMD re-render on every slider tick
+  // Debounce scoreScale to avoid Verovio re-render on every slider tick
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedScoreScale(scoreScale);
@@ -60,7 +60,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [scoreScale]);
 
-  // Debounce scoreRegion to avoid OSMD re-render on every drag tick
+  // Debounce scoreRegion to avoid Verovio re-render on every drag tick
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedScoreRegion(scoreRegion);
@@ -541,7 +541,7 @@ export default function App() {
                 </div>
               </div>
               {/* Sync Editor view - always mounted, hidden when not active */}
-              {/* Use visibility instead of display to preserve OSMD layout calculations */}
+              {/* Use visibility instead of display to preserve Verovio layout calculations */}
               <div style={{
                 visibility: currentView === 'sync' ? 'visible' : 'hidden',
                 position: currentView === 'sync' ? 'relative' : 'absolute',

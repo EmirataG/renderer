@@ -54,7 +54,7 @@ export function UploadDropZone({
           return;
         }
 
-        // Full OSMD validation
+        // Full MusicXML validation
         const result = await validateMusicXML(text);
         if (!result.valid) {
           showToast(result.error!, "error");
