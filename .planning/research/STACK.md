@@ -1,352 +1,302 @@
-# Stack Research: Efficiency Optimizations (Paginated SVG, Event Caching, Virtual Scrolling)
+# Stack Research: SingleLineRenderer - Verovio Horizontal Rendering
 
-**Domain:** Memory and rendering efficiency for Verovio-based music score renderer
-**Researched:** 2026-02-04
-**Confidence:** HIGH (built on verified Verovio API + codebase analysis; no speculative libraries)
+**Domain:** Horizontal single-system score rendering with section-based output for lazy loading
+**Researched:** 2026-02-05
+**Confidence:** HIGH (verified via official Verovio documentation and source code inspection)
 
 ## Context
 
-The current renderer produces a single 60,000px-tall SVG via `pageHeight: 60000` + `adjustPageHeight: true`, inserted via `dangerouslySetInnerHTML`. For long scores this creates 6GB+ memory usage. Three optimizations are needed:
+The existing RegularRenderer uses vertical paginated layout with `breaks: 'auto'` and `pageHeight: 2970`. For v1.2 SingleLineRenderer, we need:
 
-1. **Paginated SVG rendering** -- render Verovio pages individually instead of one giant SVG
-2. **Event position caching** -- store extracted positions to avoid repeated DOM queries
-3. **Virtual scrolling** -- only mount SVG pages near the current camera position
+1. **Horizontal single-line rendering** - All music on one continuous horizontal system
+2. **Section-based rendering** - Render measure ranges separately for performance
+3. **Lazy section loading** - Only mount visible sections in DOM
+
+## Executive Summary
+
+**Verovio fully supports single-line horizontal rendering** via `breaks: 'none'` option. **Section-based rendering is supported** via the `select()` method with `measureRange` parameter. No new dependencies are needed.
 
 ## Recommended Stack
 
-### Core Recommendation: No New Libraries
+### Core Configuration: No New Libraries
 
-The critical finding of this research is that **no new npm dependencies are needed** for any of the three efficiency features. The existing stack (Verovio, React, Zustand, TypeScript) provides everything required. This is not a compromise -- it is the correct approach for this specific architecture.
+The existing Verovio installation (^6.0.1) provides all required APIs. This is the correct approach - Verovio has native support for both horizontal layout and measure-range selection.
 
-**Why:**
-- Verovio already has `getPageCount()` + `renderToSVG(pageNo)` for paginated rendering
-- Plain `Map<string, CachedPosition>` in a Zustand store handles event position caching
-- The camera is CSS `translateY()`-driven (not user scrolling), making scroll-virtualization libraries like TanStack Virtual a poor fit
+### Verovio Options for SingleLineRenderer
 
-### Stack Changes (Verovio Options Only)
+| Option | Value | Purpose |
+|--------|-------|---------|
+| `breaks` | `'none'` | **Critical** - Forces all music onto single horizontal system. No system or page breaks. |
+| `pageHeight` | `100` | Minimal height, used with adjustPageHeight |
+| `adjustPageHeight` | `true` | Shrinks SVG height to actual content (one system height) |
+| `pageWidth` | Large value (e.g., 100000) | Accommodate full score width; SVG will shrink if adjustPageWidth not used |
+| `svgViewBox` | `true` | Enables responsive scaling |
+| `pageMarginTop` | `0` | Remove margins for clean horizontal layout |
+| `pageMarginBottom` | `0` | Remove margins for clean horizontal layout |
+| `scale` | Same as RegularRenderer | Maintain consistent notation size |
 
-| Change | From | To | Purpose |
-|--------|------|----|---------|
-| `pageHeight` option | `60000` | `2970` (default A4) or tuned per viewport | Enables Verovio to paginate into multiple pages instead of one giant SVG |
-| `adjustPageHeight` option | `true` | `true` (unchanged) | Each page's SVG shrinks to its actual content height |
-| New: page-aware rendering loop | `renderToSVG(1)` | `for (i = 1..getPageCount()) renderToSVG(i)` | Produces N smaller SVG strings instead of one massive one |
-
-### Existing Stack (Unchanged)
-
-| Technology | Version | Role in Efficiency |
-|------------|---------|-------------------|
-| `verovio` | ^6.0.1 | Provides `getPageCount()`, `renderToSVG(pageNo)`, `getPageWithElement()`, `renderToTimemap()` |
-| React 19 | ^19.1.1 | Conditional rendering of page components (mount/unmount by visibility) |
-| Zustand | ^5.0.10 | Event position cache store |
-| TypeScript | ~5.9.3 | Type safety for cache interfaces |
-
-## Feature 1: Paginated SVG Rendering
-
-### Verovio API (Already Available)
-
-The pagination API is built into Verovio. No additional libraries needed.
+### Key Verovio APIs for Section Rendering
 
 | Method | Signature | Purpose | Confidence |
 |--------|-----------|---------|------------|
-| `getPageCount()` | `() => number` | Returns total pages after layout | HIGH -- verified in official toolkit reference |
-| `renderToSVG(pageNo)` | `(pageNo: number) => string` | Renders specific page (1-indexed) | HIGH -- verified |
-| `getPageWithElement(xmlId)` | `(xmlId: string) => number` | Returns page number containing element | HIGH -- verified |
-| `renderToTimemap()` | `() => TimemapEntry[]` | Returns full-score timing data | HIGH -- verified |
+| `select()` | `(selection: {measureRange: string}) => boolean` | Select measure range for rendering. Format: `"1-10"`, `"start-20"`, `"15-end"` | HIGH - verified in Verovio source |
+| `redoLayout()` | `() => void` | Re-layout after selection change. **Required** after `select()` | HIGH - documented requirement |
+| `renderToSVG()` | `(pageNo?: number) => string` | Renders selected portion after `select()` + `redoLayout()` | HIGH - verified |
+| `getPageCount()` | `() => number` | Returns page count (will be 1 for sections with `breaks: 'none'`) | HIGH - verified |
 
-**Current code in `useVerovio.ts`:**
+**Source:** [Score content selection - Verovio Reference Book](https://book.verovio.org/interactive-notation/content-selection.html)
+
+## Feature 1: Horizontal Single-Line Rendering
+
+### How `breaks: 'none'` Works
+
+Setting `breaks: 'none'` forces Verovio to render all music on a single horizontal system with no line wraps:
+
 ```typescript
-// CURRENT: one giant page
 toolkit.setOptions({
-  pageHeight: 60000,
-  adjustPageHeight: true,
-  // ...
+  breaks: 'none',           // No system/page breaks - one continuous line
+  pageHeight: 100,          // Minimal, will expand to fit one system
+  adjustPageHeight: true,   // Shrink to actual content height
+  pageWidth: 100000,        // Large width to fit entire score
+  svgViewBox: true,
+  pageMarginTop: 0,
+  pageMarginBottom: 0,
+  scale: 40,               // Match existing RegularRenderer scale
+  header: 'none',
+  footer: 'none',
 });
-const svg = toolkit.renderToSVG(1);  // One call, one massive SVG
+
+toolkit.loadData(xml);
+const svg = toolkit.renderToSVG(1);  // Single page, entire score horizontally
 ```
 
-**Target approach:**
+**Warning from official docs:** "Be aware that this can produce very large files, regarding both the dimension of the SVG image and the actual file size."
+
+This warning is why section-based rendering is essential for performance.
+
+**Confidence:** HIGH - `breaks: 'none'` behavior is documented at [Layout options - Verovio Reference Book](https://book.verovio.org/advanced-topics/layout-options.html)
+
+### SVG Output Characteristics
+
+With `breaks: 'none'` + `adjustPageHeight: true`:
+
+| Attribute | Behavior |
+|-----------|----------|
+| SVG width | Expands to fit all measures horizontally |
+| SVG height | Shrinks to single-system height (staff height + margins) |
+| viewBox | Reflects actual content dimensions |
+| Coordinate system | Left-to-right horizontal, element IDs preserved |
+
+**Note on adjustPageWidth:** The `adjustPageWidth` option (to shrink width to content) is **not implemented** in Verovio as of v6.0.1. The SVG width will be the full `pageWidth` value. Workaround: either use a very large `pageWidth` or post-process the SVG viewBox.
+
+**Source:** [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - adjustPageWidth not yet implemented
+
+## Feature 2: Section-Based Rendering via `select()`
+
+### The `select()` Method
+
+Verovio's `select()` method enables rendering only a specific measure range. This is the key API for section-based lazy loading.
+
 ```typescript
-// NEW: paginated
-toolkit.setOptions({
-  pageHeight: 2970,       // Standard A4 height or tuned to viewport
-  adjustPageHeight: true,  // Shrink last page to content
-  // ...
-});
-const pageCount = toolkit.getPageCount();
-const pages: string[] = [];
-for (let i = 1; i <= pageCount; i++) {
-  pages.push(toolkit.renderToSVG(i));
+// Select measures 1-10
+toolkit.select({ measureRange: '1-10' });
+toolkit.redoLayout();  // REQUIRED after selection
+const sectionSvg = toolkit.renderToSVG(1);
+
+// Select measures 11-20
+toolkit.select({ measureRange: '11-20' });
+toolkit.redoLayout();
+const section2Svg = toolkit.renderToSVG(1);
+
+// Clear selection (render full score again)
+toolkit.select({});
+toolkit.redoLayout();
+```
+
+**measureRange syntax:**
+- `"1-10"` - Measures 1 through 10 (1-indexed by position, not measure number)
+- `"start-10"` - Beginning through measure 10
+- `"15-end"` - Measure 15 through end
+- `"5"` - Just measure 5
+
+**Critical:** `redoLayout()` must be called after `select()` before rendering.
+
+**Confidence:** HIGH - verified via:
+- [Score content selection documentation](https://book.verovio.org/interactive-notation/content-selection.html)
+- Verovio source code inspection (confirmed `select` method exists in `verovio.mjs`)
+- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) confirming implementation
+
+### Section Rendering Strategy
+
+For a score with N measures, divide into sections of M measures each:
+
+```typescript
+interface Section {
+  measureStart: number;  // 1-indexed
+  measureEnd: number;    // 1-indexed
+  svg: string | null;    // Rendered SVG or null if not yet rendered
+  width: number;         // SVG width in pixels (from viewBox)
+  offsetX: number;       // Cumulative X offset from previous sections
+}
+
+async function renderSection(
+  toolkit: VerovioToolkit,
+  measureStart: number,
+  measureEnd: number
+): Promise<{ svg: string; width: number }> {
+  toolkit.select({ measureRange: `${measureStart}-${measureEnd}` });
+  toolkit.redoLayout();
+  const svg = toolkit.renderToSVG(1);
+
+  // Extract width from SVG viewBox or width attribute
+  const widthMatch = svg.match(/viewBox="0 0 ([\d.]+)/);
+  const width = widthMatch ? parseFloat(widthMatch[1]) : 0;
+
+  return { svg, width };
 }
 ```
 
-**Key detail:** `renderToTimemap()` returns timing data for the ENTIRE score regardless of pagination. The timemap's `on` array contains note element IDs. Use `getPageWithElement(noteId)` to associate each timemap entry with its page number.
+**Section size recommendation:** 10-20 measures per section. This balances:
+- Lazy loading benefit (smaller sections = fewer measures loaded at once)
+- Rendering overhead (each section requires `select()` + `redoLayout()` + `renderToSVG()`)
+- SVG fragment count (too many tiny sections = DOM overhead)
 
-**Confidence:** HIGH -- `getPageCount()` and `renderToSVG(pageNo)` are documented at [book.verovio.org/toolkit-reference/toolkit-methods.html](https://book.verovio.org/toolkit-reference/toolkit-methods.html) and confirmed via web search against multiple official examples.
+### Type Definition Updates
 
-### Page Height Tuning
-
-The `pageHeight` option controls how Verovio distributes systems across pages:
-
-| Value | Effect | Use Case |
-|-------|--------|----------|
-| 2970 (default) | A4 page, ~3-4 systems per page | Standard multi-page |
-| ~1500-2000 | 2-3 systems per page | Finer granularity, smaller SVGs |
-| Match viewport height | ~1-2 systems visible at once | Pages map directly to viewport windows |
-
-**Recommendation:** Set `pageHeight` to approximately match the score region viewport height. This way each page roughly corresponds to one screenful of music, making the virtual scrolling optimization most effective.
-
-**Important:** Changing `pageHeight` after `loadData()` requires calling `redoLayout()` before rendering. Also, `getPageCount()` must be re-checked after any layout change because the page count may differ.
-
-**Confidence:** HIGH -- page height behavior documented at [book.verovio.org/toolkit-reference/toolkit-options.html](https://book.verovio.org/toolkit-reference/toolkit-options.html).
-
-## Feature 2: Event Position Caching
-
-### Why No Library Is Needed
-
-Event position caching is a data structure problem, not a library problem. The current code calls `getBoundingClientRect()` on every `g.system` and `g.note` element during event extraction in `getEventsFromVerovio()`. This happens once per render (when `svgString` changes), producing a `MusicalEventWithY[]` array that is already stored in React state.
-
-**Current flow (from `getEvents.ts`):**
-```
-SVG rendered -> DOM walk -> getBoundingClientRect() per system -> MusicalEventWithY[]
-```
-
-The problem is not repeated DOM queries during playback -- the current code already extracts positions once and stores them. The efficiency issue is that with paginated rendering, positions must be extracted per page, and pages may mount/unmount. A cache prevents re-extracting positions when a page re-mounts.
-
-### Recommended Cache Design
-
-Use a plain TypeScript `Map` inside a Zustand store. No external caching library.
-
-**Cache key:** Score content hash + scale + page width (anything that affects layout).
-**Cache value:** Per-page array of `MusicalEventWithY` with page-relative Y positions.
+Add `select()` to the existing type augmentation:
 
 ```typescript
-interface PageEventCache {
-  /** Key: `${contentHash}-${scale}-${pageWidth}` */
-  cacheKey: string;
-  /** Page number -> events on that page */
-  pages: Map<number, MusicalEventWithY[]>;
-  /** Total event count across all pages */
-  totalEvents: number;
-}
-```
-
-**Why not a library like `lru-cache` or `idb-keyval`:**
-- The cache holds a single score's worth of data (only one score loaded at a time)
-- No eviction policy needed -- cache invalidates on score/scale/width change
-- Data is small (event arrays are lightweight JS objects, not DOM elements)
-- IndexedDB persistence is unnecessary (positions are fast to re-extract if cache misses)
-
-**Confidence:** HIGH -- this is standard application state management. The Zustand store already exists (`syncStore.ts`). No new patterns needed.
-
-### Position Extraction Per Page
-
-With paginated rendering, `getBoundingClientRect()` only works on mounted (visible) pages. The strategy:
-
-1. When a page mounts (enters viewport), extract events for that page
-2. Store in cache keyed by page number
-3. When page unmounts, positions remain in cache
-4. On re-mount, read from cache (skip DOM queries)
-
-**Critical:** Y positions must be converted from page-local to score-global coordinates. Each page has a known height, so global Y = sum of preceding page heights + local Y within page.
-
-## Feature 3: Virtual Scrolling (Page Mounting/Unmounting)
-
-### Why NOT TanStack Virtual
-
-TanStack Virtual (`@tanstack/react-virtual` v3.13.18) was evaluated and rejected for this use case.
-
-| Factor | TanStack Virtual Expects | This App Has |
-|--------|--------------------------|--------------|
-| Scroll model | User-driven scroll container (`overflow: scroll`) | CSS `translateY()` camera driven by audio playback |
-| Scroll element | `getScrollElement()` returns a scrollable div | No scrollable div -- camera moves via `cameraRef.current.style.transform` |
-| Item positioning | Absolute positioning within scroll container | Pages stacked in normal flow, camera pans over them |
-| Interaction model | User scrolls to see content | Playback engine drives which content is visible |
-
-TanStack Virtual's `useVirtualizer` hook is designed around a scroll event loop. It monitors `scrollTop`/`scrollLeft` on a container and calculates which items are in the viewport. In this app, there is no scroll event -- the "viewport" is determined by the camera position, which is driven by audio playback timestamps.
-
-Using TanStack Virtual would require either:
-- Faking scroll events to match camera position (fragile, fighting the library)
-- Replacing the camera system with real scrolling (breaks Puppeteer frame capture, which needs deterministic positioning)
-
-Neither is desirable.
-
-**Confidence:** HIGH -- this conclusion is based on direct codebase analysis of `RegularRenderer.tsx` (camera at line 284-299) and the TanStack Virtual API docs at [tanstack.com/virtual/latest/docs/api/virtualizer](https://tanstack.com/virtual/latest/docs/api/virtualizer).
-
-### Recommended: Custom Page Visibility Manager
-
-A simple custom solution using the camera position to determine which pages to mount.
-
-**Concept:**
-```
-Camera Y position + viewport height -> visible Y range
-Page cumulative heights -> which pages overlap visible range
-Only those pages get their SVG mounted in DOM
-```
-
-**Implementation approach:**
-
-```typescript
-function getVisiblePages(
-  cameraY: number,
-  viewportHeight: number,
-  pageHeights: number[],
-  overscan: number = 1  // Extra pages above/below
-): Set<number> {
-  const visibleTop = cameraY;
-  const visibleBottom = cameraY + viewportHeight;
-  const visible = new Set<number>();
-
-  let cumHeight = 0;
-  for (let i = 0; i < pageHeights.length; i++) {
-    const pageTop = cumHeight;
-    const pageBottom = cumHeight + pageHeights[i];
-    cumHeight = pageBottom;
-
-    if (pageBottom >= visibleTop && pageTop <= visibleBottom) {
-      visible.add(i);
-    }
+// src/types/verovio-augments.d.ts
+declare module 'verovio/esm' {
+  export class VerovioToolkit {
+    // ... existing methods ...
+    select(selection: { measureRange?: string } | {}): boolean;
+    redoLayout(): void;
   }
-
-  // Add overscan pages
-  for (const pageIdx of [...visible]) {
-    for (let o = 1; o <= overscan; o++) {
-      if (pageIdx - o >= 0) visible.add(pageIdx - o);
-      if (pageIdx + o < pageHeights.length) visible.add(pageIdx + o);
-    }
-  }
-
-  return visible;
 }
 ```
 
-**Page component pattern:**
-```tsx
-// Each page is a fixed-height placeholder
-// SVG only mounts when page is "visible"
-function ScorePage({ pageIndex, svgString, height, isVisible }: Props) {
-  return (
-    <div style={{ height, width: '100%' }}>
-      {isVisible ? (
-        <div dangerouslySetInnerHTML={{ __html: svgString }} />
-      ) : null}
-    </div>
-  );
+**Confidence:** HIGH - `select()` exists in Verovio 6.0.1 (verified in source code)
+
+## Feature 3: Integration with Existing Infrastructure
+
+### Compatibility with Existing Patterns
+
+| Existing Pattern | SingleLineRenderer Compatibility | Notes |
+|------------------|----------------------------------|-------|
+| `renderToTimemap()` | Works across full score before selection | Call once on load, cache globally |
+| `getPageWithElement()` | Works but returns 1 for all (single page per section) | Use section boundaries instead |
+| Event extraction | Same approach, X-coordinates instead of Y | `getBoundingClientRect()` works identically |
+| Notehead animation | Same DOM targeting | `.note`, `.notehead` CSS classes preserved |
+| CSS transform camera | Change `translateY()` to `translateX()` | Same pattern, different axis |
+
+### Timemap and Event Extraction
+
+Verovio's `renderToTimemap()` returns timing for the **entire score** regardless of section selection. Strategy:
+
+1. Load full score, call `renderToTimemap()` once to get all events
+2. For each event, determine which section contains it (by measure range)
+3. Extract element positions when section mounts (same as paginated approach)
+
+```typescript
+interface HorizontalEvent extends MusicalEvent {
+  sectionIndex: number;   // Which section contains this event
+  localX: number;         // X within section SVG
+  globalX: number;        // X in overall score coordinate space
 }
 ```
 
-**Why this works better than a library:**
-- Camera position is already known (it drives the calculation)
-- Page heights are known from Verovio (deterministic layout)
-- No scroll events to monitor
-- Puppeteer frame capture works identically (camera sets position, visible pages render)
-- Under 30 lines of logic vs. importing a 20KB library
+### Measure Count Discovery
 
-**Confidence:** HIGH -- this is a straightforward calculation using data already available in the component.
+To determine section boundaries, first get total measure count:
 
-### Alternative Considered: IntersectionObserver
+```typescript
+// Load full score first to get measure count
+toolkit.loadData(xml);
+const mei = toolkit.getMEI();  // Get MEI to count measures
+// Or use renderToTimemap() and find max measure indices
 
-`IntersectionObserver` was evaluated as a potential mechanism for detecting which pages are visible.
+// Then create sections
+const sections = createSections(totalMeasures, measuresPerSection);
+```
 
-| Factor | IntersectionObserver | Custom Calculation |
-|--------|---------------------|-------------------|
-| Works with CSS transforms | Partially -- observes against viewport, not transformed position | Yes -- uses camera Y directly |
-| Synchronous | No -- callbacks are async | Yes -- pure function |
-| Puppeteer compatibility | Requires DOM to be painted | Works before paint (can determine visibility from camera position alone) |
-| Complexity | Moderate (observers per page, cleanup) | Low (one pure function) |
+**Alternative:** Use `renderToTimemap({ includeMeasures: true })` to get measure boundaries from timing data.
 
-**Verdict:** IntersectionObserver does not reliably detect visibility when the parent is moved via CSS `transform: translateY()`. The pages are not actually scrolling -- they are being panned by a transform on the wrapper. IntersectionObserver calculates intersection against the actual viewport, not the transformed position within a clipped container.
+## What NOT to Attempt
 
-**Confidence:** MEDIUM -- IntersectionObserver + CSS transforms interaction is well-documented as problematic, but specific behavior may vary. The custom calculation approach is safer and simpler.
+| Approach | Why Not | Use Instead |
+|----------|---------|-------------|
+| Render full horizontal score as single SVG | Memory explosion on long scores. Same problem as pre-v1.1 vertical layout. | Section-based rendering with `select()` |
+| Use `adjustPageWidth` option | Not implemented in Verovio 6.0.1 | Accept large pageWidth or parse/adjust viewBox |
+| Split single large SVG with DOM parsing | Fragile, loses proper scoping, element ID conflicts | Native `select()` + per-section render |
+| Render all sections upfront | Defeats lazy loading purpose | Render sections on demand as they enter viewport |
+| Use vertical virtual scrolling code directly | Camera axis is different (X vs Y) | Adapt visibility calculation for horizontal axis |
 
 ## Installation
 
 ```bash
 # No new dependencies needed.
-# All three features use existing Verovio API + React + Zustand.
+# Verovio 6.0.1 already installed with all required APIs.
 ```
 
-## Alternatives Considered
+## Verovio Options Summary
 
-| Recommended | Alternative | When Alternative Makes Sense |
-|-------------|-------------|------------------------------|
-| Custom page visibility (30 LOC) | `@tanstack/react-virtual` v3.13.18 | Only if the camera system is replaced with real scroll-based navigation. Would require redesigning the playback/camera architecture. |
-| Plain `Map` in Zustand for position cache | `lru-cache` or `idb-keyval` | Only if multiple scores are cached simultaneously (current app loads one score at a time) or if cache persistence across sessions is needed. |
-| Verovio `pageHeight: 2970` pagination | Custom SVG splitting (parse one large SVG, split by system) | Never -- Verovio's built-in pagination is more reliable and produces properly scoped SVG documents with correct `viewBox` attributes. |
-| `getPageWithElement()` for event-to-page mapping | Parse SVG DOM to find elements per page | Only as fallback if `getPageWithElement()` proves too slow for large scores (unlikely for typical music). |
+### RegularRenderer (Current - Vertical Paginated)
+```typescript
+{
+  breaks: 'auto',           // Let Verovio decide line breaks
+  pageHeight: 2970,         // A4 height, produces multiple pages
+  pageWidth: calculated,    // Based on container width
+  adjustPageHeight: true,
+  svgViewBox: true,
+  scale: 40,
+}
+```
 
-## What NOT to Use
+### SingleLineRenderer (New - Horizontal Sections)
+```typescript
+{
+  breaks: 'none',           // Force single horizontal system
+  pageHeight: 100,          // Minimal, will adjust to content
+  pageWidth: 100000,        // Large to accommodate horizontal extent
+  adjustPageHeight: true,
+  svgViewBox: true,
+  scale: 40,
+  pageMarginTop: 0,
+  pageMarginBottom: 0,
+}
+// Plus: use select({ measureRange: 'X-Y' }) for section rendering
+```
 
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| `@tanstack/react-virtual` | Camera uses CSS transforms, not scroll. Library fights the architecture. | Custom `getVisiblePages()` function |
-| `react-virtuoso` | Same scroll-based assumptions as TanStack Virtual | Custom solution |
-| `react-window` | Deprecated predecessor to TanStack Virtual. Same scroll-based model. | Custom solution |
-| `react-intersection-observer` | Does not work reliably with CSS `transform: translateY()` parent panning | Direct camera position calculation |
-| Splitting one large SVG string with regex/parsing | Fragile, loses viewBox, breaks element IDs | Verovio's native `renderToSVG(pageNo)` per-page rendering |
-| Web Worker for position extraction | `getBoundingClientRect()` requires DOM access, unavailable in workers | Extract on main thread, cache results |
+## Confidence Assessment
 
-## Version Compatibility
-
-| Existing Package | Efficiency Feature | Compatible | Notes |
-|------------------|--------------------|------------|-------|
-| `verovio@^6.0.1` | Paginated rendering | YES | `getPageCount()` + `renderToSVG(pageNo)` available since verovio 3.x |
-| `verovio@^6.0.1` | Event-page mapping | YES | `getPageWithElement()` available since verovio 3.x |
-| React 19 | Conditional page mounting | YES | Standard conditional rendering (`{isVisible && <div ... />}`) |
-| Zustand ^5.0.10 | Event position cache | YES | Standard store pattern |
-| Vite ^6.3.5 | No changes needed | YES | Build tooling unaffected by rendering strategy |
-
-## Integration Points with Existing Code
-
-### Files That Change
-
-| File | Change | Why |
-|------|--------|-----|
-| `src/hooks/useVerovio.ts` | Return `pages: string[]` + `pageCount` instead of single `svgString` | Core pagination change |
-| `src/renderers/RegularRenderer.tsx` | Render page components instead of single `dangerouslySetInnerHTML` div. Add `getVisiblePages()` calculation. | Virtual mounting |
-| `src/lib/getEvents.ts` | `getEventsFromVerovio()` accepts page-aware structure, returns events with page number and global Y | Per-page event extraction |
-| `src/lib/noteAnimation.ts` | `animateNoteheads()` and `resetNoteheadAnimations()` scope queries to mounted pages only | Performance (avoid querying unmounted DOM) |
-
-### Files That Do NOT Change
-
-| File | Why Unchanged |
-|------|---------------|
-| `src/lib/interpolation.ts` | Pure function on `MusicalEvent[]` -- no DOM dependency |
-| `src/lib/animationController.ts` | Puppeteer interface unchanged -- `setTimestamp()` still drives camera position |
-| `src/lib/verovioService.ts` | WASM singleton pattern unchanged |
-| `src/stores/syncStore.ts` | Sync anchor data model unchanged (may add cache slice) |
-| `src/lib/musicxmlValidation.ts` | Validation is pre-rendering, unaffected |
-
-## Performance Expectations
-
-| Metric | Current (Single 60K SVG) | After (Paginated + Virtual) | Basis |
-|--------|--------------------------|----------------------------|-------|
-| DOM nodes mounted | All systems, all notes | Only 2-4 pages worth | Virtual mounting |
-| Peak memory | 6GB+ for long scores | ~200-400MB (proportional to mounted pages) | Fewer SVG elements in DOM |
-| Initial render time | One large render | N smaller renders (can lazy-render offscreen) | Verovio renders per page |
-| Event extraction | One pass, entire SVG | Per-page, cached | Cache avoids re-extraction |
-| Camera update cost | Same | Same (CSS transform is unchanged) | Camera logic identical |
-
-**Note:** These are estimates based on the architectural change, not benchmarks. Actual numbers depend on score length and complexity.
+| Finding | Confidence | Basis |
+|---------|------------|-------|
+| `breaks: 'none'` produces single horizontal system | HIGH | Official documentation, explicit quote |
+| `select()` method exists and works for measure ranges | HIGH | Official docs + source code verification |
+| `redoLayout()` required after `select()` | HIGH | Official docs with code example |
+| `adjustPageWidth` not implemented | HIGH | GitHub issue confirms not available |
+| Section-based rendering viable | HIGH | Combination of verified APIs |
+| TypeScript types need update for `select()` | HIGH | Method exists in source, not in @types/verovio |
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Verovio Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) -- `getPageCount()`, `renderToSVG(pageNo)`, `getPageWithElement()`, `renderToTimemap()` API documentation
-- [Verovio Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) -- `pageHeight`, `adjustPageHeight`, `breaks` options
-- [Verovio Output Formats](https://book.verovio.org/toolkit-reference/output-formats.html) -- timemap format (tstamp, qstamp, on, off arrays)
-- [Verovio Score Navigation](https://book.verovio.org/first-steps/score-navigation.html) -- multi-page rendering pattern
-- [TanStack Virtual API Docs](https://tanstack.com/virtual/latest/docs/api/virtualizer) -- evaluated and rejected for this use case
-- Codebase analysis -- `RegularRenderer.tsx`, `useVerovio.ts`, `getEvents.ts`, `noteAnimation.ts`, `verovioService.ts`
+- [Layout options - Verovio Reference Book](https://book.verovio.org/advanced-topics/layout-options.html) - `breaks: 'none'` documentation
+- [Score content selection - Verovio Reference Book](https://book.verovio.org/interactive-notation/content-selection.html) - `select()` method with `measureRange`
+- [Toolkit methods - Verovio Reference Book](https://book.verovio.org/toolkit-reference/toolkit-methods.html) - API reference
+- [Toolkit options - Verovio Reference Book](https://book.verovio.org/toolkit-reference/toolkit-options.html) - All option documentation
+- Verovio source code (`node_modules/verovio/dist/verovio.mjs`) - Confirmed `select` method exists
 
 ### Secondary (MEDIUM confidence)
-- [TanStack Virtual npm](https://www.npmjs.com/package/@tanstack/react-virtual) -- v3.13.18 with React 19 compatibility notes (`useFlushSync: false`)
-- [react-intersection-observer npm](https://www.npmjs.com/package/react-intersection-observer) -- v10.0.2, evaluated for page visibility detection
-- [getBoundingClientRect performance](https://toruskit.com/blog/how-to-get-element-bounds-without-reflow/) -- caching strategies, reflow avoidance
-- [Verovio GitHub Issue #526](https://github.com/rism-digital/verovio/issues/526) -- `getPageWithElement()` tree traversal performance implications
+- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) - Partial score rendering feature confirmation
+- [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - `adjustPageWidth` not implemented confirmation
 
-### Tertiary (LOW confidence)
-- Performance estimates (DOM node reduction, memory savings) are architectural predictions, not benchmarks. Actual results must be measured during implementation.
+### Codebase References
+- `src/hooks/useVerovio.ts` - Current Verovio integration pattern
+- `src/types/verovio-augments.d.ts` - Type definitions to update
+- `src/lib/verovioService.ts` - Toolkit instantiation
 
 ---
-*Stack research for: Efficiency optimizations (paginated SVG, event caching, virtual scrolling)*
-*Researched: 2026-02-04*
+*Stack research for: SingleLineRenderer - Horizontal rendering with section-based output*
+*Researched: 2026-02-05*

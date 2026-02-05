@@ -1,217 +1,220 @@
 # Project Research Summary
 
-**Project:** Manuscript Renderer v1.1 Efficiency Milestone
-**Domain:** Memory and rendering efficiency for paginated music notation with virtual DOM
-**Researched:** 2026-02-04
+**Project:** Manuscript Renderer v1.2 - SingleLineRenderer
+**Domain:** Horizontal single-line music notation rendering with section-based virtualization
+**Researched:** 2026-02-05
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This research covers three interdependent efficiency optimizations for the Manuscript renderer: paginated SVG rendering, event position caching, and virtual scrolling. The current system renders entire scores as a single 60,000px-tall SVG, which causes 6GB+ memory consumption for long scores. The recommended approach uses Verovio's native pagination API to generate multiple smaller SVGs, caches extracted event data to avoid repeated DOM queries, and implements virtual scrolling to mount only visible pages in the DOM.
+The SingleLineRenderer adds horizontal single-system score rendering to Manuscript's existing vertical paginated renderer. This is a well-established pattern in music software (Soundslice, MuseScore, Yousician) where the playhead stays fixed while music scrolls beneath it like a teleprompter. The key insight is that most existing infrastructure (animation, event extraction, interpolation) can be reused with only axis changes.
 
-The critical finding is that **no new npm dependencies are required**. All three features can be implemented using the existing stack: Verovio's built-in `getPageCount()` and `renderToSVG(pageNo)` APIs, plain TypeScript Maps in Zustand for caching, and a custom page visibility manager driven by the existing CSS transform-based camera system. Virtual scroll libraries like TanStack Virtual are incompatible with this architecture because the camera uses CSS `translateY()` driven by audio playback, not user scrolling.
+Verovio fully supports this use case through `breaks: 'none'` configuration and section-based rendering via the `select({ measureRange })` API. No new dependencies are required. The critical architectural decision is section-based rendering: rendering the entire score as one massive horizontal SVG causes memory explosion on long scores, so we must render 10-20 measure chunks and lazy-load them based on camera position, exactly like the existing vertical virtual scrolling.
 
-The main architectural risk is the Puppeteer frame capture pipeline, which requires animated elements to be present in the DOM at screenshot time. Virtual scrolling must either be disabled in render mode (mount all pages) or implement synchronous page mounting before frame capture. The recommended approach is to disable virtual scrolling for Puppeteer, as memory usage is acceptable in a controlled server environment.
+The primary risks are coordinate axis confusion (mixing X/Y logic between renderers), section boundary visual seams (horizontal staff lines must appear unbroken), and section loading race conditions (DOM queries during mount/unmount transitions). All are preventable through systematic axis mapping, CSS overlap strategies, and mount guards. Overall this is a low-risk addition that leverages proven patterns from RegularRenderer in a new orientation.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**Core Recommendation: No New Libraries**
-
-All three efficiency features use existing Verovio API + React + Zustand + TypeScript. This is not a compromise but the correct architectural approach.
+Verovio 6.0.1 (already installed) provides all required functionality for horizontal single-line rendering. No new dependencies needed.
 
 **Core technologies:**
-- **Verovio ^6.0.1**: Provides `getPageCount()`, `renderToSVG(pageNo)`, `getPageWithElement(xmlId)`, `renderToTimemap()` — all pagination APIs are built-in
-- **React 19**: Conditional rendering for page mounting/unmounting — standard React patterns, no special libraries needed
-- **Zustand ^5.0.10**: Event position cache store — plain `Map<string, CachedPosition>` in existing store structure
-- **TypeScript ~5.9.3**: Type safety for cache interfaces and page metadata structures
+- **Verovio `breaks: 'none'`**: Forces single horizontal system with no line wrapping (verified in official docs)
+- **Verovio `select({ measureRange })`**: Renders specific measure ranges as independent sections (verified in official docs + source code)
+- **Verovio `redoLayout()`**: Required after selection changes to recompute layout (documented requirement)
 
-**Stack changes (Verovio options only):**
-- `pageHeight` option: `60000` → `2970` (A4) or viewport-height tuned
-- Rendering strategy: `renderToSVG(1)` → `for (i = 1..getPageCount()) renderToSVG(i)`
-- Camera coordinate system: single SVG Y → page-relative Y + cumulative offsets
+**Configuration for horizontal layout:**
+```typescript
+{
+  breaks: 'none',           // Single horizontal system
+  pageWidth: 100000,        // Large width to accommodate score extent
+  pageHeight: 100,          // Minimal height, adjusts to content
+  adjustPageHeight: true,   // Shrink to single-system height
+  pageMarginTop: 0,         // Remove margins for clean layout
+  pageMarginBottom: 0,
+}
+```
 
-**What NOT to use:**
-- `@tanstack/react-virtual`: Designed for scroll-driven lists; camera uses CSS transforms, not scrolling
-- `react-window`/`react-virtuoso`: Same scroll-based assumptions, incompatible with CSS transform camera
-- `lru-cache`/`idb-keyval`: Only one score loaded at a time; simple Map suffices
-- Regex-based SVG splitting: Verovio's native pagination is more reliable
+**Section rendering workflow:**
+1. Divide score into 10-20 measure sections
+2. For each section: `toolkit.select({ measureRange: '1-10' })` → `toolkit.redoLayout()` → `toolkit.renderToSVG(1)`
+3. Extract section widths from SVG viewBox
+4. Mount/unmount sections based on camera visibility
+
+**Confidence:** HIGH - All APIs verified in Verovio official documentation and source code inspection.
 
 ### Expected Features
 
-**Must have (table stakes):**
-- **Paginated Verovio rendering** — Switch from `pageHeight: 60000` to standard page dimensions; render N smaller SVGs instead of one monolith
-- **Page-aware viewport** — Mount only visible pages in DOM (typically 3-4 pages); placeholder divs maintain scroll positions for unmounted pages
-- **Event position cache** — Pre-compute all event data (timing, Y positions, page assignment) once after render; cache in Zustand store keyed by layout parameters
-- **Camera scrolling (page-aware)** — Translate event Y to page+offset; scroll container positions correct page; camera still uses single `translateY()` but in a global coordinate space
-- **Puppeteer compatibility** — `setTimestamp()` must mount required pages before screenshot; simplest approach is to disable virtual scrolling in render mode
-- **Notehead animation (scoped)** — Animations must work on whichever page is visible; query DOM within mounted page scope
+Based on analysis of Soundslice, MuseScore, and guitar learning apps, the industry has converged on a fixed-playhead pattern for play-along scenarios.
 
-**Should have (competitive):**
-- **Predictive page pre-rendering** — Pre-render next page SVG when playback approaches page boundary; eliminates flash of empty content
-- **Event-to-page index** — O(1) lookup: given event ID or timestamp, return page number; built from `renderToTimemap()` + `getPageWithElement()`
-- **SVG string cache** — Cache rendered page SVG strings so re-mounting does not call `renderToSVG()` again; invalidate on score load or options change
-- **Smooth page transitions** — Mount current + next page for seamless visual continuity during playback; users should not perceive page boundaries
+**Must have (table stakes):**
+- Horizontal continuous layout - Defines the renderer type
+- Fixed-center playhead - Active note stays at predictable location (center of viewport)
+- Smooth scrolling - CSS transform transitions, no jumpy discrete scrolling
+- Score scrolls beneath playhead - Music moves left as playback progresses
+- Notehead animation - Reuse existing `animateNoteheads()` from RegularRenderer
+- Score region bounds - Control viewport position/size
+
+**Should have (performance critical):**
+- Section-based rendering - Required for long scores, same reason as vertical virtual scrolling
+- Lazy section loading - Only mount visible + buffer sections
+- Seamless section transitions - Section boundaries must be invisible to users
 
 **Defer (v2+):**
-- **Web Worker rendering** — Offload `renderToSVG()` calls to background thread; significant complexity, defer unless profiling shows main thread blocking
-- **Render-mode page sequencer** — Optimize Puppeteer to mount only the needed page per frame instead of all pages; complex but reduces Puppeteer memory
+- Adaptive scroll speed - Faster through rests, slower through dense passages
+- Lookahead preview - Fade upcoming measures for anticipation
+- Fixed-left playhead option - Alternative to center (Soundslice offers this)
+- Measure number overlay
+- Horizontal zoom control
+
+**Critical UX insight:** Users are extremely sensitive to scroll jitter and page jumps in horizontal mode. MuseScore users consistently complain about "music redraws too late" causing "notes entirely lost" at page boundaries. This makes seamless section rendering the key differentiator.
 
 ### Architecture Approach
 
-The architecture refactor is an incremental three-layer approach: (1) paginated rendering establishes the multi-page foundation, (2) event caching decouples data extraction from DOM mounting state, and (3) virtual scrolling conditionally mounts pages based on camera position.
+Most animation and event infrastructure can be reused between RegularRenderer (vertical) and SingleLineRenderer (horizontal). The core differences are rendering mode (Verovio options) and camera direction (translateX vs translateY).
 
 **Major components:**
-1. **useVerovio (MODIFIED)** — Return `svgPages: string[]` + `pageCount` instead of single `svgString`; loop `renderToSVG(1..N)` with standard `pageHeight`
-2. **EventCache (NEW)** — Extract events once per score load; cache timing data (from `renderToTimemap()`) + page assignments (from `getPageWithElement()`) + Y positions (from `getBoundingClientRect()` when page mounts); persist across re-renders; invalidate on layout parameter changes
-3. **PageManager / useVirtualPages (NEW)** — Custom visibility manager using camera Y position + page heights to determine which pages to mount; NOT IntersectionObserver (async callbacks incompatible with Puppeteer); NOT TanStack Virtual (scroll-based model incompatible with CSS transform camera)
-4. **RegularRenderer (MODIFIED)** — Render page slot components instead of single `dangerouslySetInnerHTML`; coordinate camera with page offsets; ensure animation targets are mounted; disable virtual scrolling in render mode
+1. **useSingleLineVerovio hook** - Section-based rendering with `breaks: 'none'` + measure range selection. Returns `{ sections, sectionWidths, sectionOffsets, toolkit }` (analogous to `{ svgPages, pageHeights, pageOffsets }` in RegularRenderer).
+2. **SingleLineRenderer component** - Horizontal camera with center-tracking, section-based virtual scrolling. Reuses `animateNoteheads()`, `interpolateTimestamps()`, transport controls.
+3. **singleLineEventStore** - Event cache with `globalX` and `sectionIndex` instead of `globalY` and `pageIndex`. Same lookup patterns.
 
-**Key patterns:**
-- **Paginated rendering via Verovio native API**: Use `toolkit.getPageCount()` + `renderToSVG(pageNum)` instead of single giant SVG; each page is independent with its own `viewBox`
-- **Event cache with page mapping**: Two-phase extraction: (1) timing data from `renderToTimemap()` (no DOM), (2) page assignment from `getPageWithElement()`, (3) Y positions from DOM when page mounts; cache keyed by `{contentHash, scale, pageWidth}`
-- **Custom page visibility manager**: Pure function `getVisiblePages(cameraY, viewportHeight, pageHeights, overscan)` returns which pages to mount; camera position is known (drives the calculation), page heights are deterministic from Verovio; no scroll events to monitor
+**Reusable without changes:**
+- `noteAnimation.ts` - Targets SVG elements by ID, layout-agnostic
+- `interpolation.ts` - Pure function on event arrays
+- `animationController.ts` - Queries DOM by element ID
+- `ScoreRegionEditor.tsx` - Viewport bounds work for horizontal too
+
+**Reusable with axis modifications:**
+- `getEvents.ts` - Add `computeSectionPositions()` for horizontal X extraction
+- `eventStore.ts` - Extend interface or create parallel store with `globalX`/`sectionIndex`
+
+**Camera system comparison:**
+- RegularRenderer: `translateY(-(targetY - viewportHeight/2))` with system-boundary snapping
+- SingleLineRenderer: `translateX(-(targetX - viewportWidth*0.3))` with continuous tracking and asymmetric centering (30% from left edge for lookahead)
+
+**Virtual scrolling analogy:**
+- Vertical: Mount 3-4 pages near camera Y, placeholder divs for unmounted pages
+- Horizontal: Mount 3 sections near camera X, placeholder divs for unmounted sections
 
 ### Critical Pitfalls
 
-1. **Animation targets unmounted SVG elements** — `animateNoteheads()` queries by ID; if page not mounted, querySelector returns null and animation fails silently; Puppeteer `setTimestamp()` iterates ALL events to compute animation states, failing for unmounted pages → **Solution:** In render mode, disable virtual scrolling (mount all pages); in preview mode, camera position ensures current page is mounted; for Puppeteer, check page mounting before animation
+1. **Coordinate axis confusion** - Systematically mixing Y/X throughout code causes camera to move perpendicular to score flow. Prevention: Create explicit type aliases (`HorizontalOffset` vs `VerticalOffset`), build mapping table (globalY→globalX, translateY→translateX, pageHeights→sectionWidths), code review grep for 'Y', 'height', 'top', 'vertical' in SingleLine code.
 
-2. **getBoundingClientRect coordinate space mismatch** — Current system operates in single SVG coordinate space; pagination introduces N coordinate spaces (one per page); mixing page-local and global Y causes camera jumps → **Solution:** Compute TWO Y values per event: `pageLocalY` (within page SVG) and `globalY` (cumulative, accounting for preceding page heights); camera uses `globalY`; pre-compute page height offsets once
+2. **Section boundary visual seams** - Hairline gaps or misaligned staff lines at section joins break the seamless illusion. Prevention: Use `display: flex` with `gap: 0` (not inline-block), render sections with 1-2 measure overlap then clip-path, extend staff lines 1-2px beyond boundaries, round section offsets to whole pixels, test with colored background.
 
-3. **Puppeteer frame capture misses unmounted content** — `setTimestamp()` manipulates DOM elements; with virtual scrolling, unmounted pages have no elements to style; `scrollHeight` reflects only mounted pages, not full score height → **Solution:** Disable virtual scrolling in render mode (`isRenderMode === true`); mount all pages for Puppeteer; replace `scrollHeight` with pre-computed total height from page offset table
+3. **Event position cache invalidation** - Switching between renderers uses wrong axis data if cache doesn't include renderer type. Prevention: Include `rendererType: 'regular' | 'singleLine'` in cache key, invalidate position cache on renderer switch (timing cache can persist).
 
-4. **Event ID consistency across re-renders** — Current system uses sequential IDs `evt-${index}`; pagination changing event order orphans sync anchors → **Solution:** Use Verovio's MEI element IDs as event identifiers instead of sequential indices; sync anchors key on MEI IDs; requires one-time migration for existing anchor data
+4. **Section loading race conditions** - DOM queries during mount/unmount transitions return null intermittently. Prevention: Mount-before-query guards (`if (!sectionRefs.current[sectionIndex]) return`), animation section locking (prevent unmounting sections with active animations), synchronous section mounting for Puppeteer seek (`flushSync`), camera lookahead (keep 1 section ahead mounted).
 
-5. **Cache invalidation on layout changes** — Cached positions assume stable layout; changing scale/pageWidth/breaks invalidates positions → **Solution:** Key cache on `{xmlHash, pageWidth, scale, breaks}`; separate timing cache (stable) from spatial cache (layout-dependent); invalidate spatial cache on layout changes only
+5. **Horizontal camera centering math** - Direct Y→X translation produces symmetric centering, but horizontal reading is asymmetric (need to see upcoming notes). Prevention: Use asymmetric centering `targetX - viewportWidth * 0.3` (30% from left, not 50%), clamp at score edges to avoid empty space, make configurable for tuning.
 
 ## Implications for Roadmap
 
-Based on research, the pitfalls reveal a strict dependency chain:
+Based on research, suggested phase structure follows dependency chain from rendering to camera to virtualization.
 
-### Phase 1: Paginated SVG Rendering
-**Rationale:** Foundation for all efficiency work; establishes multi-page SVG output, global coordinate system, and page height offset table. Without this, virtual scrolling has no pages to virtualize and event caching has no page assignments.
+### Phase 1: Single-Line Verovio Hook
+**Rationale:** Foundation layer - must render horizontal sections before building camera/events on top.
+**Delivers:** `useSingleLineVerovio.ts` hook that takes MusicXML and returns horizontal sections array.
+**Addresses:** Horizontal continuous layout (table stakes feature).
+**Avoids:** Verovio configuration pitfall by verifying `breaks: 'none'` + `select()` behavior upfront.
+**Research flag:** Skip research-phase - Verovio APIs are well-documented (book.verovio.org).
 
-**Delivers:** N smaller SVG strings instead of one massive SVG; each page can be inserted/removed independently; total DOM size unchanged (all pages mounted in Phase 1).
+### Phase 2: Single-Line Event Extraction
+**Rationale:** Events must be extracted with horizontal coordinates before camera can track them.
+**Delivers:** `computeSectionPositions()` function, `SingleLineEvent` type with `globalX`/`sectionIndex`.
+**Uses:** Section containers from Phase 1 for DOM measurement.
+**Addresses:** Event extraction (required for animation).
+**Avoids:** Coordinate axis confusion via explicit X-axis naming, cache invalidation via renderer-type key.
+**Research flag:** Skip research-phase - Pattern proven in vertical case, just different axis.
 
-**Addresses:**
-- Paginated Verovio rendering (table stakes)
-- Camera scrolling on paginated layout (table stakes)
-- SVG string cache (differentiator)
+### Phase 3: SingleLineRenderer Core
+**Rationale:** Camera and animation working end-to-end validates the approach before adding virtualization complexity.
+**Delivers:** `SingleLineRenderer.tsx` with horizontal camera, notehead animation, smooth scrolling.
+**Implements:** Camera system with asymmetric centering (30/70 split for lookahead).
+**Addresses:** Fixed-center playhead, smooth scrolling, notehead animation (all table stakes).
+**Avoids:** Camera centering math pitfall by using asymmetric formula from start.
+**Research flag:** Skip research-phase - Reuses proven RegularRenderer patterns on different axis.
 
-**Avoids:**
-- Pitfall 2: getBoundingClientRect coordinate space mismatch — Phase 1 establishes global coordinate system before virtual scrolling complicates it
-- Pitfall 7: renderToSVG performance — Pre-render all pages at load time, store SVG strings; no on-demand rendering during scroll
+### Phase 4: Section Virtualization
+**Rationale:** Performance optimization for long scores. Add after core functionality working to avoid premature optimization.
+**Delivers:** Section visibility calculation, mount/unmount based on camera position, placeholder divs.
+**Implements:** Horizontal virtual scrolling (analogous to vertical page virtualization).
+**Addresses:** Lazy section loading (performance-critical feature).
+**Avoids:** Section loading race conditions via mount guards and section locking, section boundary seams via overlap strategy.
+**Research flag:** Consider research-phase - Seamless section transitions are critical and may need experimentation.
 
-**Stack elements:** Verovio `getPageCount()`, `renderToSVG(pageNo)`, `pageHeight` option
-
-**Architecture components:** useVerovio returns `svgPages[]`, RegularRenderer renders page slots, camera uses global Y coordinates
-
-### Phase 2: Event Position Caching
-**Rationale:** Decouples event extraction from DOM mounting state; produces stable event dataset with page assignments that virtual scrolling depends on. Cache enables re-mounting pages without re-extracting positions.
-
-**Delivers:** All events extracted once per score load; timing data from `renderToTimemap()`, page assignments from `getPageWithElement()`, Y positions cached with page-relative and global coordinates.
-
-**Addresses:**
-- Event position cache (table stakes)
-- Event-to-page index (differentiator)
-
-**Avoids:**
-- Pitfall 4: Event ID consistency — Switch to MEI element IDs for stable event identifiers
-- Pitfall 5: Cache invalidation — Key cache on layout parameters for automatic invalidation
-
-**Implements:** EventCache module, two-phase extraction (timing + spatial), cache invalidation strategy
-
-### Phase 3: Virtual Scrolling (Page Mounting/Unmounting)
-**Rationale:** Performance optimization that reduces DOM size by mounting only visible pages; depends on paginated rendering and cached events.
-
-**Delivers:** Only 3-4 pages in DOM at any time; memory usage bounded regardless of score length; smooth scrolling maintained via virtual container pattern.
-
-**Addresses:**
-- Page-aware viewport (table stakes)
-- Notehead animation on paginated pages (table stakes)
-- Puppeteer frame capture compatibility (table stakes)
-- Predictive page pre-rendering (differentiator)
-- Smooth page transitions (differentiator)
-
-**Avoids:**
-- Pitfall 1: Animation targets unmounted elements — Render mode disables virtual scrolling; preview mode mounts pages via camera position
-- Pitfall 3: Puppeteer misses unmounted content — Virtual scrolling disabled in render mode
-- Pitfall 6: Page boundary camera transitions — Virtual container pattern keeps camera smooth
-
-**Uses:** Custom `getVisiblePages()` function (NOT IntersectionObserver, NOT TanStack Virtual); camera position + page heights determine visibility
-
-### Phase 4: OSMD Cleanup (Parallel with Phases 1-3)
-**Rationale:** Independent of efficiency features; removes dead code and dependencies. Can happen at any point or in parallel.
-
-**Delivers:** Remove unused OSMD imports, delete OSMD-specific code paths, clean up dead configuration.
+### Phase 5: Integration and Polish
+**Rationale:** Final integration after all core functionality validated.
+**Delivers:** Renderer type toggle in App.tsx, score region bounds for horizontal, border handling.
+**Addresses:** Complete feature set for v1.2 milestone.
+**Research flag:** Skip research-phase - Integration patterns established.
 
 ### Phase Ordering Rationale
 
-- **Sequential dependency**: Phase 2 requires Phase 1 (needs page assignments), Phase 3 requires Phase 2 (needs cached events with page numbers)
-- **Risk management**: Each phase is independently valuable; if Phase 3 encounters issues, Phase 1+2 already deliver performance benefits (smaller SVGs, no redundant extraction)
-- **Testing boundaries**: Clear verification at each phase: Phase 1 = visual correctness + camera works; Phase 2 = cache invalidates properly; Phase 3 = Puppeteer frames match baseline
-- **Architectural hygiene**: Establish coordinate system (Phase 1) before adding caching (Phase 2) before adding complexity of conditional mounting (Phase 3)
+- **Foundation-first:** Hook → Events → Renderer → Virtualization follows natural dependency chain. Can't build camera without events, can't extract events without rendered sections.
+- **Validation before optimization:** Core functionality (Phases 1-3) working end-to-end before adding virtualization complexity. This allows early testing with short scores and validates the approach.
+- **Reuse maximization:** Existing infrastructure (noteAnimation.ts, interpolation.ts) reused immediately in Phase 3, minimizing new code surface area.
+- **Risk mitigation:** Critical pitfalls (axis confusion, cache invalidation, camera math) addressed in early phases before compounding with virtualization complexity.
 
 ### Research Flags
 
 **Phases likely needing deeper research during planning:**
-- **Phase 3 (Virtual Scrolling):** Puppeteer integration is complex; custom page visibility manager pattern is new; may need spike/prototype to validate approach
+- **Phase 4 (Section Virtualization):** Seamless section transitions are the key differentiator. May need experimentation with overlap amounts, clipping strategies, and visual testing across browsers. Consider `/gsd:research-phase` to investigate section boundary rendering techniques.
 
 **Phases with standard patterns (skip research-phase):**
-- **Phase 1 (Paginated Rendering):** Verovio pagination API is well-documented; coordinate system math is straightforward
-- **Phase 2 (Event Caching):** Standard application state management with Zustand; cache invalidation pattern is established
-- **Phase 4 (OSMD Cleanup):** Code deletion, no new patterns
+- **Phase 1 (Verovio Hook):** Verovio APIs well-documented, section-based rendering is straightforward.
+- **Phase 2 (Event Extraction):** Proven pattern from RegularRenderer, just different axis.
+- **Phase 3 (Renderer Core):** Camera and animation patterns established, horizontal is variant.
+- **Phase 5 (Integration):** Standard React component integration.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | **HIGH** | Verovio pagination API verified from official docs; no speculative libraries; all features use existing stack |
-| Features | **MEDIUM-HIGH** | Table stakes features are clear; differentiators are validated but lower priority; anti-features analysis is thorough |
-| Architecture | **HIGH** | Built on verified codebase analysis + official Verovio docs + MDN Intersection Observer spec; integration points thoroughly mapped |
-| Pitfalls | **HIGH** | Based on direct codebase analysis (RegularRenderer.tsx, getEvents.ts, noteAnimation.ts, animationController.ts); Puppeteer + virtual scroll interaction is well-understood |
+| Stack | HIGH | All Verovio APIs verified in official documentation and source code. No new dependencies needed. |
+| Features | HIGH | Multiple authoritative sources (Soundslice official docs, MuseScore forums) agree on fixed-playhead pattern. Table stakes clearly defined. |
+| Architecture | HIGH | Existing RegularRenderer provides proven reference implementation. Component reuse strategy validated through code analysis. |
+| Pitfalls | HIGH | Based on actual codebase experience (Phase 8 virtual scrolling lessons), verified DOM/CSS behavior, MuseScore community pain points. |
 
-**Overall confidence:** **HIGH**
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Actual performance numbers:** Research provides architectural estimates (200-400MB memory after virtualization vs. 6GB+ current) but these must be measured during implementation with representative scores
-- **renderToSVG() timing:** Assumption that pre-rendering all pages at load is acceptable (<2s for typical scores); profile with real content to validate
-- **Page height proxy accuracy:** Using SVG `viewBox` height to avoid mounting pages for measurement — needs validation that viewBox dimensions match rendered pixel height at given scale
-- **IntersectionObserver vs. custom visibility:** Research recommends custom calculation over IntersectionObserver due to CSS transform interactions; validate this conclusion with prototype
-- **MEI element ID stability:** Assumption that Verovio's MEI element IDs are stable across re-renders with same XML — verify that element IDs do not change when only layout options change
+- **Section overlap amount:** Research suggests 1-2 measure overlap for seamless staff lines, but exact amount may need tuning during implementation. Test with various scores to find optimal overlap.
+
+- **Asymmetric camera centering ratio:** Recommended 30% from left edge (0.3 factor) based on reading direction, but optimal value should be validated with user testing. Make configurable for easy adjustment.
+
+- **Section size (measures per section):** Suggested 10-20 measures balances lazy loading benefit vs rendering overhead, but optimal size may vary with score density. Monitor performance during implementation.
+
+- **Maximum score width limits:** Browsers have SVG width limits (~32767px in some). Long scores may hit this even with sectioning if sections are very wide. Validate with stress testing (100+ measure sections).
+
+All gaps are tuning parameters rather than fundamental unknowns. Implementation can proceed with conservative defaults and adjust based on testing.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Verovio Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) — `getPageCount()`, `renderToSVG(pageNo)`, `getPageWithElement()`, `renderToTimemap()` API documentation
-- [Verovio Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) — `pageHeight`, `adjustPageHeight`, `breaks` options; pageHeight range 100-60000
-- [Verovio Output Formats](https://book.verovio.org/toolkit-reference/output-formats.html) — timemap format (tstamp, qstamp, on, off arrays)
-- [Verovio Score Navigation](https://book.verovio.org/first-steps/score-navigation.html) — multi-page rendering pattern
-- [Verovio Layout Options](https://book.verovio.org/first-steps/layout-options.html) — Page dimension configuration, `redoLayout()` usage
-- [Verovio Controlling SVG Output](https://book.verovio.org/advanced-topics/controlling-the-svg-output.html) — scale, page dimensions, SVG viewBox behavior
-- [TanStack Virtual API Docs](https://tanstack.com/virtual/latest/docs/api/virtualizer) — evaluated and rejected for scroll-model mismatch
-- [MDN Intersection Observer API](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API) — viewport detection, evaluated as secondary option
-- Codebase analysis: `RegularRenderer.tsx`, `useVerovio.ts`, `getEvents.ts`, `noteAnimation.ts`, `animationController.ts`, `verovioService.ts`, `interpolation.ts`, `SyncEditor.tsx` — all files read and analyzed
+- [Verovio Layout Options](https://book.verovio.org/advanced-topics/layout-options.html) - `breaks: 'none'` documentation
+- [Verovio Score Content Selection](https://book.verovio.org/interactive-notation/content-selection.html) - `select()` API with `measureRange`
+- [Verovio Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) - All option documentation
+- [Verovio Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) - `select()`, `redoLayout()`, `renderToSVG()` methods
+- Verovio source code (`node_modules/verovio/dist/verovio.mjs`) - Confirmed `select` method exists
+- [Soundslice Playhead Scrolling Options](https://www.soundslice.com/help/en/player/advanced/116/playhead-scrolling-options/) - Fixed-playhead pattern documentation
+- [Soundslice Horizontal Layout](https://www.soundslice.com/help/en/player/advanced/115/horizontal-layout/) - Horizontal scrollable mode
+- Existing codebase analysis - RegularRenderer.tsx, useVerovio.ts, getEvents.ts, noteAnimation.ts, eventStore.ts
 
 ### Secondary (MEDIUM confidence)
-- [TanStack Virtual npm](https://www.npmjs.com/package/@tanstack/react-virtual) — v3.13.18 compatibility notes
-- [Flat.io Editor Performance Update](https://blog.flat.io/flat-music-notation-software-lightning-fast-editor-update/) — Confirms separation of formatting/painting pattern; virtual page rendering approach
-- [getBoundingClientRect performance](https://toruskit.com/blog/how-to-get-element-bounds-without-reflow/) — caching strategies, reflow avoidance
-- [Verovio GitHub Issue #526](https://github.com/rism-digital/verovio/issues/526) — `getPageWithElement()` tree traversal performance implications
-- [Improving SVG Runtime Performance (CodePen)](https://codepen.io/tigt/post/improving-svg-rendering-performance) — SVG DOM node count impact on memory and reflow
-- [DOM Size Optimization (DebugBear)](https://www.debugbear.com/blog/excessive-dom-size) — Browser threshold recommendations for DOM nodes
-- [Virtual Scrolling Patterns (LogRocket)](https://blog.logrocket.com/virtual-scrolling-core-principles-and-basic-implementation-in-react/) — IntersectionObserver implementation patterns
-- [Puppeteer SVG Rendering Issue #791](https://github.com/puppeteer/puppeteer/issues/791) — Known delay requirement between SVG insertion and screenshot
-- [Paul Irish: What Forces Layout/Reflow](https://gist.github.com/paulirish/5d52fb081b3570c81e3a) — Forced reflow triggers including getBoundingClientRect
-- [SitePoint: DOM to SVG Coordinates](https://www.sitepoint.com/how-to-translate-from-dom-to-svg-coordinates-and-back-again/) — getScreenCTM() for coordinate translation
+- [MuseScore Ticker-like Scrolling](https://musescore.org/en/node/109511) - Community requests for fixed-cursor scrolling
+- [MuseScore Smooth Pan](https://musescore.org/en/node/339030) - Smooth scrolling implementation discussion
+- [MuseScore Playback Cursor Sync Issues](https://musescore.org/en/node/276676) - User pain points with page jumps
+- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) - Partial score rendering feature confirmation
+- [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - `adjustPageWidth` not implemented
+- Previous phase research - `.planning/phases/08-virtual-scrolling/08-RESEARCH.md`, `.planning/phases/06-paginated-rendering-and-camera/06-RESEARCH.md`
 
 ### Tertiary (LOW confidence)
-- Performance estimates (DOM node reduction 6GB → 200-400MB, renderToSVG timing) are architectural predictions, not benchmarks — must be measured during implementation
-- [Canvas Virtualization (gedge.ca)](https://gedge.ca/blog/2024-11-03-virtualizing-the-canvas/) — Guitar tab renderer progression; confirms SVG DOM scaling issues but canvas approach not applicable here
-- [110K DOM Nodes with SVGs (Medium)](https://mmomtchev.medium.com/updating-a-dom-tree-with-110k-nodes-while-scrolling-with-animated-svgs-88d962661405) — Real-world case study, different domain
+- [Yousician Guitar App](https://yousician.com/guitar) - Scrolling fretboard pattern validation
+- [Teleprompter Scroll Modes](https://www.speakflow.com/docs/scroll-modes-flow-auto) - Smooth scroll UX patterns
 
 ---
-*Research completed: 2026-02-04*
+*Research completed: 2026-02-05*
 *Ready for roadmap: yes*

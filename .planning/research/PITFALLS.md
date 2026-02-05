@@ -1,292 +1,401 @@
-# Pitfalls Research: Efficiency Features
+# Pitfalls: SingleLineRenderer with Horizontal Lazy Loading
 
-**Domain:** Paginated SVG rendering, virtual scrolling, and event caching for music notation renderer
-**Researched:** 2026-02-04
-**Confidence:** HIGH (based on direct codebase analysis, verified Verovio API documentation, and established SVG/DOM behavior)
+**Domain:** Horizontal single-line music score rendering with section-based lazy loading
+**Researched:** 2026-02-05
+**Confidence:** HIGH (based on codebase analysis, previous phase lessons, and verified DOM/CSS behavior)
 
 ## Critical Pitfalls
 
-### Pitfall 1: Animation Targets Unmounted SVG Elements
+Mistakes that cause rewrites or major functionality failures.
+
+### Pitfall 1: Coordinate System Axis Confusion
 
 **What goes wrong:**
-The current `noteAnimation.ts` selects elements by ID: `root.querySelector('#${CSS.escape(id)}')`. With virtual scrolling, only pages near the camera viewport are mounted in the DOM. When the animation loop fires `animateNoteheads()` for an event whose SVG page is not mounted, the `querySelector` returns `null` and the animation silently fails. The notehead never scales or colors. Worse, in Puppeteer render mode, `setTimestamp()` iterates ALL events up to the current time (lines 525-605 of RegularRenderer.tsx) to calculate interpolated animation states. If any of those events reference unmounted elements, the frame capture produces incorrect output -- notes that should show mid-exit-animation appear unanimated.
+The existing RegularRenderer uses Y-axis coordinates throughout: `globalY` for event positions, `translateY` for camera movement, `pageOffsets` for cumulative vertical positions. The SingleLineRenderer uses X-axis coordinates: `globalX` for event positions, `translateX` for camera movement, `sectionOffsets` for cumulative horizontal positions. Mixing these coordinate systems causes the camera to move vertically when it should move horizontally, or vice versa.
+
+Specific failure modes:
+- Event extraction code uses `getBoundingClientRect().top` instead of `.left`
+- Camera `applyCamera` function applies `translateY` instead of `translateX`
+- System-center calculations use `height / 2` instead of `width / 2`
+- Section offset accumulation uses heights instead of widths
 
 **Why it happens:**
-Virtual scrolling unmounts DOM elements to save memory. The animation system was designed under the assumption that every note in the score is always present in the DOM. This assumption is embedded in every animation path: real-time playback (`animateSync`), frame-accurate rendering (`setTimestamp`), and the animation controller (`animationController.ts` lines 45-56).
+Copy-paste from RegularRenderer without systematic axis substitution. The RegularRenderer has 15+ locations that reference Y-axis concepts (see `getEvents.ts` lines 83-88, 114-119; `RegularRenderer.tsx` lines 298-313, 383-385). Each must be translated to X-axis equivalents.
 
-**How to avoid:**
-1. Before animating, check if the target page is mounted. If not, mount it temporarily for animation and Puppeteer capture.
-2. For real-time playback, the camera position already determines which page is visible. Only animate events on the currently visible page. Events on other pages do not need animation since they are not on screen.
-3. For Puppeteer frame capture, the `setTimestamp` function must ensure ALL pages containing events in the current animation window are mounted before iterating. This means the Puppeteer path needs a "mount page for capture" step that the real-time playback path does not.
-4. Store the page number for each event in the event cache (see Pitfall 5). Use `toolkit.getPageWithElement(svgId)` during event extraction to build this mapping once.
+**Prevention:**
+1. Create explicit type aliases: `type HorizontalOffset = number` vs `type VerticalOffset = number` to catch mixing at compile time
+2. Use coordinate-agnostic naming in shared code: `primaryAxis` / `secondaryAxis` instead of `x` / `y`
+3. Build a mapping table before implementation:
+   | RegularRenderer | SingleLineRenderer |
+   |-----------------|-------------------|
+   | globalY | globalX |
+   | translateY | translateX |
+   | pageHeights | sectionWidths |
+   | pageOffsets | sectionOffsets |
+   | scrollHeight | scrollWidth |
+   | top/bottom | left/right |
+   | height | width |
+4. Code review checklist: grep for `Y`, `height`, `top`, `bottom`, `vertical` in SingleLineRenderer code
 
-**Warning signs:**
-- Notes near page boundaries occasionally fail to animate
-- Puppeteer frames show noteheads at default color/scale when they should be in exit-animation
-- `animateNoteheads` logs no errors but produces no visual change
-- Animation works perfectly when virtual scrolling is disabled (all pages mounted)
+**Detection:**
+- Camera moves perpendicular to score flow
+- Events cluster at wrong axis positions
+- Section boundary calculations produce NaN or Infinity
+- getBoundingClientRect returns unexpected small values (measuring wrong dimension)
 
-**Phase to address:**
-Virtual Scrolling phase -- must be solved as part of the virtual scroll implementation, not deferred.
+**Phase to address:** SingleLineRenderer MVP (Phase 1) -- must be correct from the start
 
 ---
 
-### Pitfall 2: getBoundingClientRect Returns Wrong Values for Unmounted Pages
+### Pitfall 2: Section Boundary Visual Seams
 
 **What goes wrong:**
-The current `getEventsFromVerovio()` uses `getBoundingClientRect()` on `g.system` elements to compute Y positions (lines 110-116 of `getEvents.ts`). With paginated rendering, each page is a separate SVG element. If pages are stacked vertically in the DOM, `getBoundingClientRect()` returns viewport-relative coordinates that include the cumulative height of all preceding pages. If virtual scrolling unmounts earlier pages, the coordinate space changes -- a system that was at Y=15000 in the single-SVG model is now at Y=500 relative to its own page's SVG root. The camera system (`applyCamera` in RegularRenderer.tsx, line 284) uses these Y values to compute `translateY`. Mixing coordinate spaces causes the camera to jump to wrong positions or oscillate between pages.
+When rendering music as multiple horizontal sections that are stitched together, visible seams appear at section boundaries:
+- Hairline gaps (1-2px white lines between sections)
+- Overlapping content (notes cut off or duplicated at boundaries)
+- Misaligned staff lines that don't connect across sections
+- Color/style discontinuities at section edges
+
+These seams are especially visible because horizontal single-line layouts have continuous staff lines that must appear unbroken.
 
 **Why it happens:**
-The current code operates in a single coordinate space: one SVG, one `containerRect`, all positions relative to the container top. Pagination introduces N coordinate spaces (one per page). The Y position of a system is no longer a global value -- it is page-local. Without explicit coordinate translation between page-local and global, all spatial queries break.
+1. **SVG inline stacking gaps:** Same issue as vertical pagination (see previous PITFALLS.md Pitfall 1) but horizontal -- `display: inline-block` elements have whitespace gaps
+2. **Verovio section rendering:** Each section's SVG is independent. Staff lines start/end at section edges with natural termination caps
+3. **Subpixel rendering:** Section widths may not align to pixel boundaries, causing anti-aliasing artifacts at joins
+4. **CSS transform rounding:** `translateX` values may round differently than section positions
 
-**How to avoid:**
-1. During event extraction, compute TWO Y values per event: `pageLocalY` (position within the page SVG) and `globalY` (cumulative position accounting for page height offsets).
-2. The `globalY` for an event on page N equals: `sum(heights of pages 1..N-1) + pageLocalY`.
-3. Pre-compute page height offsets once during extraction: render each page, measure its SVG height (from Verovio's output dimensions, not DOM measurement), and build a cumulative offset table.
-4. The camera system should use `globalY` for positioning, same as today.
-5. Do NOT call `getBoundingClientRect()` on elements across multiple pages in the same batch -- each page must be measured independently relative to its own SVG root, then translated to global coordinates.
-6. Verovio's `svgViewBox` option embeds explicit dimensions in the SVG element. Use these SVG-space values rather than DOM measurements where possible, since they are deterministic and not affected by mounting state.
+**Prevention:**
+1. **Eliminate inline gaps:** Set `font-size: 0; line-height: 0;` on section container OR use `display: flex` with `gap: 0`
+2. **Overlap strategy:** Render sections with 1-2 measure overlap, then use CSS `clip-path` to hide the redundant portion. This ensures staff lines connect properly.
+3. **Staff line extension:** Post-process SVG to extend horizontal staff lines (`g.staff > path`) by 1-2px beyond section boundaries
+4. **Integer pixel positioning:** Round section offsets to whole pixels: `Math.round(sectionOffset)` before setting positions
+5. **Test with colored background:** Seams are invisible on white backgrounds. Test with `background: red` behind sections to reveal gaps.
 
-**Warning signs:**
-- Camera jumps to top of score when crossing a page boundary
-- Y positions cluster into distinct groups separated by large gaps (page height boundaries)
-- Camera works correctly on first page but breaks on subsequent pages
-- `getBoundingClientRect().top` returns negative values or values larger than expected
+**Detection:**
+- Thin vertical lines visible between sections during playback
+- Staff lines appear to "jump" at section boundaries
+- Zooming in reveals misaligned notation at boundaries
+- Different appearance in Chrome vs Firefox (subpixel rendering differs)
 
-**Phase to address:**
-Paginated Rendering phase -- must establish the global coordinate system before virtual scrolling is added.
+**Phase to address:** Section-based Rendering (Phase 2) -- cannot be deferred; seams break the "seamless" requirement
 
 ---
 
-### Pitfall 3: Puppeteer Frame Capture Misses Unmounted Content
+### Pitfall 3: Event Position Cache Invalidation with Horizontal Layout
 
 **What goes wrong:**
-The current Puppeteer integration (`setTimestamp` in RegularRenderer.tsx, lines 483-609) directly manipulates SVG DOM elements to set precise animation states for each frame. It iterates through all events from the start of the score up to the current timestamp, applying inline styles to every note that should be in an active animation state. With virtual scrolling, notes on unmounted pages have no DOM elements to style. The captured frame shows blank space or default styling where animated notes should appear.
+The existing event cache (from Phase 7) stores `globalY` and `pageIndex` per event. For SingleLineRenderer, events need `globalX` and `sectionIndex`. If the cache structure is reused without modification:
+- Events have Y positions but camera needs X positions
+- `pageIndex` lookup returns wrong section
+- Cache invalidation keys (xml, scale, width) don't include horizontal-specific parameters
 
-Additionally, the camera system (`applyCamera`) uses `osmdRef.current.scrollHeight` (line 285) to compute the maximum scroll range. With virtual scrolling, `scrollHeight` reflects only the currently mounted pages, not the full score height. This produces incorrect camera clamping -- the camera cannot scroll to the end of the score.
+Worse: if a shared cache is used for both renderers, switching between RegularRenderer and SingleLineRenderer produces incorrect positions because the cache contains data for the wrong axis.
 
 **Why it happens:**
-Puppeteer's frame-by-frame rendering model assumes the entire score is in the DOM at all times. The `setTimestamp` function does a full backward scan to compute all active animations (line 525: `for (let i = 0; i <= currentIndex; i++)`). Virtual scrolling fundamentally breaks this assumption.
+The event cache was designed for a single renderer type. Adding a second renderer with a different coordinate system requires either separate caches or a unified cache structure that accommodates both.
 
-**How to avoid:**
-1. For Puppeteer render mode (`isRenderMode === true`), disable virtual scrolling entirely. Mount all pages. The memory cost is acceptable because Puppeteer runs in a controlled server environment with more available memory than a browser tab.
-2. Alternatively, implement a "render mode mount strategy" that mounts only the pages containing events in the current animation window (current event plus all events still in their exit-animation phase). This is more complex but uses less memory.
-3. Replace `osmdRef.current.scrollHeight` with a pre-computed total score height derived from the page height offset table (see Pitfall 2). This value is deterministic and does not depend on mounting state.
-4. The `animationController.ts` also needs the same fix -- it calls `clearNoteColor` and `applyNoteColor` on the container element (lines 45-56, 61-72), which fails silently for unmounted notes.
+**Prevention:**
+1. **Renderer-type cache key:** Include `rendererType: 'regular' | 'singleLine'` in cache key
+2. **Dual-position events:** Store BOTH `globalX` and `globalY` for all events (extraction computes both)
+3. **Separate extraction paths:** `computeEventPositions()` for vertical, `computeEventPositionsHorizontal()` for horizontal
+4. **Invalidate on renderer switch:** When user switches renderer type, invalidate the position cache (timing cache can persist)
 
-**Warning signs:**
-- Rendered video has blank frames or frames with missing note highlights
-- Camera stops scrolling partway through the score in render mode
-- `scrollHeight` is smaller than expected when only a few pages are mounted
-- Frame capture tests pass when virtual scrolling is disabled but fail when enabled
+**Detection:**
+- Camera scrolls to wrong positions after switching renderers
+- Events appear at incorrect horizontal positions
+- `sectionIndex` is always 0 or always the last section
+- Cache hit but animation targets wrong elements
 
-**Phase to address:**
-Virtual Scrolling phase -- but can be mitigated early by making render mode bypass virtual scrolling entirely.
+**Phase to address:** Event Integration (Phase 3) -- before camera/animation integration
 
 ---
 
-### Pitfall 4: Event ID Consistency Across Page Re-renders
+### Pitfall 4: Section Loading Race Conditions
 
 **What goes wrong:**
-The current system generates event IDs sequentially during extraction: `id: 'evt-${index}'` (line 90 of `getEvents.ts`). Sync anchors reference these IDs: `syncAnchors.has('evt-0')` for the first event, `syncAnchors.has('evt-N')` for the last. If pagination changes which events are extracted (e.g., re-rendering with different page dimensions produces different line breaks, which changes the number of systems and potentially the number of events if Verovio merges tied notes differently), the event IDs shift and all existing sync anchors become orphaned. The user's carefully-set timing anchors point to events that no longer exist.
+With lazy section loading, sections mount/unmount as the camera moves. If animation or camera code runs during a section transition:
+- `querySelector` returns null for a note that exists but is on an unmounting section
+- Camera position calculation references a section that is not yet mounted
+- Animation starts on a section, section unmounts mid-animation, cleanup fails
+- Multiple `requestAnimationFrame` callbacks fire for the same section transition
+
+These race conditions cause intermittent failures -- works 95% of the time but occasionally breaks during fast playback or seeking.
 
 **Why it happens:**
-The event ID scheme is index-based, not content-based. Any change to the event list order or count invalidates all anchor references. This is already a latent bug with the current system (changing score scale re-extracts events and could shift IDs), but pagination makes it more likely because page layout is more sensitive to dimensions.
+DOM mounting is asynchronous (React batches state updates). Camera position calculation is synchronous. The timing between "decide section X should be visible" and "section X is actually in DOM" creates a window where queries fail.
 
-**How to avoid:**
-1. Use Verovio's stable MEI element IDs as the event identifier instead of sequential indices. The `svgIds` array already contains these MEI IDs (e.g., `note-L14F1` or a UUID-style MEI ID). Use the first svgId as the event ID.
-2. When building the sync anchor map, key on MEI element IDs rather than `evt-N` indices.
-3. This requires a migration step for existing sync anchor data. If users have saved anchors keyed on `evt-N`, provide a one-time migration that maps old indices to MEI IDs based on order.
-4. Alternatively, maintain a stable mapping from `evt-N` to MEI IDs and regenerate it on each extraction. But this is fragile -- the MEI-ID approach is fundamentally better.
+**Prevention:**
+1. **Mount-before-query guard:** Before querying DOM elements on a section, verify the section is mounted: `if (!sectionRefs.current[sectionIndex]) return`
+2. **Animation section locking:** When animating notes on a section, add that section to a "locked" set that prevents unmounting until animation completes
+3. **Synchronous section mounting for seek:** When `setTimestamp` is called (Puppeteer frame capture), mount required sections synchronously before animation (disable React batching with `flushSync`)
+4. **Camera lookahead:** Keep 1 section ahead of camera position mounted to prevent unmounting sections that are about to become visible
+5. **Debounce visibility changes:** Don't unmount a section until it has been off-screen for N frames (hysteresis)
 
-**Warning signs:**
-- Changing score scale or window size causes sync anchors to "forget" their positions
-- First and last anchor checks fail after re-render (`hasFirstAnchor` / `hasLastAnchor` in RegularRenderer.tsx line 382-383)
-- `interpolateTimestamps` produces timestamps of 0 for all events (because no anchors match)
+**Detection:**
+- Console errors about null elements during fast playback
+- Animation occasionally fails to apply during seeking
+- Puppeteer frame capture has inconsistent results
+- Works perfectly at 30fps but fails at 60fps
 
-**Phase to address:**
-Event Caching phase -- when building the persistent event cache, switch to MEI-based IDs. This is a prerequisite for stable caching.
+**Phase to address:** Lazy Section Loading (Phase 4) -- the core of the lazy loading implementation
 
 ---
 
-### Pitfall 5: Cache Invalidation on Layout Changes
+### Pitfall 5: Horizontal Camera Centering Math
 
 **What goes wrong:**
-Caching event positions (Y coordinates, page assignments) assumes the layout is stable. But Verovio layout depends on: `pageWidth`, `scale`, `breaks` mode, and container dimensions. Changing score scale (via the scale slider) or resizing the score region triggers a Verovio re-render with different options. If the cached event positions are not invalidated, the camera scrolls to stale Y positions, notes animate on wrong pages, and page assignments are incorrect.
+The RegularRenderer keeps the active note vertically centered in the viewport:
+```typescript
+let cameraY = targetY - viewportHeight / 2;
+```
+The SingleLineRenderer should keep the active note horizontally centered:
+```typescript
+let cameraX = targetX - viewportWidth / 2;
+```
 
-The current code re-extracts events on every SVG change (RegularRenderer.tsx lines 234-238, inside the `useEffect` that watches `svgString`). Caching introduces the risk that this re-extraction is skipped when it should not be.
+But "centered" for horizontal layouts has different UX implications:
+- Horizontal viewport is typically wider than it is tall, so "center" is farther from edges
+- Music reads left-to-right, so user needs to see MORE upcoming notes (to the right) than past notes
+- At score start, centering pulls content right, showing empty space on the left
+- At score end, centering pushes content left, showing empty space on the right
+
+Simply changing Y to X produces awkward positioning that doesn't match user expectations for horizontal scroll.
 
 **Why it happens:**
-Developers cache positions for performance but forget the many triggers that invalidate them. Score scale changes, window resize, score region resize, and even font loading can alter SVG layout and thus element positions. The invalidation surface is larger than it appears.
+The vertical centering formula is symmetric (equal space above/below). Horizontal music reading is asymmetric (need to see what's coming more than what passed). Direct axis translation produces mathematically correct but UX-incorrect behavior.
 
-**How to avoid:**
-1. Key the cache on a hash of rendering parameters: `{xml content hash, pageWidth, scale, breaks}`. Any change to these parameters invalidates the entire cache.
-2. Separate the cache into two layers: (a) timing data (beatOnset, svgIds, event IDs) which is stable across layout changes, and (b) spatial data (Y positions, page assignments) which changes with layout.
-3. On scale/resize, invalidate only the spatial cache and re-compute positions. The timing data (which requires `renderToTimemap()`) can be preserved if the XML content has not changed.
-4. Never cache `getBoundingClientRect()` results -- these are viewport-relative and change with scroll position. Cache SVG-space values instead (using `getBBox()` or computing from SVG attributes).
+**Prevention:**
+1. **Asymmetric centering:** Use `let cameraX = targetX - viewportWidth * 0.3` (30% from left, not 50%)
+2. **Lookahead bias:** Center position considers not just current note but also the next N notes' positions
+3. **Edge clamping:** At score start, clamp so left edge aligns with viewport left (no empty space). At score end, clamp so right edge aligns with viewport right.
+4. **User testing:** The exact centering ratio (0.3, 0.4, etc.) should be validated with real users watching playback
+5. **Make configurable:** Expose `cameraHorizontalBias: number` prop for future tuning
 
-**Warning signs:**
-- Camera scrolls to wrong position after changing score scale
-- Events report page 1 when they should be on page 3 after a resize
-- "Works on first render, breaks after changing settings" pattern
-- Memory usage stays flat (cache never rebuilds) even after layout changes
+**Detection:**
+- Active note feels "too far right" during playback
+- User cannot see upcoming notes before they play
+- Awkward empty space at beginning/end of score
+- Camera feels "jerky" because it is trying to center on rapidly changing positions
 
-**Phase to address:**
-Event Caching phase -- cache design must include invalidation strategy from the start.
+**Phase to address:** Horizontal Camera (Phase 2 or 3) -- affects core user experience
 
 ---
 
-### Pitfall 6: Page Boundary Camera Transitions
+### Pitfall 6: Verovio Single-Line Mode Configuration
 
 **What goes wrong:**
-The current camera system is smooth because all systems exist in one continuous coordinate space. With pagination, there is an implicit gap between the last system on page N and the first system on page N+1 (the gap between where one SVG ends and the next begins in the DOM). If virtual scrolling swaps pages, the camera `translateY` value must account for which pages are currently mounted and their positions. A naive implementation produces visible jumps: the score appears to teleport when crossing a page boundary because the DOM structure changes (one page unmounts, another mounts) and the `translateY` offset does not compensate.
+Verovio does not have a native "single line" mode. The assumption that setting `breaks: 'none'` or a very wide `pageWidth` produces a single horizontal line may be incorrect. Verovio may:
+- Still insert page breaks at arbitrary points
+- Produce a single extremely wide page that causes browser rendering issues (>32767px SVG width limit in some browsers)
+- Change system layout in unexpected ways when pageWidth exceeds typical values
+- Lose measure alignment when all measures are on one line
 
 **Why it happens:**
-The current `applyCamera` function (RegularRenderer.tsx line 284) applies a single `translateY` to the camera div, assuming a continuous layout. With multiple page elements, the `translateY` must either: (a) translate within a container that stacks all page SVGs vertically, or (b) translate the viewport position and swap which page SVG is visible. Both approaches can cause frame-of-jank during page transitions.
+Verovio is optimized for traditional page-based layouts. Single-line rendering is an unusual use case that may not be well-tested or may have undocumented limitations.
 
-**How to avoid:**
-1. Use a container div that represents the full score height (even if pages inside it are virtualized). Set the container height to the sum of all page heights. Position each mounted page absolutely at its correct Y offset within this container. The camera `translateY` then works against this full-height container, exactly like the current single-SVG approach.
-2. This is the "virtual scroll window" pattern: the outer container is the full height, the inner mounted content is positioned absolutely, and the viewport clips to the visible region.
-3. When a page mounts or unmounts, it should not affect the positions of other pages. Each page has a fixed Y offset in the virtual container.
-4. The camera `transition: transform 200ms ease-out` (RegularRenderer.tsx line 718) may cause visible artifacts during page transitions. Consider temporarily disabling the transition when crossing page boundaries, or ensure the page swap happens at least one frame before the camera starts moving to the new position.
+**Prevention:**
+1. **Research Verovio capabilities first:** Before implementing, verify:
+   - Does `breaks: 'none'` truly prevent all breaks?
+   - What is the maximum practical pageWidth?
+   - Does Verovio support measure-range rendering (render measures 1-10 as one section)?
+2. **Section-based workaround:** If true single-line is impossible, render multiple sections and stitch them (the planned approach). Each section is a manageable width.
+3. **Test with long scores:** Try rendering a 100+ measure score as a single line. Measure SVG width, browser rendering performance, and memory usage.
+4. **Fallback strategy:** If Verovio cannot produce usable single-line output, consider alternative approaches (multiple narrow pages rotated and stitched).
 
-**Warning signs:**
-- Score "jumps" visibly when the camera crosses from one page to the next
-- Brief flash of blank space during page transitions
-- Camera overshoots or undershoots at page boundaries
-- The `transition: transform 200ms ease-out` on the camera div causes a delayed jump
+**Detection:**
+- Unexpected line breaks in "single line" mode
+- Browser freezes or crashes on long scores
+- SVG width exceeds browser limits (clipping occurs)
+- Verovio throws errors or warnings about pageWidth values
 
-**Phase to address:**
-Virtual Scrolling phase -- the virtual scroll container structure must be designed to support smooth camera transitions.
+**Phase to address:** Research/Spike phase before implementation -- must validate Verovio capabilities
 
 ---
 
-### Pitfall 7: renderToSVG Per Page Is Not Free
+### Pitfall 7: Animation State Persistence Across Section Mount/Unmount
 
 **What goes wrong:**
-Developers assume that since Verovio already computed the layout during `loadData()`, calling `renderToSVG(pageNum)` for each page is nearly instant. In reality, each `renderToSVG()` call generates the full SVG string for that page, including all glyph definitions in `<defs>`, coordinate calculations, and string serialization. For a 50-page score, rendering all pages sequentially takes 500ms-2s, blocking the UI thread. If pages are rendered on-demand during scrolling, each page swap can cause a 30-100ms jank spike.
+Notes have animation state (current scale, current color) that evolves over time (entry -> hold -> exit). When a section unmounts:
+- Animation timeouts scheduled for that section's notes continue to fire (but DOM elements are gone)
+- When the section remounts, notes appear at default state instead of their correct mid-animation state
+- The `resetNoteheadAnimations` function cannot reset unmounted notes
+
+This is the horizontal analog of Pitfall 1 from the virtual scrolling PITFALLS.md, but with additional complexity because sections may unmount and remount multiple times during a single playback.
 
 **Why it happens:**
-Verovio's `renderToSVG()` is implemented in C++ (WASM) and does real work -- it is not just returning a cached string. The SVG generation involves iterating the page's musical elements and serializing them to SVG markup. For pages with dense notation (many notes, chords, articulations), this is non-trivial.
+Animation state is stored in the DOM (inline styles) not in JavaScript state. When DOM elements are removed, the state is lost. The existing `noteAnimation.ts` assumes DOM elements persist for the duration of the animation.
 
-**How to avoid:**
-1. Pre-render all pages during the initial load phase, not on-demand during scrolling. Store the SVG strings in an array. The memory cost of SVG strings is much smaller than mounted DOM trees.
-2. Profile the actual render time for representative scores. If pre-rendering all pages takes too long (>2s), render pages in batches using `requestIdleCallback` or `setTimeout(0)` to avoid blocking the UI.
-3. For virtual scrolling, pre-render SVG strings but lazily mount them into the DOM. Mounting a pre-rendered SVG string via `innerHTML` is fast (~1-5ms). The expensive part is the `renderToSVG()` call, not the DOM insertion.
-4. Consider using a Web Worker for pre-rendering if profiling shows it is a bottleneck. Verovio can run in a Web Worker since it is pure WASM with no DOM dependency for rendering.
+**Prevention:**
+1. **JS-side animation state:** Track animation state in a JavaScript Map: `Map<eventId, { startTime: number, phase: 'entry'|'hold'|'exit' }>`
+2. **State restoration on mount:** When a section mounts, iterate its events and apply the correct animation state based on current time vs event startTime
+3. **Timeout cleanup:** When a section unmounts, cancel all pending animation timeouts for events on that section. Store timeout IDs in a `Map<sectionIndex, number[]>`.
+4. **Stateless animation calculation:** For Puppeteer frame capture, calculate animation state mathematically from timestamp rather than relying on DOM state (already partially implemented in `setTimestamp`)
 
-**Warning signs:**
-- Visible pause or jank when scrolling to a new page
-- Frame drops during fast scrolling through a long score
-- Initial load takes significantly longer after switching to paginated rendering
-- `renderToSVG()` calls appearing in performance profiles during scroll handlers
+**Detection:**
+- Notes flash to default state when section remounts
+- Memory leaks from orphaned timeouts (increasing memory over playback)
+- Console errors from timeouts firing on missing elements
+- Animation appears to "restart" when scrolling back to earlier sections
 
-**Phase to address:**
-Paginated Rendering phase -- pre-render strategy must be part of the initial implementation.
+**Phase to address:** Section Animation Integration (Phase 4 or 5)
 
 ---
 
-## Technical Debt Patterns
+## Moderate Pitfalls
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Disable virtual scrolling in render mode | Avoids complex Puppeteer/mounting interactions | Full DOM for long scores in Puppeteer; memory usage remains high for video export | Acceptable as v1.1 approach -- Puppeteer runs in controlled environment; optimize later if export OOMs |
-| Keep sequential event IDs (`evt-N`) instead of MEI IDs | No sync anchor migration needed | Anchor instability on layout changes (same latent bug as v1.0) | Acceptable ONLY if score scale cannot change after anchors are set; otherwise, fix the ID scheme |
-| Render all pages at load instead of lazy | Simple implementation, no on-demand rendering jank | Higher initial load time (500ms-2s for long scores) | Acceptable for v1.1 -- most scores are under 20 pages; optimize with lazy rendering in v1.2 if profiling shows need |
-| Use DOM `getBoundingClientRect` for Y positions instead of SVG-space math | Easier to implement, matches current code pattern | Forced reflow on each measurement, viewport-dependent values | Acceptable for initial implementation; migrate to SVG-space if profiling shows layout thrashing |
-| Single-page rendering for short scores (< 5 pages) | Skip pagination complexity for most user scores | Two code paths to maintain | Never -- always use the paginated path, even for short scores, to avoid divergent behavior |
+Mistakes that cause delays or technical debt but don't break core functionality.
 
-## Integration Gotchas
+### Pitfall 8: Section Width Calculation Mismatch
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| Verovio `getPageWithElement()` | Calling after `loadData()` but before `renderToSVG()` -- returns 0 | Call only after at least one `renderToSVG()` to ensure layout is computed |
-| Verovio `renderToTimemap()` | Assuming it includes page numbers | It does NOT include page numbers. Use `getPageWithElement(id)` to map events to pages after timemap extraction |
-| Camera + virtual scroll | Using `scrollHeight` of the container to compute max scroll | `scrollHeight` reflects mounted content only. Use pre-computed total height from page dimensions |
-| `dangerouslySetInnerHTML` + page swaps | Re-rendering the container div causes React to re-create the entire subtree | Use separate div elements per page with independent `dangerouslySetInnerHTML`, so mounting/unmounting one page does not affect others |
-| Event extraction + pagination | Running `querySelectorAll('g.system')` on the container when only some pages are mounted | Run extraction on ALL pages (mount them temporarily if needed), then cache results. Do not extract incrementally per-page -- the event list must be complete for interpolation to work |
-| `resetNoteheadAnimations()` | Calling on the container div when some pages are unmounted -- silently skips unmounted notes, leaving stale animation state | Track which notes have active animations in JS state (not just DOM). On reset, clear the JS state. On mount, apply correct state from JS. |
+**What goes wrong:**
+Section widths must be calculated before sections are rendered (for offset table) but Verovio's output width depends on the actual content. If estimated widths don't match rendered widths:
+- Sections overlap or have gaps
+- Camera calculations are incorrect
+- Event globalX positions are wrong
 
-## Performance Traps
+**Why it happens:**
+Unlike vertical pages where height is somewhat predictable (N systems * system height), horizontal section widths depend on note density, which varies dramatically between sections.
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Rendering all pages to DOM at once | 6GB+ memory, same as current single-SVG approach | Virtual scrolling: mount only visible pages + 1 buffer page on each side | Immediately on long scores (50+ pages) |
-| Calling `renderToSVG()` during scroll handler | 30-100ms jank per page, dropped frames, unresponsive UI | Pre-render all page SVG strings at load time, store in array, mount from cache | Any score with more than 3 pages during fast scrolling |
-| `getBoundingClientRect()` in a loop across many elements | Forced synchronous reflow per call if DOM is dirty | Batch all reads before any writes. Or compute positions from SVG attributes (no reflow needed) | Scores with 500+ events during event extraction |
-| Re-extracting events on every scroll position change | CPU spike, dropped frames, battery drain on laptops | Extract once, cache with layout-parameter key. Re-extract only when layout changes (scale, resize, new XML) | Any score during normal playback |
-| Mounting/unmounting pages causes full subtree reconciliation in React | React re-runs effects, refs reset, event listeners lost | Use `display: none` instead of conditional rendering for page visibility. Or use vanilla DOM manipulation (not React) for the page container | Scores with 10+ pages during fast scrolling |
+**Prevention:**
+1. **Post-render width extraction:** Parse actual width from SVG `width` attribute after rendering (same approach as vertical pages)
+2. **Section offset recalculation:** After all sections render, rebuild offset table from actual widths
+3. **Avoid fixed-width assumptions:** Don't assume all sections have the same width
+4. **Allow section overlap:** If sections must be a minimum width for content, accept some empty space at section ends
 
-## UX Pitfalls
+**Detection:**
+- Visible gaps between sections
+- Events appear at wrong horizontal positions relative to notes
+- Camera doesn't reach the end of the score
 
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Visible blank space during page transitions | User sees white gap flash between systems during playback | Pre-mount buffer pages (1 above, 1 below viewport) so content is ready before camera reaches it |
-| Score jumps on page boundary during playback | Jarring visual disruption breaks the "smooth scrolling video" aesthetic | Use the virtual-container pattern (Pitfall 6) so page boundaries are invisible to the camera |
-| Long initial load for pre-rendering all pages | User stares at loading spinner for 2+ seconds on very long scores | Show progressive rendering: display first page immediately, render remaining pages in background, show progress indicator |
-| Animation flicker when page mounts with stale state | Note appears at default state for one frame before animation applies | Apply correct animation state to page SVG BEFORE mounting it into the visible DOM (prepare off-screen, then swap in) |
-| Camera transition CSS interferes with page swaps | `transition: transform 200ms ease-out` causes camera to animate to wrong position during rapid page changes | Disable transition during page boundary crossings, or always keep enough pages mounted that the transition does not reveal unmounted content |
+**Phase to address:** Section-based Rendering (Phase 2)
 
-## "Looks Done But Isn't" Checklist
+---
 
-- [ ] **Paginated Rendering:** Score renders in pages -- verify that event extraction still produces the SAME number of events as the single-SVG approach. Pagination should not change what notes exist, only where they are positioned.
-- [ ] **Event Cache:** Events are cached -- verify cache invalidates when score scale changes. Change scale, play from beginning, confirm camera scrolls to correct positions on every system.
-- [ ] **Virtual Scrolling:** Only visible pages mounted -- verify Puppeteer frame capture still produces correct output. Render a 10-second clip and compare frame-by-frame with non-virtualized rendering.
-- [ ] **Page Boundary Camera:** Camera crosses page boundaries -- verify no visual jump or blank flash at any page boundary. Record playback and inspect frame-by-frame at every boundary.
-- [ ] **Sync Anchors:** User-set anchors survive re-render -- change score scale after setting anchors, verify all anchors still map to correct notes and playback timing is unchanged.
-- [ ] **Animation at Page Edges:** Notes at the last system of a page and first system of next page -- verify both animate correctly during playback. These are the elements most likely to be on an unmounted buffer page.
-- [ ] **Full-Note Coloring:** `colorFullNote` option colors stems and accidentals -- verify this works across page boundaries when the note group spans mounted/unmounted pages (unlikely but possible for very wide chords with accidentals).
-- [ ] **Reset After Page Change:** User plays to page 5, hits Reset -- verify camera returns to page 1, all noteheads on all pages are reset (not just mounted ones). The `resetNoteheadAnimations` function must handle unmounted pages.
+### Pitfall 9: Shared Code Divergence Between Renderers
+
+**What goes wrong:**
+RegularRenderer and SingleLineRenderer share significant logic: event extraction, animation, color styling, transport controls. As SingleLineRenderer is developed, the shared code may:
+- Accumulate renderer-specific branches (`if (isHorizontal) { ... }`)
+- Diverge so fixes in one renderer don't propagate to the other
+- Create subtle behavioral differences that confuse users switching between modes
+
+**Why it happens:**
+Natural tendency to add quick fixes rather than properly abstracting shared functionality.
+
+**Prevention:**
+1. **Extract shared hooks:** Create `useScoreAnimation()`, `useTransportControls()`, `useScoreColor()` that both renderers use
+2. **Axis-agnostic interfaces:** Design event cache with `primaryAxisPosition` and `secondaryAxisPosition` rather than `globalX`/`globalY`
+3. **Document divergence:** When behavior must differ, document WHY in comments
+4. **Test both renderers:** Any change to shared code must be tested with both renderers
+
+**Detection:**
+- Same bug appears in one renderer but not the other
+- Code review reveals copy-paste between renderers
+- User reports inconsistent behavior between render modes
+
+**Phase to address:** All phases -- ongoing discipline
+
+---
+
+### Pitfall 10: Section Visibility Threshold Miscalculation
+
+**What goes wrong:**
+Virtual scrolling uses viewport intersection to determine which sections are visible. If the threshold is misconfigured:
+- Too conservative: Too many sections mounted, no memory savings
+- Too aggressive: Sections unmount before they're fully off-screen, visible popping
+
+For horizontal scrolling, the "viewport" is the score region width, not the full browser viewport.
+
+**Why it happens:**
+Using window width instead of score region width for visibility calculations. Or using pixel thresholds that don't account for score scale.
+
+**Prevention:**
+1. **Use score region bounds:** Visibility = intersection with `scoreRegion.width`, not `window.innerWidth`
+2. **Scale-aware thresholds:** Buffer zone should be N measures * average measure width, not fixed pixels
+3. **Log visibility decisions:** During development, log "mount section X because..." and "unmount section Y because..." to debug
+4. **Visual debugging mode:** Render section boundaries as visible boxes during development
+
+**Detection:**
+- Memory usage higher than expected (too many sections mounted)
+- Sections pop in/out visibly at screen edges
+- Visibility behaves differently at different score scales
+
+**Phase to address:** Lazy Section Loading (Phase 4)
+
+---
+
+## Minor Pitfalls
+
+Mistakes that cause annoyance but are easily fixable.
+
+### Pitfall 11: Score Border Positioning for Horizontal Layout
+
+**What goes wrong:**
+The existing `scoreBorder` feature places decorative borders at top/bottom of the score region. For SingleLineRenderer, borders might be expected on left/right instead, or may not make sense at all for horizontal single-line display.
+
+**Prevention:**
+- Hide borders for SingleLineRenderer initially (simplest)
+- If borders are desired, create left/right border variants
+- Document that borders are only available for RegularRenderer
+
+**Phase to address:** Later polish phase, or explicitly out of scope
+
+---
+
+### Pitfall 12: Touch/Mouse Horizontal Scroll Conflict
+
+**What goes wrong:**
+Users may try to manually scroll the horizontal score with mouse/touch gestures, conflicting with the camera animation system.
+
+**Prevention:**
+- Disable native scroll on the score container (`overflow: hidden`)
+- Document that horizontal position is controlled by camera only
+- Consider future enhancement: allow scrubbing by dragging on score
+
+**Phase to address:** Out of scope for v1.2 per PROJECT.md
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Verovio single-line options | No native single-line mode | Research spike first; plan section-based approach |
+| Section-based rendering | Visual seams at boundaries | Overlap + clip strategy from start |
+| Horizontal camera | Wrong centering feels bad | Asymmetric centering (30/70 split) |
+| Event position calculation | Y/X axis confusion | Type aliases, code review checklist |
+| Lazy section loading | Race conditions during transitions | Mount guards, section locking |
+| Animation integration | State lost on unmount | JS-side animation state map |
+| Cache integration | Wrong positions for wrong renderer | Renderer-type cache key |
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Animation targets unmounted elements | MEDIUM | Add page-awareness to `animateNoteheads`: check if page is mounted before querying, mount if needed for render mode. 4-8 hours. |
-| Coordinate space mismatch | HIGH | Retrofit global coordinate system: compute page height offsets, add `globalY` to event model, update camera to use globalY. 1-2 days. |
-| Puppeteer misses unmounted content | LOW | Disable virtual scrolling in render mode with a single flag. 1 hour. Quick fix, proper fix later. |
-| Event ID instability | MEDIUM | Migrate event IDs from `evt-N` to MEI element IDs. Requires sync anchor migration for existing data. 4-8 hours. |
-| Cache not invalidating | LOW | Add layout-parameter hash to cache key. When parameters change, cache misses automatically. 2 hours. |
-| Page boundary camera jumps | MEDIUM | Implement virtual container with absolute page positioning. Requires restructuring the camera container div. 4-8 hours. |
-| renderToSVG blocking UI during scroll | MEDIUM | Pre-render all pages at load time, store SVG strings in memory. 2-4 hours. |
-
-## Pitfall-to-Phase Mapping
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Animation targets unmounted elements | Virtual Scrolling | Play through a page boundary; notes on new page animate correctly on first frame of visibility |
-| getBoundingClientRect coordinate space | Paginated Rendering | Extract events, verify Y positions form a monotonically increasing sequence across all pages |
-| Puppeteer misses unmounted content | Virtual Scrolling | Run Puppeteer frame capture on a 3+ page score; diff frames against non-virtualized baseline |
-| Event ID consistency | Event Caching | Set sync anchors, change score scale, verify anchors still point to correct notes |
-| Cache invalidation on layout changes | Event Caching | Change scale slider 5 times; verify camera positions are correct each time without manual cache clear |
-| Page boundary camera transitions | Virtual Scrolling | Record playback; inspect every page boundary frame for visual discontinuity |
-| renderToSVG performance | Paginated Rendering | Profile initial load time; verify no `renderToSVG` calls appear in scroll handler flame graphs |
-
-## Ordering Implications for Roadmap
-
-The pitfalls reveal a strict dependency chain for the efficiency features:
-
-1. **Paginated Rendering FIRST** -- Establishes multi-page SVG output, global coordinate system, page height offset table, and pre-rendered SVG string cache. Without this foundation, virtual scrolling has no pages to virtualize and event caching has no page assignments to cache.
-
-2. **Event Caching SECOND** -- Once pages exist, extract all events across all pages, assign page numbers and global Y positions, and cache the result. The cache key includes layout parameters for automatic invalidation. This produces the stable event dataset that virtual scrolling depends on.
-
-3. **Virtual Scrolling THIRD** -- With pages rendered and events cached (with page assignments), implement the mount/unmount logic. The virtual scroll container uses the pre-computed page heights. Animation checks the event cache for page assignment before querying DOM. Puppeteer render mode disables virtual scrolling.
-
-4. **OSMD Cleanup can happen at any point** -- Removing dead OSMD code is independent of the above three features.
+| Coordinate axis confusion | LOW | Global find/replace of axis-specific terms, targeted testing |
+| Section boundary seams | MEDIUM | Add overlap rendering + clip-path; 4-8 hours |
+| Cache invalidation issues | LOW | Add renderer type to cache key; 2 hours |
+| Section loading races | MEDIUM | Add mount guards and section locking; 4-8 hours |
+| Camera centering feels wrong | LOW | Tune centering ratio; 1-2 hours |
+| Verovio limitations | HIGH | May require alternative approach (multiple rotated pages); 1-2 days |
+| Animation state persistence | MEDIUM | Implement JS-side state tracking; 4-8 hours |
 
 ## Sources
 
-- Verovio Reference Book: [Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) -- HIGH confidence (official docs, verified `getPageWithElement`, `getPageCount`, `renderToSVG` page parameter)
-- Verovio Reference Book: [Layout Options](https://book.verovio.org/first-steps/layout-options.html) -- HIGH confidence (official docs, verified `pageHeight`, `adjustPageHeight`, `breaks` options)
-- Verovio Reference Book: [MIDI Playback](https://book.verovio.org/interactive-notation/playing-midi.html) -- HIGH confidence (official docs, verified `getElementsAtTime` returns `{page, notes[]}`)
-- Verovio Reference Book: [Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) -- HIGH confidence (verified `pageHeight` range 100-60000, `breaks` choices)
-- MDN: [SVGGraphicsElement.getBBox()](https://developer.mozilla.org/en-US/docs/Web/API/SVGGraphicsElement/getBBox) -- HIGH confidence (SVG coordinate space vs viewport coordinates)
-- SitePoint: [DOM to SVG Coordinates](https://www.sitepoint.com/how-to-translate-from-dom-to-svg-coordinates-and-back-again/) -- MEDIUM confidence (explains `getScreenCTM()` for coordinate translation)
-- Paul Irish: [What Forces Layout/Reflow](https://gist.github.com/paulirish/5d52fb081b3570c81e3a) -- HIGH confidence (canonical reference for forced reflow triggers including `getBoundingClientRect`)
-- Puppeteer Docs: [Screenshots](https://pptr.dev/guides/screenshots) -- HIGH confidence (confirmed `ElementHandle.screenshot()` scrolls into view; detached elements throw)
-- GitHub Issue: [Puppeteer + Virtual Scrolling](https://github.com/puppeteer/puppeteer/issues/5194) -- MEDIUM confidence (confirms virtual scroll elements not in DOM cause "Node not visible" errors)
-- Direct codebase analysis: `RegularRenderer.tsx`, `getEvents.ts`, `noteAnimation.ts`, `animationController.ts`, `interpolation.ts`, `useVerovio.ts`, `verovioService.ts` -- HIGH confidence
+### Primary (HIGH confidence)
+- Codebase analysis: `RegularRenderer.tsx`, `getEvents.ts`, `noteAnimation.ts`, `useVerovio.ts`, `eventStore.ts`
+- Previous pitfalls research: `.planning/research/PITFALLS.md` (Efficiency Features)
+- Previous phase research: `.planning/phases/08-virtual-scrolling/08-RESEARCH.md`, `.planning/phases/06-paginated-rendering-and-camera/06-RESEARCH.md`
+
+### Secondary (MEDIUM confidence)
+- [MuseScore horizontal scrolling discussions](https://musescore.org/en/node/276676) -- Community reports of playback cursor synchronization issues
+- [CSS-Tricks: transform property](https://css-tricks.com/almanac/properties/t/transform/) -- Transform order and coordinate system behavior
+- [MDN: getBoundingClientRect](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect) -- Behavior with transformed elements
+
+### Tertiary (LOW confidence)
+- WebSearch findings on horizontal virtual scrolling -- General patterns, not specific to music notation
+- Competitor analysis (forScore Reflow) -- Confirms horizontal teleprompter-style rendering is a valid approach
 
 ---
-*Pitfalls research for: Efficiency features (paginated rendering, virtual scrolling, event caching) in Manuscript renderer*
-*Researched: 2026-02-04*
+*Pitfalls research for: SingleLineRenderer with horizontal layout and lazy section loading*
+*Researched: 2026-02-05*
