@@ -1,92 +1,79 @@
-# Requirements: Manuscript Renderer v1.1 Efficiency
+# Requirements: Manuscript Renderer v1.2 SingleLineRenderer
 
-**Defined:** 2026-02-04
-**Core Value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
+**Defined:** 2026-02-05
+**Core Value:** Scores render correctly and efficiently — high-quality engraving with smooth playback, even on long scores.
 
-## v1.1 Requirements
+## v1.2 Requirements
 
-### Paginated Rendering
+### Horizontal Layout
 
-- [x] **PAG-01**: Verovio renders score as multiple page SVGs instead of a single 60,000px SVG
-- [x] **PAG-02**: All page SVG strings are pre-rendered at load time and cached in memory
-- [x] **PAG-03**: Page heights are computed and accumulated into a global coordinate system (page offset map)
-- [x] **PAG-04**: Score re-renders all pages when scale/zoom changes (cache invalidation on layout reflow)
+- [ ] **HOR-01**: Score renders as single horizontal line with no system breaks
+- [ ] **HOR-02**: Verovio configured with `breaks: 'none'` for single-system output
+- [ ] **HOR-03**: Section transitions are visually seamless (no gaps, staff lines continuous)
 
-### Event Caching
+### Camera System
 
-- [x] **EVT-01**: Musical events are extracted once from `renderToTimemap()` and cached (not re-extracted on every render)
-- [x] **EVT-02**: Each event is assigned to its page via `getPageWithElement()` and stored in an event-to-page index
-- [x] **EVT-03**: Global Y positions are pre-computed from page offset map + per-page system positions
-- [x] **EVT-04**: Event cache invalidates and rebuilds when score data or layout options change
+- [ ] **CAM-01**: Horizontal camera tracking keeps active note in viewport
+- [ ] **CAM-02**: Camera uses CSS `translateX()` transforms
+- [ ] **CAM-03**: Score region bounds control animation viewport (same as RegularRenderer)
+- [ ] **CAM-04**: Active event positioned at center of score region
+- [ ] **CAM-05**: Smooth easing transitions during camera movement
 
-### Virtual Scrolling
+### Section-Based Performance
 
-- [ ] **VIR-01**: Only 3-4 SVG pages near the current camera position are mounted in the DOM
-- [ ] **VIR-02**: Unmounted pages are represented by placeholder divs with correct heights
-- [ ] **VIR-03**: Page mount/unmount updates as camera position changes during playback
-- [ ] **VIR-04**: Virtual scrolling is disabled in Puppeteer render mode (all pages mounted for frame capture)
-- [ ] **VIR-05**: Notehead animation targets the correct mounted page's SVG container
+- [ ] **SEC-01**: Long scores split into sections (10-20 measures each)
+- [ ] **SEC-02**: Sections rendered via Verovio `select({ measureRange })` API
+- [ ] **SEC-03**: Lazy loading — only visible sections mounted in DOM
+- [ ] **SEC-04**: Section overlap for tied notes/slurs continuity
 
-### Camera & Playback Adaptation
+### Animation
 
-- [x] **CAM-01**: Camera scrolling works identically across page boundaries (no visual discontinuity)
-- [x] **CAM-02**: System-boundary snapping works with paginated coordinates (page offset + local Y)
-- [x] **CAM-03**: Transport controls (play, stop, reset) work correctly with paginated layout
-- [ ] **CAM-04**: Puppeteer `setTimestamp()` mounts the correct page before applying animations and capturing frame
-
-### OSMD Cleanup
-
-- [ ] **CLN-01**: `opensheetmusicdisplay` package removed from `package.json`
-- [ ] **CLN-02**: All OSMD imports and dead code removed from codebase
-- [ ] **CLN-03**: Application builds and runs without errors after removal (`npm run build` + `npm run dev`)
+- [ ] **ANI-01**: Notehead animation (scale, color, entry/hold/exit) works on horizontal layout
+- [ ] **ANI-02**: Animation targets correct section's SVG elements
+- [ ] **ANI-03**: Each event has a single X coordinate for animation targeting
 
 ## Future Requirements
 
 Deferred to later milestones:
 
-- **Web Worker rendering** -- Offload `renderToSVG()` to background thread for main-thread responsiveness. Defer until profiling shows render blocking is a problem.
-- **Render-mode page sequencer** -- In Puppeteer mode, mount only the needed page per frame instead of all pages. Defer until memory in Puppeteer becomes a constraint.
+- **Puppeteer support** — Frame capture for SingleLineRenderer video export
+- **Renderer toggle UI** — User can switch between RegularRenderer and SingleLineRenderer
+- **Variable section sizes** — Optimize section boundaries based on measure density
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Canvas rendering | SVG DOM APIs too deeply integrated; paginated SVG is the better path |
-| Measure-level virtual scrolling | Verovio renders by page, no `renderMeasureToSVG()` API exists |
-| SVG `<use>` deduplication across pages | Each page is self-contained; virtual mounting already limits DOM to 3-4 pages |
-| Streaming/progressive rendering | Verovio rendering is synchronous and fast per page (5-50ms); unnecessary |
-| Incremental re-render on options change | Verovio `redoLayout` changes all pages; no incremental layout API |
+| Vertical rendering changes | RegularRenderer unchanged, this milestone is horizontal only |
+| Puppeteer frame capture | Focus on preview playback, Puppeteer support deferred |
+| Mobile/touch gestures | Desktop-first, same as v1.0/v1.1 |
+| Score border styles | Use existing border system, no horizontal-specific changes |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PAG-01 | Phase 6 | Complete |
-| PAG-02 | Phase 6 | Complete |
-| PAG-03 | Phase 6 | Complete |
-| PAG-04 | Phase 6 | Complete |
-| EVT-01 | Phase 7 | Complete |
-| EVT-02 | Phase 7 | Complete |
-| EVT-03 | Phase 7 | Complete |
-| EVT-04 | Phase 7 | Complete |
-| VIR-01 | Phase 8 | Pending |
-| VIR-02 | Phase 8 | Pending |
-| VIR-03 | Phase 8 | Pending |
-| VIR-04 | Phase 8 | Pending |
-| VIR-05 | Phase 8 | Pending |
-| CAM-01 | Phase 6 | Complete |
-| CAM-02 | Phase 6 | Complete |
-| CAM-03 | Phase 6 | Complete |
-| CAM-04 | Phase 8 | Pending |
-| CLN-01 | Phase 9 | Pending |
-| CLN-02 | Phase 9 | Pending |
-| CLN-03 | Phase 9 | Pending |
+| HOR-01 | TBD | Pending |
+| HOR-02 | TBD | Pending |
+| HOR-03 | TBD | Pending |
+| CAM-01 | TBD | Pending |
+| CAM-02 | TBD | Pending |
+| CAM-03 | TBD | Pending |
+| CAM-04 | TBD | Pending |
+| CAM-05 | TBD | Pending |
+| SEC-01 | TBD | Pending |
+| SEC-02 | TBD | Pending |
+| SEC-03 | TBD | Pending |
+| SEC-04 | TBD | Pending |
+| ANI-01 | TBD | Pending |
+| ANI-02 | TBD | Pending |
+| ANI-03 | TBD | Pending |
 
 **Coverage:**
-- v1.1 requirements: 20 total
-- Mapped to phases: 20
-- Unmapped: 0
+- v1.2 requirements: 15 total
+- Mapped to phases: 0
+- Unmapped: 15
 
 ---
-*Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 after Phase 7 completion*
+*Requirements defined: 2026-02-05*
+*Last updated: 2026-02-05 after initial definition*
