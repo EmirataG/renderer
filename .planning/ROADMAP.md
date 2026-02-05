@@ -27,7 +27,7 @@ Replaced OSMD rendering engine with Verovio across the entire application. Five 
 
 - [x] **Phase 6: Paginated Rendering & Camera** - Multi-page SVG output with working camera and playback ✓
 - [x] **Phase 7: Event Position Caching** - Extract events once, cache with page assignments, reuse everywhere ✓
-- [ ] **Phase 8: Virtual Scrolling** - Mount only visible pages, with Puppeteer compatibility
+- [x] **Phase 8: Virtual Scrolling** - Mount only visible pages, with Puppeteer compatibility ✓
 - [ ] **Phase 9: OSMD Cleanup** - Remove all OSMD code and dependencies
 
 ## Phase Details
@@ -73,11 +73,10 @@ Plans:
   2. Notehead animations (scale, color, timing) work correctly on the currently visible page during playback -- no missing or broken animations
   3. In Puppeteer render mode, all pages are mounted and `setTimestamp()` correctly applies animations and captures frames identical to v1.0 output
   4. Scrolling through a long score (50+ systems) maintains consistent memory usage instead of scaling linearly with score length
-**Plans**: 2 plans
+**Plans**: 1 plan
 
 Plans:
-- [ ] 08-01-PLAN.md -- Core virtual scrolling (cameraY tracking + conditional rendering)
-- [ ] 08-02-PLAN.md -- Animation cleanup + verification
+- [x] 08-01-PLAN.md -- Core virtual scrolling (cameraY tracking + conditional rendering)
 
 ### Phase 9: OSMD Cleanup
 **Goal**: All traces of OpenSheetMusicDisplay are removed from the codebase
@@ -87,10 +86,10 @@ Plans:
   1. `opensheetmusicdisplay` does not appear in `package.json` or `node_modules`
   2. No OSMD imports, references, or dead code paths exist anywhere in the codebase (grep returns zero results)
   3. `npm run build` succeeds and `npm run dev` serves the application without errors after removal
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 09-01: TBD
+- [ ] 09-01-PLAN.md -- Remove OSMD package and dead code
 
 ## Requirement Coverage
 
@@ -150,5 +149,5 @@ Phases execute in order: 6 -> 7 -> 8 -> 9
 | 5. Validation and Cleanup | v1.0 | -- | Complete | 2026-02-04 |
 | 6. Paginated Rendering & Camera | v1.1 | 3/3 | Complete | 2026-02-04 |
 | 7. Event Position Caching | v1.1 | 2/2 | Complete | 2026-02-04 |
-| 8. Virtual Scrolling | v1.1 | 0/2 | Not started | - |
-| 9. OSMD Cleanup | v1.1 | 0/? | Not started | - |
+| 8. Virtual Scrolling | v1.1 | 1/1 | Complete | 2026-02-05 |
+| 9. OSMD Cleanup | v1.1 | 0/1 | Not started | - |
