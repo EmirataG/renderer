@@ -14,10 +14,10 @@
 
 ### Event Caching
 
-- [ ] **EVT-01**: Musical events are extracted once from `renderToTimemap()` and cached (not re-extracted on every render)
-- [ ] **EVT-02**: Each event is assigned to its page via `getPageWithElement()` and stored in an event-to-page index
-- [ ] **EVT-03**: Global Y positions are pre-computed from page offset map + per-page system positions
-- [ ] **EVT-04**: Event cache invalidates and rebuilds when score data or layout options change
+- [x] **EVT-01**: Musical events are extracted once from `renderToTimemap()` and cached (not re-extracted on every render)
+- [x] **EVT-02**: Each event is assigned to its page via `getPageWithElement()` and stored in an event-to-page index
+- [x] **EVT-03**: Global Y positions are pre-computed from page offset map + per-page system positions
+- [x] **EVT-04**: Event cache invalidates and rebuilds when score data or layout options change
 
 ### Virtual Scrolling
 
@@ -65,10 +65,10 @@ Deferred to later milestones:
 | PAG-02 | Phase 6 | Complete |
 | PAG-03 | Phase 6 | Complete |
 | PAG-04 | Phase 6 | Complete |
-| EVT-01 | Phase 7 | Pending |
-| EVT-02 | Phase 7 | Pending |
-| EVT-03 | Phase 7 | Pending |
-| EVT-04 | Phase 7 | Pending |
+| EVT-01 | Phase 7 | Complete |
+| EVT-02 | Phase 7 | Complete |
+| EVT-03 | Phase 7 | Complete |
+| EVT-04 | Phase 7 | Complete |
 | VIR-01 | Phase 8 | Pending |
 | VIR-02 | Phase 8 | Pending |
 | VIR-03 | Phase 8 | Pending |
@@ -89,4 +89,4 @@ Deferred to later milestones:
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 after roadmap creation*
+*Last updated: 2026-02-04 after Phase 7 completion*

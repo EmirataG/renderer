@@ -26,7 +26,7 @@ Replaced OSMD rendering engine with Verovio across the entire application. Five 
 **Milestone Goal:** Reduce memory usage and improve rendering performance for long scores through paginated rendering, event position caching, and virtual scrolling. Remove the legacy OSMD dependency.
 
 - [x] **Phase 6: Paginated Rendering & Camera** - Multi-page SVG output with working camera and playback ✓
-- [ ] **Phase 7: Event Position Caching** - Extract events once, cache with page assignments, reuse everywhere
+- [x] **Phase 7: Event Position Caching** - Extract events once, cache with page assignments, reuse everywhere ✓
 - [ ] **Phase 8: Virtual Scrolling** - Mount only visible pages, with Puppeteer compatibility
 - [ ] **Phase 9: OSMD Cleanup** - Remove all OSMD code and dependencies
 
@@ -61,8 +61,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Event cache infrastructure (eventStore + extraction functions)
-- [ ] 07-02-PLAN.md -- Wire components to use event cache
+- [x] 07-01-PLAN.md -- Event cache infrastructure (eventStore + extraction functions)
+- [x] 07-02-PLAN.md -- Wire components to use event cache
 
 ### Phase 8: Virtual Scrolling
 **Goal**: Only pages near the current camera position are mounted in the DOM, bounding memory usage regardless of score length
@@ -149,6 +149,6 @@ Phases execute in order: 6 -> 7 -> 8 -> 9
 | 4. SyncEditor Migration | v1.0 | -- | Complete | 2026-02-04 |
 | 5. Validation and Cleanup | v1.0 | -- | Complete | 2026-02-04 |
 | 6. Paginated Rendering & Camera | v1.1 | 3/3 | Complete | 2026-02-04 |
-| 7. Event Position Caching | v1.1 | 0/2 | Not started | - |
+| 7. Event Position Caching | v1.1 | 2/2 | Complete | 2026-02-04 |
 | 8. Virtual Scrolling | v1.1 | 0/? | Not started | - |
 | 9. OSMD Cleanup | v1.1 | 0/? | Not started | - |

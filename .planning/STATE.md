@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-04)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** Phase 7 - Event Position Caching (complete)
+**Current focus:** Phase 8 - Virtual Scrolling
 
 ## Current Position
 
-Phase: 7 of 9 (Event Position Caching)
-Plan: 2 of 2
-Status: Phase complete
-Last activity: 2026-02-04 -- Completed 07-02-PLAN.md (Component Cache Integration)
+Phase: 8 of 9 (Virtual Scrolling)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-02-04 -- Completed Phase 7 (Event Position Caching)
 
-Progress: [########..] 90% (v1.0 complete, v1.1 Phase 7 complete)
+Progress: [########..] 85% (v1.0 complete, v1.1 Phase 7 complete)
 
 ## Performance Metrics
 
@@ -66,9 +66,10 @@ None.
 
 - Memory still high with paginated rendering -- all pages mounted. Phase 8 (virtual scrolling) will bound memory.
 - Puppeteer frame capture requires all animated elements in DOM at screenshot time
+- Event extraction now happens once per svgPages change (Phase 7 resolved this)
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 07-02-PLAN.md -- Phase 7 complete, ready for Phase 8 (Virtual Scrolling)
+Stopped at: Completed Phase 7 -- ready for Phase 8 planning
 Resume file: None
