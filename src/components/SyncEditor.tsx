@@ -25,7 +25,7 @@ function formatTime(seconds: number): string {
 }
 
 export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEditorProps) {
-  const osmdRef = useRef<HTMLDivElement>(null);
+  const scoreRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
 
   // SyncEditor maintains its own local events extracted from its own toolkit
@@ -36,7 +36,8 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const [interpolatedEvents, setInterpolatedEvents] = useState<
     (TimemapEvent & { computedTimestamp: number; isAnchor: boolean })[]
   >([]);
-  const [containerWidth, setContainerWidth] = useState(0);
+  // Fixed width for score container - prevents re-renders on window resize
+  const FIXED_SCORE_WIDTH = 1200;
 
   // Detect render mode from URL parameters
   const isRenderMode = typeof window !== 'undefined' &&
@@ -53,21 +54,8 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Zustand store
   const { anchors, selectedEventId, setAnchor, selectEvent } = useSyncStore();
 
-  // Measure container width for Verovio
-  useEffect(() => {
-    if (!osmdRef.current) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const w = entry.contentRect.width;
-        if (w > 0) setContainerWidth(w);
-      }
-    });
-    ro.observe(osmdRef.current);
-    return () => ro.disconnect();
-  }, []);
-
-  // Verovio hook - renders score to SVG
-  const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
+  // Verovio hook - renders score to SVG at fixed width
+  const { svgPages, toolkit, isLoading } = useVerovio(xml, FIXED_SCORE_WIDTH, 40);
 
   // Extract events from SyncEditor's own toolkit when SVG is ready
   // (Verovio generates different random IDs per toolkit, so SyncEditor must use its own)
@@ -97,7 +85,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     // Need Verovio container to be ready
     // In render mode, we don't need audio element (Puppeteer controls frame position)
     // In normal mode, we need audio for preview playback
-    if (!osmdRef.current || events.length === 0) {
+    if (!scoreRef.current || events.length === 0) {
       return;
     }
 
@@ -111,7 +99,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     const controller = initAnimationController({
       audioElement: isRenderMode ? null : audioRef.current,
       getInterpolatedEvents: () => interpolatedEventsRef.current,
-      containerElement: osmdRef.current,
+      containerElement: scoreRef.current,
     });
 
     // Expose on window for Puppeteer access
@@ -171,9 +159,9 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // Helper to apply color to note shapes (noteheads, stems, dots)
   const applyNoteColor = (svgIds: string[], color: string) => {
-    if (!osmdRef.current) return;
+    if (!scoreRef.current) return;
     svgIds.forEach(svgId => {
-      const noteGroup = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
+      const noteGroup = scoreRef.current?.querySelector(`#${CSS.escape(svgId)}`);
       if (!noteGroup) return;
       // Color noteheads, stems, and dots
       const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_COLOR_SELECTORS);
@@ -196,9 +184,9 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // Helper to clear color from note shapes
   const clearNoteColor = (svgIds: string[]) => {
-    if (!osmdRef.current) return;
+    if (!scoreRef.current) return;
     svgIds.forEach(svgId => {
-      const noteGroup = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
+      const noteGroup = scoreRef.current?.querySelector(`#${CSS.escape(svgId)}`);
       if (!noteGroup) return;
       const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_COLOR_SELECTORS);
       shapes.forEach(shape => {
@@ -223,11 +211,11 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // One-time setup: Create style element for hover effects
   useEffect(() => {
-    if (!osmdRef.current) return;
+    if (!scoreRef.current) return;
 
     if (!styleRef.current) {
       styleRef.current = document.createElement('style');
-      osmdRef.current.appendChild(styleRef.current);
+      scoreRef.current.appendChild(styleRef.current);
     }
 
     styleRef.current.innerHTML = `
@@ -245,7 +233,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // Apply anchor colors when anchors change (separate from selection)
   useEffect(() => {
-    if (!osmdRef.current || events.length === 0) return;
+    if (!scoreRef.current || events.length === 0) return;
 
     // Clear non-anchor, non-selected, non-playing events
     events.forEach(evt => {
@@ -267,7 +255,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // Handle selection changes efficiently - only update changed events
   useEffect(() => {
-    if (!osmdRef.current || events.length === 0) return;
+    if (!scoreRef.current || events.length === 0) return;
 
     const prevId = prevSelectedIdRef.current;
     const newId = selectedEventId;
@@ -387,7 +375,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     }
 
     const animate = () => {
-      if (!audioRef.current || !osmdRef.current) return;
+      if (!audioRef.current || !scoreRef.current) return;
 
       const time = audioRef.current.currentTime;
       setCurrentTime(time);
@@ -453,7 +441,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     setCurrentTime(time);
 
     // Update highlight for scrubbed position
-    if (interpolatedEvents.length > 0 && osmdRef.current) {
+    if (interpolatedEvents.length > 0 && scoreRef.current) {
       let newEventIndex = -1;
       for (let i = interpolatedEvents.length - 1; i >= 0; i--) {
         if (interpolatedEvents[i].computedTimestamp <= time) {
@@ -601,12 +589,12 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         </div>
       </div>
 
-      {/* Score display */}
+      {/* Score display - fixed width with horizontal scroll */}
       <div
         className="flex-1 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
-        <div ref={osmdRef}>
+        <div ref={scoreRef} style={{ width: FIXED_SCORE_WIDTH, minWidth: FIXED_SCORE_WIDTH }}>
           {svgPages.map((svg, i) => (
             <div
               key={i}

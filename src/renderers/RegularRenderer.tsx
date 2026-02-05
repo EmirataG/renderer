@@ -61,7 +61,7 @@ export default function RegularRenderer({
   colorFullNote = false,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
-  const osmdRef = useRef<HTMLDivElement>(null);
+  const scoreRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pageContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -218,7 +218,7 @@ export default function RegularRenderer({
 
   // When Verovio renders SVG pages, update DOM and reset noteheads
   useEffect(() => {
-    if (svgPages.length === 0 || !osmdRef.current) return;
+    if (svgPages.length === 0 || !scoreRef.current) return;
 
     // dangerouslySetInnerHTML updates the DOM synchronously during React's
     // commit phase, but this useEffect fires AFTER the commit. However,
@@ -226,16 +226,16 @@ export default function RegularRenderer({
     // Use requestAnimationFrame to wait for the next paint, then verify
     // the Verovio SVG is actually present in the DOM before resetting noteheads.
     requestAnimationFrame(() => {
-      if (!osmdRef.current) return;
+      if (!scoreRef.current) return;
       // Guard: confirm Verovio SVG elements exist in the DOM before
       // attempting to query/reset noteheads. The svg.definition-scale
       // class is Verovio's root SVG element.
-      const verovioSvg = osmdRef.current.querySelector('svg.definition-scale');
+      const verovioSvg = scoreRef.current.querySelector('svg.definition-scale');
       if (!verovioSvg) {
         console.warn('[RegularRenderer] Verovio SVG not found in DOM after rAF');
         return;
       }
-      resetNoteheadAnimations(osmdRef.current);
+      resetNoteheadAnimations(scoreRef.current);
 
       // Cache validity check: skip extraction if svgPages reference unchanged
       if (svgPagesRef === svgPages) return;
@@ -296,7 +296,7 @@ export default function RegularRenderer({
   /* ---------------- camera (vertical) ---------------- */
 
   function applyCamera(targetY: number) {
-    const scoreHeight = totalHeight || (osmdRef.current?.scrollHeight ?? 0);
+    const scoreHeight = totalHeight || (scoreRef.current?.scrollHeight ?? 0);
     const viewportHeight = scoreRegion?.height ?? containerHeight;
 
     // Keep the target Y position in the vertical center of the viewport
@@ -355,20 +355,26 @@ export default function RegularRenderer({
       return;
     }
 
-    // Check if we moved to a new event
+    // Check if we moved to a new event - animate ALL skipped events
     if (index !== eventIndexRef.current) {
+      const prevIndex = eventIndexRef.current;
       eventIndexRef.current = index;
 
-      // Animate noteheads for new event
-      if (event.svgIds?.length) {
-        animateNoteheads(osmdRef.current, event.svgIds, {
-          scale: activeNoteheadScale,
-          entryMs: activeNoteheadAnimationEntryMs,
-          holdMs: activeNoteheadAnimationHoldMs,
-          exitMs: activeNoteheadAnimationExitMs,
-          color: activeNoteheadColor,
-          colorFullNote,
-        });
+      // Animate all events from prevIndex+1 to current index (inclusive)
+      // This prevents skipping events when multiple occur between frames
+      const startIdx = Math.max(0, prevIndex + 1);
+      for (let i = startIdx; i <= index; i++) {
+        const evt = interpolatedEvents[i];
+        if (evt?.svgIds?.length) {
+          animateNoteheads(scoreRef.current, evt.svgIds, {
+            scale: activeNoteheadScale,
+            entryMs: activeNoteheadAnimationEntryMs,
+            holdMs: activeNoteheadAnimationHoldMs,
+            exitMs: activeNoteheadAnimationExitMs,
+            color: activeNoteheadColor,
+            colorFullNote,
+          });
+        }
       }
     }
 
@@ -437,8 +443,8 @@ export default function RegularRenderer({
       audioRef.current.currentTime = 0;
     }
 
-    if (osmdRef.current) {
-      resetNoteheadAnimations(osmdRef.current);
+    if (scoreRef.current) {
+      resetNoteheadAnimations(scoreRef.current);
     }
   }
 
@@ -530,10 +536,10 @@ export default function RegularRenderer({
       const holdSeconds = activeNoteheadAnimationHoldMs / 1000;
       const exitSeconds = activeNoteheadAnimationExitMs / 1000;
 
-      if (!osmdRef.current) return;
+      if (!scoreRef.current) return;
 
       // Reset all noteheads first
-      resetNoteheadAnimations(osmdRef.current);
+      resetNoteheadAnimations(scoreRef.current);
 
       // Apply animations with interpolated values for each event
       for (let i = 0; i <= currentIndex; i++) {
@@ -573,7 +579,7 @@ export default function RegularRenderer({
 
         // Apply animation directly to SVG elements (no CSS transitions)
         for (const id of event.svgIds) {
-          const stavenote = osmdRef.current.querySelector<SVGGElement>(
+          const stavenote = scoreRef.current.querySelector<SVGGElement>(
             `#${CSS.escape(id)}`,
           );
           if (!stavenote) continue;
@@ -620,7 +626,7 @@ export default function RegularRenderer({
 
       // Force reflow to ensure CSS styles are applied synchronously
       // before Puppeteer takes the screenshot
-      void osmdRef.current.offsetHeight;
+      void scoreRef.current.offsetHeight;
     },
     [
       isRenderMode,
@@ -657,7 +663,7 @@ export default function RegularRenderer({
     initAnimationController({
       audioElement: audioRef.current,
       getInterpolatedEvents,
-      containerElement: osmdRef.current!,
+      containerElement: scoreRef.current!,
     });
 
     // Expose on window for Puppeteer access
@@ -732,7 +738,7 @@ export default function RegularRenderer({
               style={{ display: "flex", width: "100%", pointerEvents: "none", transition: "transform 200ms ease-out" }}
             >
               <div
-                ref={osmdRef}
+                ref={scoreRef}
                 className="preview-score"
                 style={{
                   width: scoreRegion?.width ?? containerWidth,
