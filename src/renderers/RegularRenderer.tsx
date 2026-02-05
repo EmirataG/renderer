@@ -13,6 +13,7 @@ import { useEventStore } from "../stores/eventStore";
 import {
   animateNoteheads,
   resetNoteheadAnimations,
+  clearAnimationTimeouts,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
@@ -184,6 +185,13 @@ export default function RegularRenderer({
     }
     return visible;
   }, [cameraY, pageOffsets, pageCount, totalHeight, isRenderMode]);
+
+  // Clear pending animation timeouts when visible pages change
+  useEffect(() => {
+    return () => {
+      clearAnimationTimeouts();
+    };
+  }, [visiblePageIndices]);
 
   /* ---------------- background / dimensions ---------------- */
 
