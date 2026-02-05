@@ -165,33 +165,55 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Serialize anchors for proper dependency tracking (Maps don't trigger re-renders well)
   const anchorsKey = Array.from(anchors.entries()).map(([k, v]) => `${k}:${v}`).join(',');
 
-  // Helper to apply color to notehead shapes (Verovio uses <use> elements in g.notehead)
+  // Selectors for all colorable note elements (noteheads, stems, dots)
+  const NOTE_COLOR_SELECTORS = 'g.notehead use, g.stem path, g.stem use, g.dots ellipse, g.dots use';
+
+  // Helper to apply color to note shapes (noteheads, stems, dots)
   const applyNoteColor = (svgIds: string[], color: string) => {
     if (!osmdRef.current) return;
     svgIds.forEach(svgId => {
       const noteGroup = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
       if (!noteGroup) return;
-      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>('g.notehead use');
+      // Color noteheads, stems, and dots
+      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_COLOR_SELECTORS);
       shapes.forEach(shape => {
         shape.style.fill = color;
         shape.style.stroke = color;
         shape.style.color = color;
       });
+      // Also check parent chord for shared stem
+      const chordGroup = noteGroup.closest('g.chord');
+      if (chordGroup) {
+        const chordStems = chordGroup.querySelectorAll<SVGGraphicsElement>('g.stem path, g.stem use');
+        chordStems.forEach(stem => {
+          stem.style.fill = color;
+          stem.style.stroke = color;
+        });
+      }
     });
   };
 
-  // Helper to clear color from notehead shapes
+  // Helper to clear color from note shapes
   const clearNoteColor = (svgIds: string[]) => {
     if (!osmdRef.current) return;
     svgIds.forEach(svgId => {
       const noteGroup = osmdRef.current?.querySelector(`#${CSS.escape(svgId)}`);
       if (!noteGroup) return;
-      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>('g.notehead use');
+      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_COLOR_SELECTORS);
       shapes.forEach(shape => {
         shape.style.removeProperty('fill');
         shape.style.removeProperty('stroke');
         shape.style.removeProperty('color');
       });
+      // Also clear parent chord stem
+      const chordGroup = noteGroup.closest('g.chord');
+      if (chordGroup) {
+        const chordStems = chordGroup.querySelectorAll<SVGGraphicsElement>('g.stem path, g.stem use');
+        chordStems.forEach(stem => {
+          stem.style.removeProperty('fill');
+          stem.style.removeProperty('stroke');
+        });
+      }
     });
   };
 
@@ -371,6 +393,9 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         }
 
         currentEventIndexRef.current = newEventIndex;
+      } else if (newEventIndex >= 0 && playingSvgIdsRef.current.length > 0) {
+        // Same event still playing - re-apply orange in case other effects cleared it
+        applyNoteColor(playingSvgIdsRef.current, '#f59e0b');
       }
 
       animationRef.current = requestAnimationFrame(animate);
