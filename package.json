@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "opensheetmusicdisplay": "^1.9.5",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-rnd": "^10.5.2",
