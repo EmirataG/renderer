@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-04)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** Phase 8 - Virtual Scrolling
+**Current focus:** Phase 9 - OSMD Cleanup (Complete)
 
 ## Current Position
 
-Phase: 8 of 9 (Virtual Scrolling)
+Phase: 9 of 9 (OSMD Cleanup)
 Plan: 1 of 1 complete
 Status: Phase complete
-Last activity: 2026-02-05 -- Completed 08-01-PLAN.md (Virtual Scrolling Core)
+Last activity: 2026-02-05 -- Completed 09-01-PLAN.md (OSMD Cleanup)
 
-Progress: [#########.] 90% (v1.0 complete, v1.1 Phase 8 complete)
+Progress: [##########] 100% (v1.0 complete, v1.1 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: 2.0 min
-- Total execution time: 23 min
+- Total execution time: 25 min
 
 **By Phase:**
 
@@ -33,6 +33,7 @@ Progress: [#########.] 90% (v1.0 complete, v1.1 Phase 8 complete)
 | 6 - Paginated Rendering | 3/3 | 6 min | 2 min |
 | 7 - Event Position Caching | 2/2 | 6 min | 3 min |
 | 8 - Virtual Scrolling | 1/1 | 2 min | 2 min |
+| 9 - OSMD Cleanup | 1/1 | 2 min | 2 min |
 
 *Updated after each plan completion*
 
@@ -61,6 +62,7 @@ Recent decisions affecting current work:
 - [v1.1]: Set<number> for visiblePageIndices enables O(1) has() checks in render loop
 - [v1.1]: Placeholder divs use pageHeights[i] for correct layout spacing
 - [v1.1]: Unmounted pages set pageContainerRefs to null explicitly
+- [v1.1]: OSMD fully removed -- Verovio is sole rendering engine
 
 ### Pending Todos
 
@@ -75,5 +77,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: Completed Phase 8 -- virtual scrolling implemented
+Stopped at: Completed Phase 9 -- OSMD cleanup complete, v1.1 migration finished
 Resume file: None
