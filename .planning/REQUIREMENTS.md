@@ -7,10 +7,10 @@
 
 ### Paginated Rendering
 
-- [ ] **PAG-01**: Verovio renders score as multiple page SVGs instead of a single 60,000px SVG
-- [ ] **PAG-02**: All page SVG strings are pre-rendered at load time and cached in memory
-- [ ] **PAG-03**: Page heights are computed and accumulated into a global coordinate system (page offset map)
-- [ ] **PAG-04**: Score re-renders all pages when scale/zoom changes (cache invalidation on layout reflow)
+- [x] **PAG-01**: Verovio renders score as multiple page SVGs instead of a single 60,000px SVG
+- [x] **PAG-02**: All page SVG strings are pre-rendered at load time and cached in memory
+- [x] **PAG-03**: Page heights are computed and accumulated into a global coordinate system (page offset map)
+- [x] **PAG-04**: Score re-renders all pages when scale/zoom changes (cache invalidation on layout reflow)
 
 ### Event Caching
 
@@ -29,9 +29,9 @@
 
 ### Camera & Playback Adaptation
 
-- [ ] **CAM-01**: Camera scrolling works identically across page boundaries (no visual discontinuity)
-- [ ] **CAM-02**: System-boundary snapping works with paginated coordinates (page offset + local Y)
-- [ ] **CAM-03**: Transport controls (play, stop, reset) work correctly with paginated layout
+- [x] **CAM-01**: Camera scrolling works identically across page boundaries (no visual discontinuity)
+- [x] **CAM-02**: System-boundary snapping works with paginated coordinates (page offset + local Y)
+- [x] **CAM-03**: Transport controls (play, stop, reset) work correctly with paginated layout
 - [ ] **CAM-04**: Puppeteer `setTimestamp()` mounts the correct page before applying animations and capturing frame
 
 ### OSMD Cleanup
@@ -61,10 +61,10 @@ Deferred to later milestones:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PAG-01 | Phase 6 | Pending |
-| PAG-02 | Phase 6 | Pending |
-| PAG-03 | Phase 6 | Pending |
-| PAG-04 | Phase 6 | Pending |
+| PAG-01 | Phase 6 | Complete |
+| PAG-02 | Phase 6 | Complete |
+| PAG-03 | Phase 6 | Complete |
+| PAG-04 | Phase 6 | Complete |
 | EVT-01 | Phase 7 | Pending |
 | EVT-02 | Phase 7 | Pending |
 | EVT-03 | Phase 7 | Pending |
@@ -74,9 +74,9 @@ Deferred to later milestones:
 | VIR-03 | Phase 8 | Pending |
 | VIR-04 | Phase 8 | Pending |
 | VIR-05 | Phase 8 | Pending |
-| CAM-01 | Phase 6 | Pending |
-| CAM-02 | Phase 6 | Pending |
-| CAM-03 | Phase 6 | Pending |
+| CAM-01 | Phase 6 | Complete |
+| CAM-02 | Phase 6 | Complete |
+| CAM-03 | Phase 6 | Complete |
 | CAM-04 | Phase 8 | Pending |
 | CLN-01 | Phase 9 | Pending |
 | CLN-02 | Phase 9 | Pending |

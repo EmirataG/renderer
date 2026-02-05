@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-04)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** Phase 6 - Paginated Rendering & Camera
+**Current focus:** Phase 7 - Event Position Caching
 
 ## Current Position
 
-Phase: 6 of 9 (Paginated Rendering & Camera)
-Plan: 2 of 3 in phase
-Status: In progress
-Last activity: 2026-02-04 -- Completed 06-02-PLAN.md (paginated rendering with camera)
+Phase: 7 of 9 (Event Position Caching)
+Plan: --
+Status: Ready to plan
+Last activity: 2026-02-04 -- Completed Phase 6 (Paginated Rendering & Camera)
 
-Progress: [#######...] 70% (v1.0 complete, v1.1 Plans 01-02 done)
+Progress: [########..] 80% (v1.0 complete, v1.1 Phase 6 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 2 min
-- Total execution time: 12 min
+- Total execution time: 15 min
 
 **By Phase:**
 
@@ -30,7 +30,7 @@ Progress: [#######...] 70% (v1.0 complete, v1.1 Plans 01-02 done)
 | 1 - Core Verovio Integration | 2/2 | 4 min | 2 min |
 | 2 - Event System Migration | 1/1 | 1 min | 1 min |
 | 2.1 - Sync-Only Playback | 2/2 | 4 min | 2 min |
-| 6 - Paginated Rendering | 2/3 | 3 min | 1.5 min |
+| 6 - Paginated Rendering | 3/3 | 6 min | 2 min |
 
 *Updated after each plan completion*
 
@@ -58,12 +58,12 @@ None.
 
 ### Blockers/Concerns
 
-- Single-page SVG causes 6GB+ memory on long scores -- Phase 6 addresses root cause (Plans 01-02 done, Plan 03 remaining)
+- Memory still high with paginated rendering -- all pages mounted. Phase 8 (virtual scrolling) will bound memory.
 - Puppeteer frame capture requires all animated elements in DOM at screenshot time
-- Coordinate system migration complete: global Y = pageOffsets[pageIndex] + localY
+- Event extraction happens on every render -- Phase 7 will cache events
 
 ## Session Continuity
 
-Last session: 2026-02-04T17:26:10Z
-Stopped at: Completed 06-02-PLAN.md (paginated rendering with camera)
+Last session: 2026-02-04
+Stopped at: Completed Phase 6 -- ready for Phase 7 planning
 Resume file: None
