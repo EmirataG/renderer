@@ -85,6 +85,7 @@ export default function RegularRenderer({
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [cameraY, setCameraY] = useState(0); // Track camera Y for virtual scrolling visibility
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
@@ -301,15 +302,18 @@ export default function RegularRenderer({
 
     // Keep the target Y position in the vertical center of the viewport
     // Exception: at the beginning and end, don't scroll past the edges
-    let cameraY = targetY - viewportHeight / 2;
+    let newCameraY = targetY - viewportHeight / 2;
 
     // Clamp to valid range: don't scroll above 0 or below the maximum scroll
-    cameraY = Math.max(0, cameraY);
-    cameraY = Math.min(cameraY, Math.max(0, scoreHeight - viewportHeight));
+    newCameraY = Math.max(0, newCameraY);
+    newCameraY = Math.min(newCameraY, Math.max(0, scoreHeight - viewportHeight));
 
     if (cameraRef.current) {
-      cameraRef.current.style.transform = `translateY(${-cameraY}px)`;
+      cameraRef.current.style.transform = `translateY(${-newCameraY}px)`;
     }
+
+    // Update state for virtual scrolling visibility calculation
+    setCameraY(newCameraY);
   }
 
   /* ---------------- motion ---------------- */
