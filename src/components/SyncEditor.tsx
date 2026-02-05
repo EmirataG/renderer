@@ -31,7 +31,6 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // Read events from shared eventStore cache (populated by RegularRenderer or fallback below)
   const events = useEventStore((state) => state.events);
-  const svgPagesRef = useEventStore((state) => state.svgPagesRef);
   const setEventsInStore = useEventStore((state) => state.setEvents);
 
   // Interpolated events with computed timestamps
@@ -71,13 +70,13 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Verovio hook - renders score to SVG
   const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
 
-  // Fallback: Populate event cache if SyncEditor renders before RegularRenderer
-  // (e.g., user loads score while on Sync Editor tab)
+  // Fallback: Populate event cache ONLY if cache is completely empty
+  // (e.g., user loads score while on Sync Editor tab before RegularRenderer runs)
+  // This is a fallback - RegularRenderer is the primary cache populator with proper Y positions
   useEffect(() => {
+    // Only act as fallback if cache is completely empty
+    if (events.length > 0) return;
     if (svgPages.length === 0 || !toolkit) return;
-
-    // Check if cache is valid for current svgPages
-    if (svgPagesRef === svgPages && events.length > 0) return;
 
     // Extract events without Y positions (SyncEditor doesn't need them)
     const timemapEvents = extractTimemapEvents(toolkit);
@@ -88,7 +87,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     }));
 
     setEventsInStore(cachedEvents, svgPages);
-  }, [svgPages, toolkit, svgPagesRef, events.length, setEventsInStore]);
+  }, [svgPages, toolkit, events.length, setEventsInStore]);
 
   // Recalculate interpolated events when anchors change
   // Events come from shared eventStore cache (populated by RegularRenderer)
