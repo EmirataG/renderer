@@ -230,17 +230,18 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     });
   };
 
-  // Apply selection and anchor styling using inline styles
-  useEffect(() => {
-    if (!osmdRef.current || events.length === 0) return;
+  // Track previous selection to avoid clearing all events on every change
+  const prevSelectedIdRef = useRef<string | null>(null);
 
-    // Create style element for hover effects if needed
+  // One-time setup: Create style element for hover effects
+  useEffect(() => {
+    if (!osmdRef.current) return;
+
     if (!styleRef.current) {
       styleRef.current = document.createElement('style');
       osmdRef.current.appendChild(styleRef.current);
     }
 
-    // Only hover styles via CSS (inline styles for selection/anchor)
     styleRef.current.innerHTML = `
       svg.definition-scale {
         display: block;
@@ -252,33 +253,64 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         filter: brightness(0.7);
       }
     `;
+  }, [svgPages]); // Only re-run when SVG pages change
 
-    // First, clear all colors from all events
+  // Apply anchor colors when anchors change (separate from selection)
+  useEffect(() => {
+    if (!osmdRef.current || events.length === 0) return;
+
+    // Clear non-anchor, non-selected, non-playing events
     events.forEach(evt => {
+      if (evt.id === selectedEventId) return; // Don't clear selected
+      if (anchors.has(evt.id)) return; // Don't clear anchors
+      if (playingSvgIdsRef.current.some(id => evt.svgIds.includes(id))) return; // Don't clear playing
       clearNoteColor(evt.svgIds);
     });
 
-    // Apply anchor colors (green) - do this first so selection can override
+    // Apply anchor colors (green)
     for (const [eventId] of anchors) {
+      if (eventId === selectedEventId) continue; // Selection overrides anchor
       const event = events.find(e => e.id === eventId);
       if (event) {
         applyNoteColor(event.svgIds, '#22c55e');
       }
     }
+  }, [events, anchors, anchorsKey]);
 
-    // Apply selection color (blue) - this overrides anchor color
-    if (selectedEventId) {
-      const event = events.find(e => e.id === selectedEventId);
+  // Handle selection changes efficiently - only update changed events
+  useEffect(() => {
+    if (!osmdRef.current || events.length === 0) return;
+
+    const prevId = prevSelectedIdRef.current;
+    const newId = selectedEventId;
+
+    // Clear previous selection (restore to base color)
+    if (prevId && prevId !== newId) {
+      const prevEvent = events.find(e => e.id === prevId);
+      if (prevEvent) {
+        if (anchors.has(prevId)) {
+          applyNoteColor(prevEvent.svgIds, '#22c55e'); // Restore anchor color
+        } else {
+          clearNoteColor(prevEvent.svgIds); // Clear to default
+        }
+      }
+    }
+
+    // Apply new selection color (blue)
+    if (newId) {
+      const event = events.find(e => e.id === newId);
       if (event) {
         applyNoteColor(event.svgIds, '#3b82f6');
       }
     }
 
-    // Re-apply playing color (orange) to currently playing note so it persists
+    // Re-apply playing color (orange) if needed
     if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
       applyNoteColor(playingSvgIdsRef.current, '#f59e0b');
     }
-  }, [selectedEventId, events, anchors, anchorsKey]);
+
+    prevSelectedIdRef.current = newId;
+  }, [selectedEventId, events, anchors]);
 
   // Keyboard navigation for efficient sync workflow
   useEffect(() => {
