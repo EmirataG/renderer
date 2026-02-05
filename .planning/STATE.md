@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-04)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** Phase 7 - Event Position Caching
+**Current focus:** Phase 7 - Event Position Caching (complete)
 
 ## Current Position
 
 Phase: 7 of 9 (Event Position Caching)
-Plan: 1 of 2
-Status: In progress
-Last activity: 2026-02-04 -- Completed 07-01-PLAN.md (Event Cache Infrastructure)
+Plan: 2 of 2
+Status: Phase complete
+Last activity: 2026-02-04 -- Completed 07-02-PLAN.md (Component Cache Integration)
 
-Progress: [########..] 85% (v1.0 complete, v1.1 Phase 7 Plan 1 complete)
+Progress: [########..] 90% (v1.0 complete, v1.1 Phase 7 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 2 min
-- Total execution time: 18 min
+- Total plans completed: 10
+- Average duration: 2.1 min
+- Total execution time: 21 min
 
 **By Phase:**
 
@@ -31,7 +31,7 @@ Progress: [########..] 85% (v1.0 complete, v1.1 Phase 7 Plan 1 complete)
 | 2 - Event System Migration | 1/1 | 1 min | 1 min |
 | 2.1 - Sync-Only Playback | 2/2 | 4 min | 2 min |
 | 6 - Paginated Rendering | 3/3 | 6 min | 2 min |
-| 7 - Event Position Caching | 1/2 | 3 min | 3 min |
+| 7 - Event Position Caching | 2/2 | 6 min | 3 min |
 
 *Updated after each plan completion*
 
@@ -54,6 +54,9 @@ Recent decisions affecting current work:
 - [v1.1]: Flush SVG stacking via CSS (lineHeight:0, fontSize:0, display:block) -- no negative margins
 - [v1.1]: Lookup indices (eventById, eventsByPage) built at setEvents time, not in selectors
 - [v1.1]: Two-phase extraction: pure timemap first, DOM positions second
+- [v1.1]: SyncEditor reads from shared cache (no duplicate extraction)
+- [v1.1]: Cache validity uses reference equality (svgPagesRef === svgPages)
+- [v1.1]: interpolateTimestamps made generic for InterpolatableEvent
 
 ### Pending Todos
 
@@ -67,5 +70,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 07-01-PLAN.md -- ready for 07-02 (RegularRenderer integration)
+Stopped at: Completed 07-02-PLAN.md -- Phase 7 complete, ready for Phase 8 (Virtual Scrolling)
 Resume file: None
