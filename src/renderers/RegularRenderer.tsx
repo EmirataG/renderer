@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useVerovio } from "../hooks/useVerovio";
-import { getEventsFromVerovio } from "../lib/getEvents";
-import type { MusicalEventWithY } from "../lib/getEvents";
+import { extractTimemapEvents, computeEventPositions } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
 import { interpolateTimestamps } from "../lib/interpolation";
@@ -9,6 +8,7 @@ import {
   initAnimationController,
   destroyAnimationController,
 } from "../lib/animationController";
+import { useEventStore } from "../stores/eventStore";
 
 import {
   animateNoteheads,
@@ -65,10 +65,15 @@ export default function RegularRenderer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pageContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  const [events, setEvents] = useState<MusicalEventWithY[]>([]);
+  // Event cache from Zustand store
+  const events = useEventStore((state) => state.events);
+  const svgPagesRef = useEventStore((state) => state.svgPagesRef);
+  const setEventsInStore = useEventStore((state) => state.setEvents);
+
   // Interpolated events with computed timestamps (when syncAnchors provided)
+  // Includes `y` for camera positioning (mapped from globalY)
   const [interpolatedEvents, setInterpolatedEvents] = useState<
-    (MusicalEventWithY & { computedTimestamp: number; isAnchor: boolean })[]
+    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean; y: number })[]
   >([]);
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -129,8 +134,8 @@ export default function RegularRenderer({
     if (syncAnchors && syncAnchors.size > 0) {
       // Use interpolation for sync-based timing
       const interpolated = interpolateTimestamps(events, syncAnchors);
-      // Create a map of event id -> y position for fast lookup
-      const yMap = new Map(events.map((evt) => [evt.id, evt.y]));
+      // Create a map of event id -> globalY position for fast lookup
+      const yMap = new Map(events.map((evt) => [evt.id, evt.globalY]));
       // Merge Y positions from original events by matching event IDs
       const merged = interpolated.map((evt) => ({
         ...evt,
@@ -232,18 +237,22 @@ export default function RegularRenderer({
       }
       resetNoteheadAnimations(osmdRef.current);
 
-      // Extract events from Verovio timemap + DOM positions (page-aware)
+      // Cache validity check: skip extraction if svgPages reference unchanged
+      if (svgPagesRef === svgPages) return;
+
+      // Extract events using two-phase extraction and store in cache
       if (toolkit) {
+        const timemapEvents = extractTimemapEvents(toolkit);
         const containers = pageContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
-        const extractedEvents = getEventsFromVerovio(toolkit, osmdRef.current, containers, pageOffsets);
-        setEvents(extractedEvents);
+        const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, pageOffsets);
+        setEventsInStore(cachedEvents, svgPages);
       }
     });
 
     // Camera starts at top
     currentYRef.current = 0;
     applyCamera(0);
-  }, [svgPages, toolkit, pageOffsets]);
+  }, [svgPages, svgPagesRef, toolkit, pageOffsets, setEventsInStore]);
 
   /* ---------------- score color and styling ---------------- */
 
@@ -420,7 +429,7 @@ export default function RegularRenderer({
     stop();
 
     eventIndexRef.current = -1; // -1 so first event triggers animation on next play
-    currentYRef.current = events[0]?.y ?? 0;
+    currentYRef.current = events[0]?.globalY ?? 0;
     applyCamera(currentYRef.current);
 
     // Reset audio to beginning

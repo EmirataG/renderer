@@ -1,4 +1,13 @@
-import type { InterpolatedEvent } from './interpolation';
+import type { InterpolatedEvent, InterpolatableEvent } from './interpolation';
+
+/**
+ * Minimal interface for events the animation controller needs.
+ * Only requires svgIds and computedTimestamp for highlighting.
+ */
+interface AnimatableEvent {
+  svgIds: string[];
+  computedTimestamp: number;
+}
 
 /**
  * Configuration for initializing the animation controller.
@@ -7,7 +16,7 @@ export interface AnimationControllerConfig {
   /** Audio element for duration information (optional in render mode) */
   audioElement: HTMLAudioElement | null;
   /** Function to get current interpolated events */
-  getInterpolatedEvents: () => InterpolatedEvent[];
+  getInterpolatedEvents: () => AnimatableEvent[];
   /** Container element where score is rendered (for DOM queries) */
   containerElement: HTMLElement;
 }

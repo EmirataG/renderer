@@ -1,6 +1,15 @@
-import type { MusicalEvent } from './getEvents';
+/**
+ * Minimal interface for events that can be interpolated.
+ * Both MusicalEvent and CachedEvent satisfy this interface.
+ */
+export interface InterpolatableEvent {
+  id: string;
+  beatOnset: number;
+  beatDuration: number;
+  svgIds: string[];
+}
 
-export interface InterpolatedEvent extends MusicalEvent {
+export interface InterpolatedEvent extends InterpolatableEvent {
   computedTimestamp: number;
   isAnchor: boolean;
 }
@@ -27,10 +36,10 @@ const DEFAULT_BPM = 60;
  * - Single anchor: Uses default BPM (60) for extrapolation
  * - Two+ anchors: Linear interpolation between anchors, extrapolation outside
  */
-export function interpolateTimestamps(
-  events: MusicalEvent[],
+export function interpolateTimestamps<T extends InterpolatableEvent>(
+  events: T[],
   anchors: Map<string, number>
-): InterpolatedEvent[] {
+): (T & { computedTimestamp: number; isAnchor: boolean })[] {
   if (events.length === 0) return [];
 
   // Sort by beatOnset
