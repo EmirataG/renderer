@@ -73,11 +73,11 @@ Plans:
   2. Notehead animations (scale, color, timing) work correctly on the currently visible page during playback -- no missing or broken animations
   3. In Puppeteer render mode, all pages are mounted and `setTimestamp()` correctly applies animations and captures frames identical to v1.0 output
   4. Scrolling through a long score (50+ systems) maintains consistent memory usage instead of scaling linearly with score length
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md -- Core virtual scrolling (cameraY tracking + conditional rendering)
+- [ ] 08-02-PLAN.md -- Animation cleanup + verification
 
 ### Phase 9: OSMD Cleanup
 **Goal**: All traces of OpenSheetMusicDisplay are removed from the codebase
@@ -150,5 +150,5 @@ Phases execute in order: 6 -> 7 -> 8 -> 9
 | 5. Validation and Cleanup | v1.0 | -- | Complete | 2026-02-04 |
 | 6. Paginated Rendering & Camera | v1.1 | 3/3 | Complete | 2026-02-04 |
 | 7. Event Position Caching | v1.1 | 2/2 | Complete | 2026-02-04 |
-| 8. Virtual Scrolling | v1.1 | 0/? | Not started | - |
+| 8. Virtual Scrolling | v1.1 | 0/2 | Not started | - |
 | 9. OSMD Cleanup | v1.1 | 0/? | Not started | - |
