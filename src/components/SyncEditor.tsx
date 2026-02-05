@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useVerovio } from '../hooks/useVerovio';
 import { useSyncStore } from '../stores/syncStore';
 import { useEventStore } from '../stores/eventStore';
+import { extractTimemapEvents } from '../lib/getEvents';
 import { TimestampInput } from './TimestampInput';
 import { interpolateTimestamps } from '../lib/interpolation';
 import {
@@ -28,8 +29,10 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const osmdRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
 
-  // Read events from shared eventStore cache (populated by RegularRenderer)
+  // Read events from shared eventStore cache (populated by RegularRenderer or fallback below)
   const events = useEventStore((state) => state.events);
+  const svgPagesRef = useEventStore((state) => state.svgPagesRef);
+  const setEventsInStore = useEventStore((state) => state.setEvents);
 
   // Interpolated events with computed timestamps
   const [interpolatedEvents, setInterpolatedEvents] = useState<
@@ -67,6 +70,25 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
   // Verovio hook - renders score to SVG
   const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
+
+  // Fallback: Populate event cache if SyncEditor renders before RegularRenderer
+  // (e.g., user loads score while on Sync Editor tab)
+  useEffect(() => {
+    if (svgPages.length === 0 || !toolkit) return;
+
+    // Check if cache is valid for current svgPages
+    if (svgPagesRef === svgPages && events.length > 0) return;
+
+    // Extract events without Y positions (SyncEditor doesn't need them)
+    const timemapEvents = extractTimemapEvents(toolkit);
+    const cachedEvents = timemapEvents.map(evt => ({
+      ...evt,
+      pageIndex: 0,  // Placeholder - SyncEditor doesn't use this
+      globalY: 0,    // Placeholder - SyncEditor doesn't use this
+    }));
+
+    setEventsInStore(cachedEvents, svgPages);
+  }, [svgPages, toolkit, svgPagesRef, events.length, setEventsInStore]);
 
   // Recalculate interpolated events when anchors change
   // Events come from shared eventStore cache (populated by RegularRenderer)
