@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useVerovio } from '../hooks/useVerovio';
-import { getEventsFromVerovio } from '../lib/getEvents';
 import { useSyncStore } from '../stores/syncStore';
+import { useEventStore } from '../stores/eventStore';
 import { TimestampInput } from './TimestampInput';
 import { interpolateTimestamps } from '../lib/interpolation';
 import {
   initAnimationController,
   destroyAnimationController,
 } from '../lib/animationController';
-import type { InterpolatedEvent } from '../lib/interpolation';
-import type { MusicalEventWithY } from '../lib/getEvents';
 import type {} from '../types/global';
 
 interface SyncEditorProps {
@@ -29,8 +27,14 @@ function formatTime(seconds: number): string {
 export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEditorProps) {
   const osmdRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
-  const [events, setEvents] = useState<MusicalEventWithY[]>([]);
-  const [interpolatedEvents, setInterpolatedEvents] = useState<InterpolatedEvent[]>([]);
+
+  // Read events from shared eventStore cache (populated by RegularRenderer)
+  const events = useEventStore((state) => state.events);
+
+  // Interpolated events with computed timestamps
+  const [interpolatedEvents, setInterpolatedEvents] = useState<
+    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean })[]
+  >([]);
   const [containerWidth, setContainerWidth] = useState(0);
 
   // Detect render mode from URL parameters
@@ -64,21 +68,8 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Verovio hook - renders score to SVG
   const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
 
-  // Extract events when Verovio renders
-  useEffect(() => {
-    if (svgPages.length === 0 || !osmdRef.current || !toolkit) return;
-
-    requestAnimationFrame(() => {
-      if (!osmdRef.current || !toolkit) return;
-      const verovioSvg = osmdRef.current.querySelector('svg.definition-scale');
-      if (!verovioSvg) return;
-      // Pass single container -- SyncEditor doesn't need page-aware Y positions
-      const extractedEvents = getEventsFromVerovio(toolkit, osmdRef.current);
-      setEvents(extractedEvents);
-    });
-  }, [svgPages, toolkit]);
-
   // Recalculate interpolated events when anchors change
+  // Events come from shared eventStore cache (populated by RegularRenderer)
   useEffect(() => {
     if (events.length === 0) return;
     const interpolated = interpolateTimestamps(events, anchors);
@@ -86,7 +77,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   }, [events, anchors]);
 
   // Ref to store interpolated events for animation controller access
-  const interpolatedEventsRef = useRef<InterpolatedEvent[]>([]);
+  const interpolatedEventsRef = useRef<typeof interpolatedEvents>([]);
   useEffect(() => {
     interpolatedEventsRef.current = interpolatedEvents;
   }, [interpolatedEvents]);
