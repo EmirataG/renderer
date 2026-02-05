@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-04)
 ## Current Position
 
 Phase: 8 of 9 (Virtual Scrolling)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-02-04 -- Completed Phase 7 (Event Position Caching)
+Plan: 1 of 1 complete
+Status: Phase complete
+Last activity: 2026-02-05 -- Completed 08-01-PLAN.md (Virtual Scrolling Core)
 
-Progress: [########..] 85% (v1.0 complete, v1.1 Phase 7 complete)
+Progress: [#########.] 90% (v1.0 complete, v1.1 Phase 8 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 2.1 min
-- Total execution time: 21 min
+- Total plans completed: 11
+- Average duration: 2.0 min
+- Total execution time: 23 min
 
 **By Phase:**
 
@@ -32,6 +32,7 @@ Progress: [########..] 85% (v1.0 complete, v1.1 Phase 7 complete)
 | 2.1 - Sync-Only Playback | 2/2 | 4 min | 2 min |
 | 6 - Paginated Rendering | 3/3 | 6 min | 2 min |
 | 7 - Event Position Caching | 2/2 | 6 min | 3 min |
+| 8 - Virtual Scrolling | 1/1 | 2 min | 2 min |
 
 *Updated after each plan completion*
 
@@ -57,6 +58,9 @@ Recent decisions affecting current work:
 - [v1.1]: SyncEditor reads from shared cache (no duplicate extraction)
 - [v1.1]: Cache validity uses reference equality (svgPagesRef === svgPages)
 - [v1.1]: interpolateTimestamps made generic for InterpolatableEvent
+- [v1.1]: Set<number> for visiblePageIndices enables O(1) has() checks in render loop
+- [v1.1]: Placeholder divs use pageHeights[i] for correct layout spacing
+- [v1.1]: Unmounted pages set pageContainerRefs to null explicitly
 
 ### Pending Todos
 
@@ -64,12 +68,12 @@ None.
 
 ### Blockers/Concerns
 
-- Memory still high with paginated rendering -- all pages mounted. Phase 8 (virtual scrolling) will bound memory.
-- Puppeteer frame capture requires all animated elements in DOM at screenshot time
+- Puppeteer frame capture requires all animated elements in DOM at screenshot time (handled: render mode mounts all pages)
 - Event extraction now happens once per svgPages change (Phase 7 resolved this)
+- Memory now bounded: max 3 pages mounted during playback (Phase 8 resolved this)
 
 ## Session Continuity
 
-Last session: 2026-02-04
-Stopped at: Completed Phase 7 -- ready for Phase 8 planning
+Last session: 2026-02-05
+Stopped at: Completed Phase 8 -- virtual scrolling implemented
 Resume file: None
