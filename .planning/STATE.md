@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** v1.2 SingleLineRenderer (Defining requirements)
+**Current focus:** v1.2 SingleLineRenderer (Phase 10: Single-Line Verovio Hook)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-05 — Milestone v1.2 started
+Phase: 10 - Single-Line Verovio Hook
+Plan: --
+Status: Ready for planning
+Last activity: 2026-02-05 -- Roadmap created for v1.2
 
-Progress: [          ] 0% (v1.0 complete, v1.1 complete, v1.2 started)
+Progress: [          ] 0% (v1.0 complete, v1.1 complete, v1.2 phase 10 ready)
 
 ## Performance Metrics
 
@@ -64,18 +64,29 @@ Recent decisions affecting current work:
 - [v1.1]: Unmounted pages set pageContainerRefs to null explicitly
 - [v1.1]: OSMD fully removed -- Verovio is sole rendering engine
 
+### v1.2 Research Insights
+
+Key findings from research/SUMMARY.md:
+
+- Verovio `breaks: 'none'` forces single horizontal system (verified in official docs)
+- Verovio `select({ measureRange })` renders specific measure ranges as sections
+- Asymmetric camera centering (30% from left) recommended for horizontal reading
+- Section overlap (1-2 measures) needed for tied notes/slurs continuity
+- Axis confusion (Y/X) is a critical pitfall -- use explicit type aliases
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-- Puppeteer frame capture requires all animated elements in DOM at screenshot time (handled: render mode mounts all pages)
-- Event extraction now happens once per svgPages change (Phase 7 resolved this)
-- Memory now bounded: max 3 pages mounted during playback (Phase 8 resolved this)
+- Puppeteer frame capture deferred to future milestone (not in v1.2 scope)
+- Section boundary seams are critical UX -- Phase 13 must validate seamless transitions
+- Browser SVG width limits (~32767px) may constrain section sizes on very long scores
 
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: Started v1.2 milestone — SingleLineRenderer
+Stopped at: Created v1.2 roadmap -- 4 phases mapped to 15 requirements
 Resume file: None
+Next: `/gsd:plan-phase 10`

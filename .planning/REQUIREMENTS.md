@@ -1,7 +1,7 @@
 # Requirements: Manuscript Renderer v1.2 SingleLineRenderer
 
 **Defined:** 2026-02-05
-**Core Value:** Scores render correctly and efficiently — high-quality engraving with smooth playback, even on long scores.
+**Core Value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
 
 ## v1.2 Requirements
 
@@ -23,7 +23,7 @@
 
 - [ ] **SEC-01**: Long scores split into sections (10-20 measures each)
 - [ ] **SEC-02**: Sections rendered via Verovio `select({ measureRange })` API
-- [ ] **SEC-03**: Lazy loading — only visible sections mounted in DOM
+- [ ] **SEC-03**: Lazy loading -- only visible sections mounted in DOM
 - [ ] **SEC-04**: Section overlap for tied notes/slurs continuity
 
 ### Animation
@@ -36,9 +36,9 @@
 
 Deferred to later milestones:
 
-- **Puppeteer support** — Frame capture for SingleLineRenderer video export
-- **Renderer toggle UI** — User can switch between RegularRenderer and SingleLineRenderer
-- **Variable section sizes** — Optimize section boundaries based on measure density
+- **Puppeteer support** -- Frame capture for SingleLineRenderer video export
+- **Renderer toggle UI** -- User can switch between RegularRenderer and SingleLineRenderer
+- **Variable section sizes** -- Optimize section boundaries based on measure density
 
 ## Out of Scope
 
@@ -53,27 +53,27 @@ Deferred to later milestones:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOR-01 | TBD | Pending |
-| HOR-02 | TBD | Pending |
-| HOR-03 | TBD | Pending |
-| CAM-01 | TBD | Pending |
-| CAM-02 | TBD | Pending |
-| CAM-03 | TBD | Pending |
-| CAM-04 | TBD | Pending |
-| CAM-05 | TBD | Pending |
-| SEC-01 | TBD | Pending |
-| SEC-02 | TBD | Pending |
-| SEC-03 | TBD | Pending |
-| SEC-04 | TBD | Pending |
-| ANI-01 | TBD | Pending |
-| ANI-02 | TBD | Pending |
-| ANI-03 | TBD | Pending |
+| HOR-01 | Phase 10 | Pending |
+| HOR-02 | Phase 10 | Pending |
+| HOR-03 | Phase 13 | Pending |
+| CAM-01 | Phase 12 | Pending |
+| CAM-02 | Phase 12 | Pending |
+| CAM-03 | Phase 12 | Pending |
+| CAM-04 | Phase 12 | Pending |
+| CAM-05 | Phase 12 | Pending |
+| SEC-01 | Phase 10 | Pending |
+| SEC-02 | Phase 10 | Pending |
+| SEC-03 | Phase 13 | Pending |
+| SEC-04 | Phase 13 | Pending |
+| ANI-01 | Phase 12 | Pending |
+| ANI-02 | Phase 12 | Pending |
+| ANI-03 | Phase 11 | Pending |
 
 **Coverage:**
 - v1.2 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15
+- Mapped to phases: 15
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-05*
-*Last updated: 2026-02-05 after initial definition*
+*Last updated: 2026-02-05 after roadmap creation*

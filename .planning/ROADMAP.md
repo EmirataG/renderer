@@ -4,6 +4,7 @@
 
 - **v1.0 Migration** - Phases 1-5 (shipped 2026-02-04)
 - **v1.1 Efficiency** - Phases 6-9 (shipped 2026-02-05)
+- **v1.2 SingleLineRenderer** - Phases 10-13 (in progress)
 
 ## Phases
 
@@ -21,123 +22,116 @@ Replaced OSMD rendering engine with Verovio across the entire application. Five 
 
 </details>
 
-### v1.1 Efficiency (SHIPPED 2026-02-05)
+<details>
+<summary>v1.1 Efficiency (Phases 6-9) - SHIPPED 2026-02-05</summary>
 
-**Milestone Goal:** Reduce memory usage and improve rendering performance for long scores through paginated rendering, event position caching, and virtual scrolling. Remove the legacy OSMD dependency.
+Reduced memory usage and improved rendering performance for long scores through paginated rendering, event position caching, and virtual scrolling. Removed legacy OSMD dependency.
 
-- [x] **Phase 6: Paginated Rendering & Camera** - Multi-page SVG output with working camera and playback ✓
-- [x] **Phase 7: Event Position Caching** - Extract events once, cache with page assignments, reuse everywhere ✓
-- [x] **Phase 8: Virtual Scrolling** - Mount only visible pages, with Puppeteer compatibility ✓
-- [x] **Phase 9: OSMD Cleanup** - Remove all OSMD code and dependencies ✓
+- [x] Phase 6: Paginated Rendering & Camera (3 plans)
+- [x] Phase 7: Event Position Caching (2 plans)
+- [x] Phase 8: Virtual Scrolling (1 plan)
+- [x] Phase 9: OSMD Cleanup (1 plan)
+
+</details>
+
+### v1.2 SingleLineRenderer (IN PROGRESS)
+
+**Milestone Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance. Music scrolls beneath a fixed center point while notehead animations highlight active notes.
+
+- [ ] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio
+- [ ] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments
+- [ ] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling
+- [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions
 
 ## Phase Details
 
-### Phase 6: Paginated Rendering & Camera
-**Goal**: Score renders as multiple smaller SVG pages with a global coordinate system, and camera/playback work seamlessly across page boundaries
-**Depends on**: v1.0 complete
-**Requirements**: PAG-01, PAG-02, PAG-03, PAG-04, CAM-01, CAM-02, CAM-03
+### Phase 10: Single-Line Verovio Hook
+**Goal**: Verovio renders score as horizontal sections using `breaks: 'none'` configuration and measure-range selection
+**Depends on**: v1.1 complete
+**Requirements**: HOR-01, HOR-02, SEC-01, SEC-02
 **Success Criteria** (what must be TRUE):
-  1. Loading a MusicXML file produces multiple SVG page elements in the DOM instead of one continuous SVG (visible in DevTools as separate page containers)
-  2. Camera scrolls smoothly across page boundaries during sync playback with no visual discontinuity or jump at the transition between pages
-  3. System-boundary snapping works correctly using paginated global coordinates (camera locks to system tops, not page tops)
-  4. Changing the score scale slider re-renders all pages at the new size and camera/playback continue to work correctly
-  5. Transport controls (play, stop, reset) function identically to v1.0 behavior on the paginated layout
-**Plans**: 3 plans
+  1. A MusicXML file renders as a single horizontal system with no line breaks (one continuous staff line)
+  2. Long scores are divided into 10-20 measure sections, each rendered as a separate SVG via `select({ measureRange })`
+  3. Section SVGs can be laid out horizontally with correct widths from viewBox dimensions
+  4. Changing the score produces new sections with correct measure assignments
+**Plans**: TBD
 
-Plans:
-- [x] 06-01-PLAN.md -- useVerovio multi-page rendering + type augments
-- [x] 06-02-PLAN.md -- RegularRenderer paginated rendering + camera + events
-- [x] 06-03-PLAN.md -- SyncEditor pagination + visual verification
-
-### Phase 7: Event Position Caching
-**Goal**: Musical events are extracted once per score load with page assignments and global Y positions, eliminating redundant DOM queries
-**Depends on**: Phase 6
-**Requirements**: EVT-01, EVT-02, EVT-03, EVT-04
+### Phase 11: Single-Line Event Extraction
+**Goal**: Musical events are extracted with X coordinates and section assignments for horizontal positioning
+**Depends on**: Phase 10
+**Requirements**: ANI-03
 **Success Criteria** (what must be TRUE):
-  1. After loading a score, event data (timing, page assignment, Y position) is extracted once and reused across playback sessions without re-extraction
-  2. Each event knows which page it belongs to, enabling O(1) page lookup by event ID or timestamp
-  3. Global Y positions computed from the page offset map match the actual rendered positions (camera scrolls to the correct vertical location for any event)
-  4. Changing scale or reloading a score invalidates the cache and rebuilds it automatically (no stale position data)
-**Plans**: 2 plans
+  1. Each event has a `globalX` coordinate representing its horizontal position across all sections
+  2. Each event has a `sectionIndex` identifying which section SVG contains it
+  3. X coordinates are computed from section offsets plus local element positions (analogous to vertical page offsets)
+**Plans**: TBD
 
-Plans:
-- [x] 07-01-PLAN.md -- Event cache infrastructure (eventStore + extraction functions)
-- [x] 07-02-PLAN.md -- Wire components to use event cache
-
-### Phase 8: Virtual Scrolling
-**Goal**: Only pages near the current camera position are mounted in the DOM, bounding memory usage regardless of score length
-**Depends on**: Phase 6, Phase 7
-**Requirements**: VIR-01, VIR-02, VIR-03, VIR-04, VIR-05, CAM-04
+### Phase 12: SingleLineRenderer Core
+**Goal**: Users can play back a score in horizontal single-line mode with smooth camera tracking and notehead animation
+**Depends on**: Phase 10, Phase 11
+**Requirements**: CAM-01, CAM-02, CAM-03, CAM-04, CAM-05, ANI-01, ANI-02
 **Success Criteria** (what must be TRUE):
-  1. During playback, inspecting the DOM shows only 3-4 page SVGs mounted at any time, with placeholder divs maintaining correct heights for unmounted pages
-  2. Notehead animations (scale, color, timing) work correctly on the currently visible page during playback -- no missing or broken animations
-  3. In Puppeteer render mode, all pages are mounted and `setTimestamp()` correctly applies animations and captures frames identical to v1.0 output
-  4. Scrolling through a long score (50+ systems) maintains consistent memory usage instead of scaling linearly with score length
-**Plans**: 1 plan
+  1. During playback, the active note stays near the center of the score region (not drifting to edges)
+  2. Camera movement uses CSS `translateX()` with smooth easing transitions (no jumps or jitter)
+  3. Notehead animation (scale, color, entry/hold/exit) works identically to RegularRenderer on the horizontal layout
+  4. Score region bounds control the animation viewport (same as RegularRenderer)
+  5. Transport controls (play, stop, reset) work correctly with horizontal layout
+**Plans**: TBD
 
-Plans:
-- [x] 08-01-PLAN.md -- Core virtual scrolling (cameraY tracking + conditional rendering)
-
-### Phase 9: OSMD Cleanup
-**Goal**: All traces of OpenSheetMusicDisplay are removed from the codebase
-**Depends on**: Nothing (independent, but scheduled after efficiency work)
-**Requirements**: CLN-01, CLN-02, CLN-03
+### Phase 13: Section Virtualization
+**Goal**: Only visible sections are mounted in DOM, with seamless transitions that hide section boundaries
+**Depends on**: Phase 12
+**Requirements**: SEC-03, SEC-04, HOR-03
 **Success Criteria** (what must be TRUE):
-  1. `opensheetmusicdisplay` does not appear in `package.json` or `node_modules`
-  2. No OSMD imports, references, or dead code paths exist anywhere in the codebase (grep returns zero results)
-  3. `npm run build` succeeds and `npm run dev` serves the application without errors after removal
-**Plans**: 1 plan
-
-Plans:
-- [x] 09-01-PLAN.md -- Remove OSMD package and dead code
+  1. During playback, inspecting the DOM shows only 3 sections mounted at any time (current + buffer), with placeholder divs for unmounted sections
+  2. Section boundaries are invisible to users (staff lines appear continuous, no gaps or visual seams)
+  3. Tied notes and slurs that cross section boundaries render correctly (overlap strategy working)
+  4. Switching sections during playback causes no animation glitches or missing noteheads
+**Plans**: TBD
 
 ## Requirement Coverage
 
-### v1.1 Requirements
+### v1.2 Requirements
 
 | ID | Requirement | Phase |
 |----|-------------|-------|
-| PAG-01 | Verovio renders score as multiple page SVGs | Phase 6 |
-| PAG-02 | All page SVG strings pre-rendered and cached | Phase 6 |
-| PAG-03 | Page heights computed into global coordinate system | Phase 6 |
-| PAG-04 | Score re-renders all pages on scale change | Phase 6 |
-| EVT-01 | Events extracted once from timemap and cached | Phase 7 |
-| EVT-02 | Events assigned to pages via getPageWithElement() | Phase 7 |
-| EVT-03 | Global Y positions pre-computed from page offsets | Phase 7 |
-| EVT-04 | Event cache invalidates on data/layout change | Phase 7 |
-| VIR-01 | Only 3-4 SVG pages mounted near camera position | Phase 8 |
-| VIR-02 | Unmounted pages represented by placeholder divs | Phase 8 |
-| VIR-03 | Page mount/unmount updates during playback | Phase 8 |
-| VIR-04 | Virtual scrolling disabled in Puppeteer render mode | Phase 8 |
-| VIR-05 | Notehead animation targets correct mounted page | Phase 8 |
-| CAM-01 | Camera scrolling works across page boundaries | Phase 6 |
-| CAM-02 | System-boundary snapping with paginated coordinates | Phase 6 |
-| CAM-03 | Transport controls work with paginated layout | Phase 6 |
-| CAM-04 | Puppeteer setTimestamp() mounts correct page | Phase 8 |
-| CLN-01 | OSMD package removed from package.json | Phase 9 |
-| CLN-02 | All OSMD imports and dead code removed | Phase 9 |
-| CLN-03 | Application builds and runs after removal | Phase 9 |
+| HOR-01 | Score renders as single horizontal line with no system breaks | Phase 10 |
+| HOR-02 | Verovio configured with `breaks: 'none'` for single-system output | Phase 10 |
+| HOR-03 | Section transitions are visually seamless (no gaps, staff lines continuous) | Phase 13 |
+| CAM-01 | Horizontal camera tracking keeps active note in viewport | Phase 12 |
+| CAM-02 | Camera uses CSS `translateX()` transforms | Phase 12 |
+| CAM-03 | Score region bounds control animation viewport | Phase 12 |
+| CAM-04 | Active event positioned at center of score region | Phase 12 |
+| CAM-05 | Smooth easing transitions during camera movement | Phase 12 |
+| SEC-01 | Long scores split into sections (10-20 measures each) | Phase 10 |
+| SEC-02 | Sections rendered via Verovio `select({ measureRange })` API | Phase 10 |
+| SEC-03 | Lazy loading -- only visible sections mounted in DOM | Phase 13 |
+| SEC-04 | Section overlap for tied notes/slurs continuity | Phase 13 |
+| ANI-01 | Notehead animation works on horizontal layout | Phase 12 |
+| ANI-02 | Animation targets correct section's SVG elements | Phase 12 |
+| ANI-03 | Each event has a single X coordinate for animation targeting | Phase 11 |
 
-**Coverage: 20/20 requirements mapped**
+**Coverage: 15/15 requirements mapped**
 
 ### Dependency Chain
 
 ```
-Phase 6: Paginated Rendering & Camera
+Phase 10: Single-Line Verovio Hook
     |
     v
-Phase 7: Event Position Caching  (requires page coordinate system from Phase 6)
+Phase 11: Single-Line Event Extraction  (requires section containers from Phase 10)
     |
     v
-Phase 8: Virtual Scrolling  (requires cached events with page assignments from Phase 7)
-
-Phase 9: OSMD Cleanup  (independent, scheduled last)
+Phase 12: SingleLineRenderer Core  (requires events with X coordinates from Phase 11)
+    |
+    v
+Phase 13: Section Virtualization  (requires working renderer from Phase 12)
 ```
 
 ## Progress
 
 **Execution Order:**
-Phases execute in order: 6 -> 7 -> 8 -> 9
+Phases execute in order: 10 -> 11 -> 12 -> 13
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -151,3 +145,7 @@ Phases execute in order: 6 -> 7 -> 8 -> 9
 | 7. Event Position Caching | v1.1 | 2/2 | Complete | 2026-02-04 |
 | 8. Virtual Scrolling | v1.1 | 1/1 | Complete | 2026-02-05 |
 | 9. OSMD Cleanup | v1.1 | 1/1 | Complete | 2026-02-05 |
+| 10. Single-Line Verovio Hook | v1.2 | 0/? | Pending | -- |
+| 11. Single-Line Event Extraction | v1.2 | 0/? | Pending | -- |
+| 12. SingleLineRenderer Core | v1.2 | 0/? | Pending | -- |
+| 13. Section Virtualization | v1.2 | 0/? | Pending | -- |
