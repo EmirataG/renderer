@@ -5,8 +5,10 @@ import { createToolkit } from '../lib/verovioService';
 export interface UseSingleLineVerovioResult {
   sections: string[];           // Array of SVG strings, one per section
   sectionWidths: number[];      // Width of each section in pixels
+  sectionHeights: number[];     // Height of each section in pixels
   sectionOffsets: number[];     // Cumulative X offset for each section
   totalWidth: number;           // Total score width (sum of all widths)
+  maxHeight: number;            // Maximum section height for alignment
   sectionCount: number;         // Number of sections
   measureCount: number;         // Total measures in score
   toolkit: VerovioToolkit | null;
@@ -14,12 +16,19 @@ export interface UseSingleLineVerovioResult {
   error: string | null;
 }
 
-function extractSectionWidth(svgString: string): number {
+function extractSectionDimensions(svgString: string): { width: number; height: number } {
+  // Try explicit width/height attributes first
   const widthMatch = svgString.match(/width="(\d+(?:\.\d+)?)px"/);
-  if (widthMatch) return parseFloat(widthMatch[1]);
-  const vbMatch = svgString.match(/viewBox="0 0 ([\d.]+) [\d.]+"/);
-  if (vbMatch) return parseFloat(vbMatch[1]);
-  return 0;
+  const heightMatch = svgString.match(/height="(\d+(?:\.\d+)?)px"/);
+  if (widthMatch && heightMatch) {
+    return { width: parseFloat(widthMatch[1]), height: parseFloat(heightMatch[1]) };
+  }
+  // Fall back to viewBox
+  const vbMatch = svgString.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+  if (vbMatch) {
+    return { width: parseFloat(vbMatch[1]), height: parseFloat(vbMatch[2]) };
+  }
+  return { width: 0, height: 0 };
 }
 
 export function useSingleLineVerovio(
@@ -29,8 +38,10 @@ export function useSingleLineVerovio(
 ): UseSingleLineVerovioResult {
   const [sections, setSections] = useState<string[]>([]);
   const [sectionWidths, setSectionWidths] = useState<number[]>([]);
+  const [sectionHeights, setSectionHeights] = useState<number[]>([]);
   const [sectionOffsets, setSectionOffsets] = useState<number[]>([]);
   const [totalWidth, setTotalWidth] = useState<number>(0);
+  const [maxHeight, setMaxHeight] = useState<number>(0);
   const [sectionCount, setSectionCount] = useState<number>(0);
   const [measureCount, setMeasureCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -41,8 +52,10 @@ export function useSingleLineVerovio(
     if (!xml) {
       setSections([]);
       setSectionWidths([]);
+      setSectionHeights([]);
       setSectionOffsets([]);
       setTotalWidth(0);
+      setMaxHeight(0);
       setSectionCount(0);
       setMeasureCount(0);
       setIsLoading(false);
@@ -84,8 +97,10 @@ export function useSingleLineVerovio(
             setError('Failed to load MusicXML data');
             setSections([]);
             setSectionWidths([]);
+            setSectionHeights([]);
             setSectionOffsets([]);
             setTotalWidth(0);
+            setMaxHeight(0);
             setSectionCount(0);
             setMeasureCount(0);
             setIsLoading(false);
@@ -105,8 +120,10 @@ export function useSingleLineVerovio(
           if (!cancelled) {
             setSections([]);
             setSectionWidths([]);
+            setSectionHeights([]);
             setSectionOffsets([]);
             setTotalWidth(0);
+            setMaxHeight(0);
             setSectionCount(0);
             setMeasureCount(0);
             setIsLoading(false);
@@ -129,8 +146,12 @@ export function useSingleLineVerovio(
         toolkit.select({});
         toolkit.redoLayout();
 
-        // Compute widths and offsets
-        const widths = renderedSections.map(extractSectionWidth);
+        // Compute widths, heights, and offsets
+        const dimensions = renderedSections.map(extractSectionDimensions);
+        const widths = dimensions.map(d => d.width);
+        const heights = dimensions.map(d => d.height);
+        const maxH = Math.max(...heights);
+
         const offsets: number[] = [];
         let cumulative = 0;
         for (const w of widths) {
@@ -141,8 +162,10 @@ export function useSingleLineVerovio(
         if (!cancelled) {
           setSections(renderedSections);
           setSectionWidths(widths);
+          setSectionHeights(heights);
           setSectionOffsets(offsets);
           setTotalWidth(cumulative);
+          setMaxHeight(maxH);
           setSectionCount(renderedSections.length);
           setMeasureCount(totalMeasures);
           setIsLoading(false);
@@ -153,8 +176,10 @@ export function useSingleLineVerovio(
           setError(message);
           setSections([]);
           setSectionWidths([]);
+          setSectionHeights([]);
           setSectionOffsets([]);
           setTotalWidth(0);
+          setMaxHeight(0);
           setSectionCount(0);
           setMeasureCount(0);
           setIsLoading(false);
@@ -172,8 +197,10 @@ export function useSingleLineVerovio(
   return {
     sections,
     sectionWidths,
+    sectionHeights,
     sectionOffsets,
     totalWidth,
+    maxHeight,
     sectionCount,
     measureCount,
     toolkit: toolkitRef.current,

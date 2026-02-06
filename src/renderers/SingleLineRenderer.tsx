@@ -80,7 +80,7 @@ export default function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
-  const { sections, sectionWidths, sectionOffsets, totalWidth, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale);
+  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale);
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -292,6 +292,12 @@ export default function SingleLineRenderer({
       pointer-events: none !important;
       cursor: default !important;
       user-select: none !important;
+    }
+    /* Hide clefs, key signatures, and time signatures in continuation sections */
+    .section-continuation g.clef,
+    .section-continuation g.keySig,
+    .section-continuation g.meterSig {
+      display: none !important;
     }
   `;
 
@@ -765,10 +771,13 @@ export default function SingleLineRenderer({
                   <div
                     key={i}
                     ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                    className="preview-score"
+                    className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
                     style={{
                       flexShrink: 0,
                       width: sectionWidths[i],
+                      height: maxHeight,
+                      display: 'flex',
+                      alignItems: 'flex-start', // Align SVGs to top for consistent staff line positioning
                     }}
                     dangerouslySetInnerHTML={{ __html: svg }}
                   />

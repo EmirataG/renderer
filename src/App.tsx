@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import RegularRenderer from "./renderers/RegularRenderer";
+import SingleLineRenderer from "./renderers/SingleLineRenderer";
 import { SyncEditor } from "./components/SyncEditor";
 import { ToastProvider } from "./components/Toast";
 import { UploadDropZone } from "./components/UploadDropZone";
@@ -12,6 +13,10 @@ import type { ScoreRegion } from "./types/score";
 export default function App() {
   // Get sync anchors from store
   const { anchors } = useSyncStore();
+
+  // Check for renderer mode via URL query param
+  const useSingleLineRenderer = typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('renderer') === 'single-line';
 
   // File upload state
   const [musicXMLFile, setMusicXMLFile] = useState<{
@@ -493,7 +498,7 @@ export default function App() {
                     </button>
                   </div>
                   <div className="text-xs text-neutral-500 uppercase tracking-wider">
-                    Preview Mode
+                    {useSingleLineRenderer ? 'Single-Line Mode' : 'Preview Mode'}
                   </div>
                   {/* Spacer */}
                   <div className="flex-1" />
@@ -502,24 +507,44 @@ export default function App() {
                 <div className="flex-1 flex items-center justify-center">
                   {/* Wrapper for RegularRenderer + overlay */}
                   <div className="relative">
-                    <RegularRenderer
-                      xml={musicXMLFile.xml}
-                      bgUrl={bgUrl || undefined}
-                      fps={fps}
-                      scoreColor={scoreColor}
-                      syncAnchors={anchors.size > 0 ? anchors : undefined}
-                      audioUrl={audioFile?.url}
-                      scoreRegion={debouncedScoreRegion}
-                      scoreBorder={scoreBorder}
-                      scoreScale={debouncedScoreScale}
-                      // active notehead options
-                      activeNoteheadColor={activeNoteheadColor ?? undefined}
-                      activeNoteheadScale={activeNoteheadScale}
-                      activeNoteheadAnimationEntryMs={activeNoteheadEntryMs}
-                      activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
-                      activeNoteheadAnimationExitMs={activeNoteheadExitMs}
-                      colorFullNote={colorFullNote}
-                    />
+                    {useSingleLineRenderer ? (
+                      <SingleLineRenderer
+                        xml={musicXMLFile.xml}
+                        bgUrl={bgUrl || undefined}
+                        fps={fps}
+                        scoreColor={scoreColor}
+                        syncAnchors={anchors.size > 0 ? anchors : undefined}
+                        audioUrl={audioFile?.url}
+                        scoreRegion={debouncedScoreRegion}
+                        scoreBorder={scoreBorder}
+                        scoreScale={debouncedScoreScale}
+                        activeNoteheadColor={activeNoteheadColor ?? undefined}
+                        activeNoteheadScale={activeNoteheadScale}
+                        activeNoteheadAnimationEntryMs={activeNoteheadEntryMs}
+                        activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
+                        activeNoteheadAnimationExitMs={activeNoteheadExitMs}
+                        colorFullNote={colorFullNote}
+                      />
+                    ) : (
+                      <RegularRenderer
+                        xml={musicXMLFile.xml}
+                        bgUrl={bgUrl || undefined}
+                        fps={fps}
+                        scoreColor={scoreColor}
+                        syncAnchors={anchors.size > 0 ? anchors : undefined}
+                        audioUrl={audioFile?.url}
+                        scoreRegion={debouncedScoreRegion}
+                        scoreBorder={scoreBorder}
+                        scoreScale={debouncedScoreScale}
+                        // active notehead options
+                        activeNoteheadColor={activeNoteheadColor ?? undefined}
+                        activeNoteheadScale={activeNoteheadScale}
+                        activeNoteheadAnimationEntryMs={activeNoteheadEntryMs}
+                        activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
+                        activeNoteheadAnimationExitMs={activeNoteheadExitMs}
+                        colorFullNote={colorFullNote}
+                      />
+                    )}
                     {/* Score Region Editor Overlay - positioned relative to RegularRenderer */}
                     {currentView === 'renderer' && isEditingRegion && regionContainerDims && (
                       <div className="absolute" style={{

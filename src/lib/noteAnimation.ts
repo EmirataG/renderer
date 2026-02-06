@@ -12,9 +12,10 @@ const FULL_NOTE_SELECTORS = "g.stem, g.accid, g.flag, g.dots, g.artic";
 
 function applyColorToElement(el: SVGGraphicsElement, color: string, transitionMs: number, easing: string) {
   el.style.transition = `fill ${transitionMs}ms ${easing}, stroke ${transitionMs}ms ${easing}`;
-  el.style.fill = color;
-  el.style.stroke = color;
-  el.style.color = color;
+  // Use setProperty with 'important' to override CSS stylesheet rules
+  el.style.setProperty('fill', color, 'important');
+  el.style.setProperty('stroke', color, 'important');
+  el.style.setProperty('color', color, 'important');
 }
 
 function clearColorFromElement(el: SVGGraphicsElement, transitionMs: number, easing: string) {
@@ -39,49 +40,62 @@ export function animateNoteheads(
   if (!root) return;
 
   svgIds.forEach((id) => {
-    const stavenote = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
-    if (!stavenote) return;
+    const element = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
+    if (!element) return;
 
-    const noteheads = stavenote.querySelectorAll<SVGGElement>("g.notehead");
+    // Determine the animation target(s):
+    // - If element is a g.chord, animate all g.note children
+    // - If element is a g.note, animate it directly
+    // - Otherwise, search for noteheads within (legacy behavior)
+    let targets: SVGGElement[];
+    if (element.classList.contains('chord')) {
+      targets = Array.from(element.querySelectorAll<SVGGElement>('g.note'));
+    } else if (element.classList.contains('note')) {
+      targets = [element];
+    } else {
+      targets = [element];
+    }
 
-    noteheads.forEach((nh) => {
-      /* ---------------- scale (group) ---------------- */
+    // Animate each target (note within chord or single note)
+    targets.forEach((target) => {
+      const noteheads = target.querySelectorAll<SVGGElement>("g.notehead");
 
-      nh.style.transformBox = "fill-box";
-      nh.style.transformOrigin = "center";
-      nh.style.transition = `transform ${entryMs}ms ease-out`;
-      nh.style.transform = `scale(${scale})`;
+      noteheads.forEach((nh) => {
+        /* ---------------- scale (group) ---------------- */
+        nh.style.transformBox = "fill-box";
+        nh.style.transformOrigin = "center";
+        nh.style.transition = `transform ${entryMs}ms ease-out`;
+        nh.style.transform = `scale(${scale})`;
 
-      /* ---------------- color override (notehead shapes) ---------------- */
-
-      const shapes = nh.querySelectorAll<SVGGraphicsElement>("use");
-
-      shapes.forEach((shape) => {
-        if (color) {
-          applyColorToElement(shape, color, entryMs, "ease-out");
-        }
-      });
-
-      /* ---------------- exit ---------------- */
-
-      const totalDelay = entryMs + holdMs;
-
-      window.setTimeout(() => {
-        nh.style.transition = `transform ${exitMs}ms ease-in`;
-        nh.style.transform = "scale(1)";
+        /* ---------------- color override (notehead shapes) ---------------- */
+        const shapes = nh.querySelectorAll<SVGGraphicsElement>("use");
 
         shapes.forEach((shape) => {
           if (color) {
-            clearColorFromElement(shape, exitMs, "ease-in");
+            applyColorToElement(shape, color, entryMs, "ease-out");
           }
         });
-      }, totalDelay);
+
+        /* ---------------- exit ---------------- */
+        const totalDelay = entryMs + holdMs;
+
+        window.setTimeout(() => {
+          nh.style.transition = `transform ${exitMs}ms ease-in`;
+          nh.style.transform = "scale(1)";
+
+          shapes.forEach((shape) => {
+            if (color) {
+              clearColorFromElement(shape, exitMs, "ease-in");
+            }
+          });
+        }, totalDelay);
+      });
     });
 
     /* ---------------- full note coloring (stem, accidentals, etc.) ---------------- */
-
+    // Search from the original element (chord or note) for stems, accidentals, etc.
     if (color && colorFullNote) {
-      const extras = stavenote.querySelectorAll<SVGGraphicsElement>(FULL_NOTE_SELECTORS);
+      const extras = element.querySelectorAll<SVGGraphicsElement>(FULL_NOTE_SELECTORS);
       extras.forEach((group) => {
         // Color all renderable children (path, use, polygon, etc.)
         const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line");
