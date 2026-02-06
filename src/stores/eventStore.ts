@@ -7,6 +7,11 @@ export interface CachedEvent {
   svgIds: string[];      // Verovio note xml:id values
   pageIndex: number;     // 0-based page index
   globalY: number;       // Y position in global coordinate space
+
+  // Optional fields for horizontal rendering (single-line mode)
+  sectionIndex?: number; // Which section contains this event (0-based)
+  localX?: number;       // X position within the section SVG
+  globalX?: number;      // Absolute X = sectionOffsets[sectionIndex] + localX
 }
 
 interface EventStore {
