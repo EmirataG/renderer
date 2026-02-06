@@ -28,5 +28,16 @@ declare module 'verovio/esm' {
       off?: string[];
       tempo?: number;
     }>;
+    /**
+     * Select a portion of the score for rendering.
+     * @param selection - JSON object with measureRange
+     * @returns boolean indicating success
+     */
+    select(selection: VerovioSelection): boolean;
+  }
+
+  export interface VerovioSelection {
+    /** Measure range like "1-10", "20-end", or empty object to clear */
+    measureRange?: string;
   }
 }
