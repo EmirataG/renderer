@@ -80,7 +80,10 @@ Plans:
   3. Notehead animation (scale, color, entry/hold/exit) works identically to RegularRenderer on the horizontal layout
   4. Score region bounds control the animation viewport (same as RegularRenderer)
   5. Transport controls (play, stop, reset) work correctly with horizontal layout
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 12-01-PLAN.md — Create SingleLineRenderer component with horizontal camera and animation
+- [ ] 12-02-PLAN.md — Visual verification checkpoint
 
 ### Phase 13: Section Virtualization
 **Goal**: Only visible sections are mounted in DOM, with seamless transitions that hide section boundaries
@@ -151,5 +154,5 @@ Phases execute in order: 10 -> 11 -> 12 -> 13
 | 9. OSMD Cleanup | v1.1 | 1/1 | Complete | 2026-02-05 |
 | 10. Single-Line Verovio Hook | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 11. Single-Line Event Extraction | v1.2 | 1/1 | Complete | 2026-02-05 |
-| 12. SingleLineRenderer Core | v1.2 | 0/? | Pending | -- |
+| 12. SingleLineRenderer Core | v1.2 | 0/2 | Pending | -- |
 | 13. Section Virtualization | v1.2 | 0/? | Pending | -- |
