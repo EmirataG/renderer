@@ -39,7 +39,7 @@ Reduced memory usage and improved rendering performance for long scores through 
 **Milestone Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance. Music scrolls beneath a fixed center point while notehead animations highlight active notes.
 
 - [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio ✓
-- [ ] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments
+- [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments ✓
 - [ ] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling
 - [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions
 
@@ -68,7 +68,7 @@ Plans:
   3. X coordinates are computed from section offsets plus local element positions (analogous to vertical page offsets)
 **Plans:** 1 plan
 Plans:
-- [ ] 11-01-PLAN.md — Extend CachedEvent type + computeSectionPositions function
+- [x] 11-01-PLAN.md — Extend CachedEvent type + computeSectionPositions function
 
 ### Phase 12: SingleLineRenderer Core
 **Goal**: Users can play back a score in horizontal single-line mode with smooth camera tracking and notehead animation
@@ -150,6 +150,6 @@ Phases execute in order: 10 -> 11 -> 12 -> 13
 | 8. Virtual Scrolling | v1.1 | 1/1 | Complete | 2026-02-05 |
 | 9. OSMD Cleanup | v1.1 | 1/1 | Complete | 2026-02-05 |
 | 10. Single-Line Verovio Hook | v1.2 | 1/1 | Complete | 2026-02-05 |
-| 11. Single-Line Event Extraction | v1.2 | 0/1 | Pending | -- |
+| 11. Single-Line Event Extraction | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 12. SingleLineRenderer Core | v1.2 | 0/? | Pending | -- |
 | 13. Section Virtualization | v1.2 | 0/? | Pending | -- |

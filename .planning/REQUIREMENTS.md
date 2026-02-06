@@ -30,7 +30,7 @@
 
 - [ ] **ANI-01**: Notehead animation (scale, color, entry/hold/exit) works on horizontal layout
 - [ ] **ANI-02**: Animation targets correct section's SVG elements
-- [ ] **ANI-03**: Each event has a single X coordinate for animation targeting
+- [x] **ANI-03**: Each event has a single X coordinate for animation targeting
 
 ## Future Requirements
 
@@ -67,7 +67,7 @@ Deferred to later milestones:
 | SEC-04 | Phase 13 | Pending |
 | ANI-01 | Phase 12 | Pending |
 | ANI-02 | Phase 12 | Pending |
-| ANI-03 | Phase 11 | Pending |
+| ANI-03 | Phase 11 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 15 total
@@ -76,4 +76,4 @@ Deferred to later milestones:
 
 ---
 *Requirements defined: 2026-02-05*
-*Last updated: 2026-02-05 after Phase 10 completion*
+*Last updated: 2026-02-05 after Phase 11 completion*
