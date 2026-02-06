@@ -238,3 +238,56 @@ export function computeEventPositions(
 
   return cachedEvents;
 }
+
+/**
+ * Compute section indices and global X positions for horizontal single-line rendering.
+ *
+ * This function mirrors computeEventPositions but for the horizontal axis.
+ * Call after section SVGs are mounted in the DOM.
+ *
+ * @param events - Events with timing data (from extractTimemapEvents or with pageIndex/globalY)
+ * @param sectionContainers - Array of DOM elements containing each section's SVG
+ * @param sectionOffsets - Cumulative X offset for each section (from useSingleLineVerovio)
+ * @returns Events with sectionIndex, localX, and globalX populated
+ */
+export function computeSectionPositions(
+  events: CachedEvent[],
+  sectionContainers: HTMLElement[],
+  sectionOffsets: number[]
+): CachedEvent[] {
+  // Clone events to avoid mutation
+  const result = events.map(event => ({ ...event }));
+
+  for (const event of result) {
+    if (event.svgIds.length === 0) continue;
+
+    // Find which section contains this element by searching each container
+    let sectionIndex = -1;
+    let localX = 0;
+
+    for (let i = 0; i < sectionContainers.length; i++) {
+      const container = sectionContainers[i];
+      if (!container) continue;
+
+      const noteEl = container.querySelector(
+        `#${CSS.escape(event.svgIds[0])}`
+      );
+      if (noteEl) {
+        sectionIndex = i;
+        const containerRect = container.getBoundingClientRect();
+        const noteRect = noteEl.getBoundingClientRect();
+        // Use element center for consistent camera targeting
+        localX = noteRect.left - containerRect.left + noteRect.width / 2;
+        break;
+      }
+    }
+
+    if (sectionIndex >= 0) {
+      event.sectionIndex = sectionIndex;
+      event.localX = localX;
+      event.globalX = sectionOffsets[sectionIndex] + localX;
+    }
+  }
+
+  return result;
+}
