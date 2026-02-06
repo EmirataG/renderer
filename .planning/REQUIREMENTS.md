@@ -7,8 +7,8 @@
 
 ### Horizontal Layout
 
-- [ ] **HOR-01**: Score renders as single horizontal line with no system breaks
-- [ ] **HOR-02**: Verovio configured with `breaks: 'none'` for single-system output
+- [x] **HOR-01**: Score renders as single horizontal line with no system breaks
+- [x] **HOR-02**: Verovio configured with `breaks: 'none'` for single-system output
 - [ ] **HOR-03**: Section transitions are visually seamless (no gaps, staff lines continuous)
 
 ### Camera System
@@ -21,8 +21,8 @@
 
 ### Section-Based Performance
 
-- [ ] **SEC-01**: Long scores split into sections (10-20 measures each)
-- [ ] **SEC-02**: Sections rendered via Verovio `select({ measureRange })` API
+- [x] **SEC-01**: Long scores split into sections (10-20 measures each)
+- [x] **SEC-02**: Sections rendered via Verovio `select({ measureRange })` API
 - [ ] **SEC-03**: Lazy loading -- only visible sections mounted in DOM
 - [ ] **SEC-04**: Section overlap for tied notes/slurs continuity
 
@@ -53,16 +53,16 @@ Deferred to later milestones:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOR-01 | Phase 10 | Pending |
-| HOR-02 | Phase 10 | Pending |
+| HOR-01 | Phase 10 | Complete |
+| HOR-02 | Phase 10 | Complete |
 | HOR-03 | Phase 13 | Pending |
 | CAM-01 | Phase 12 | Pending |
 | CAM-02 | Phase 12 | Pending |
 | CAM-03 | Phase 12 | Pending |
 | CAM-04 | Phase 12 | Pending |
 | CAM-05 | Phase 12 | Pending |
-| SEC-01 | Phase 10 | Pending |
-| SEC-02 | Phase 10 | Pending |
+| SEC-01 | Phase 10 | Complete |
+| SEC-02 | Phase 10 | Complete |
 | SEC-03 | Phase 13 | Pending |
 | SEC-04 | Phase 13 | Pending |
 | ANI-01 | Phase 12 | Pending |
@@ -76,4 +76,4 @@ Deferred to later milestones:
 
 ---
 *Requirements defined: 2026-02-05*
-*Last updated: 2026-02-05 after roadmap creation*
+*Last updated: 2026-02-05 after Phase 10 completion*
