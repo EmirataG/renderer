@@ -62,6 +62,7 @@ export function useVerovio(
 
         toolkit.setOptions({
           font: font.toLowerCase(),
+          fontLoadAll: true,  // Load all music fonts to enable runtime font switching
           pageWidth: (containerWidth * 100) / scale,
           pageHeight: 2970,
           scale: scale,
