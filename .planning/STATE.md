@@ -101,7 +101,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed quick-004-PLAN.md (Revert Staff Alignment + Music Font Selector)
+Stopped at: Completed quick-005-PLAN.md (Fix Music Font Not Changing)
 Resume file: None
 Next: `/gsd:execute-plan 12-02` (Integration)
 
@@ -110,3 +110,4 @@ Next: `/gsd:execute-plan 12-02` (Integration)
 - quick-002: Smooth camera interpolation using lerp() - removes CSS transition stuttering
 - quick-003: Staff line vertical alignment across sections using Y offset extraction (REVERTED in quick-004)
 - quick-004: Revert quick-003 staff alignment + add music font selector to inspector
+- quick-005: Fix music font selector - add fontLoadAll: true to Verovio hooks
