@@ -78,6 +78,7 @@ export function useSingleLineVerovio(
         // Verovio options for horizontal layout (single system, no breaks)
         toolkit.setOptions({
           font: font.toLowerCase(),
+          fontLoadAll: true,           // Load all music fonts to enable runtime font switching
           breaks: 'none',              // Force single horizontal system
           pageWidth: 100000,           // Large width to prevent wrapping
           pageHeight: 100,             // Minimal height, adjustPageHeight expands
