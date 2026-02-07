@@ -74,6 +74,7 @@ Recent decisions affecting current work:
 - [v1.2]: Camera centers active note at 50% viewport (horizontal mode)
 - [v1.2]: Section container refs for element queries to avoid cross-section ID collisions
 - [v1.2]: Inline camera logic (not extracted to hook) per YAGNI principle
+- [v1.2]: Camera interpolates position per-frame using lerp() -- no CSS transitions
 
 ### v1.2 Research Insights
 
@@ -97,7 +98,11 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-06
-Stopped at: Completed 12-01-PLAN.md (SingleLineRenderer Core)
+Last session: 2026-02-07
+Stopped at: Completed quick-002-PLAN.md (Smooth Scrolling)
 Resume file: None
 Next: `/gsd:execute-plan 12-02` (Integration)
+
+### Quick Tasks Completed
+
+- quick-002: Smooth camera interpolation using lerp() - removes CSS transition stuttering
