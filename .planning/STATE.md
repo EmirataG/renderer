@@ -75,7 +75,8 @@ Recent decisions affecting current work:
 - [v1.2]: Section container refs for element queries to avoid cross-section ID collisions
 - [v1.2]: Inline camera logic (not extracted to hook) per YAGNI principle
 - [v1.2]: Camera interpolates position per-frame using lerp() -- no CSS transitions
-- [v1.2]: Staff alignment via Y offset extraction from SVG paths and translateY offset
+- [v1.2]: Staff alignment reverted -- quick-003 approach didn't work correctly
+- [v1.2]: Music font selectable via dropdown (Bravura, Petaluma, Leland, Gootville, Leipzig)
 
 ### v1.2 Research Insights
 
@@ -100,11 +101,12 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed quick-003-PLAN.md (Staff Line Alignment)
+Stopped at: Completed quick-004-PLAN.md (Revert Staff Alignment + Music Font Selector)
 Resume file: None
 Next: `/gsd:execute-plan 12-02` (Integration)
 
 ### Quick Tasks Completed
 
 - quick-002: Smooth camera interpolation using lerp() - removes CSS transition stuttering
-- quick-003: Staff line vertical alignment across sections using Y offset extraction
+- quick-003: Staff line vertical alignment across sections using Y offset extraction (REVERTED in quick-004)
+- quick-004: Revert quick-003 staff alignment + add music font selector to inspector
