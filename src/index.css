@@ -279,3 +279,26 @@ body {
 .grunge-color-picker::-webkit-color-swatch {
   border: none;
 }
+
+/* --- Select Dropdown --- */
+.grunge-select {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #111;
+  border: 1px solid #555;
+  color: white;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 150ms;
+}
+
+.grunge-select:focus {
+  border-color: white;
+}
+
+.grunge-select option {
+  background: #111;
+  color: white;
+}

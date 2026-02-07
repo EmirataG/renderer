@@ -33,6 +33,8 @@ interface Props {
   scoreBorder?: BorderStyle;
   // score scale (size multiplier)
   scoreScale?: number;
+  // music font (Bravura, Petaluma, Leland, Gootville, Leipzig)
+  musicFont?: string;
   // notehead animations
   activeNoteheadColor?: string;
   activeNoteheadScale?: number;
@@ -52,6 +54,7 @@ export default function RegularRenderer({
   scoreRegion,
   scoreBorder = "none",
   scoreScale = 1,
+  musicFont = "Bravura",
   // notehead animation defaults
   activeNoteheadColor = scoreColor,
   activeNoteheadScale = 1,
@@ -81,7 +84,7 @@ export default function RegularRenderer({
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
   const scoreWidth = scoreRegion?.width ?? containerWidth;
-  const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale);
+  const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);

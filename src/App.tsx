@@ -57,6 +57,9 @@ export default function App() {
   const [debouncedScoreScale, setDebouncedScoreScale] = useState(1.0);
   const [debouncedScoreRegion, setDebouncedScoreRegion] = useState<ScoreRegion | null>(null);
 
+  // Music font
+  const [musicFont, setMusicFont] = useState<string>('Bravura');
+
   // Debounce scoreScale to avoid Verovio re-render on every slider tick
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -259,6 +262,23 @@ export default function App() {
                     onChange={(e) => setScoreScale(Number(e.target.value))}
                     className="grunge-range"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs text-neutral-300 font-medium">
+                    Music Font
+                  </label>
+                  <select
+                    value={musicFont}
+                    onChange={(e) => setMusicFont(e.target.value)}
+                    className="grunge-select w-full"
+                  >
+                    <option value="Bravura">Bravura</option>
+                    <option value="Petaluma">Petaluma</option>
+                    <option value="Leland">Leland</option>
+                    <option value="Gootville">Gootville</option>
+                    <option value="Leipzig">Leipzig</option>
+                  </select>
                 </div>
 
                 <div className="space-y-2">
@@ -518,6 +538,7 @@ export default function App() {
                         scoreRegion={debouncedScoreRegion}
                         scoreBorder={scoreBorder}
                         scoreScale={debouncedScoreScale}
+                        musicFont={musicFont}
                         activeNoteheadColor={activeNoteheadColor ?? undefined}
                         activeNoteheadScale={activeNoteheadScale}
                         activeNoteheadAnimationEntryMs={activeNoteheadEntryMs}
@@ -536,6 +557,7 @@ export default function App() {
                         scoreRegion={debouncedScoreRegion}
                         scoreBorder={scoreBorder}
                         scoreScale={debouncedScoreScale}
+                        musicFont={musicFont}
                         // active notehead options
                         activeNoteheadColor={activeNoteheadColor ?? undefined}
                         activeNoteheadScale={activeNoteheadScale}

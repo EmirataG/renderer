@@ -34,7 +34,8 @@ function extractSectionDimensions(svgString: string): { width: number; height: n
 export function useSingleLineVerovio(
   xml: string,
   scale: number = 40,
-  measuresPerSection: number = 15
+  measuresPerSection: number = 15,
+  font: string = 'Bravura'
 ): UseSingleLineVerovioResult {
   const [sections, setSections] = useState<string[]>([]);
   const [sectionWidths, setSectionWidths] = useState<number[]>([]);
@@ -76,6 +77,7 @@ export function useSingleLineVerovio(
 
         // Verovio options for horizontal layout (single system, no breaks)
         toolkit.setOptions({
+          font: font.toLowerCase(),
           breaks: 'none',              // Force single horizontal system
           pageWidth: 100000,           // Large width to prevent wrapping
           pageHeight: 100,             // Minimal height, adjustPageHeight expands
@@ -192,7 +194,7 @@ export function useSingleLineVerovio(
     return () => {
       cancelled = true;
     };
-  }, [xml, scale, measuresPerSection]);
+  }, [xml, scale, measuresPerSection, font]);
 
   return {
     sections,

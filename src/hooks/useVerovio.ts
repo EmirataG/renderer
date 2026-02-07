@@ -25,7 +25,8 @@ function extractPageHeight(svgString: string): number {
 export function useVerovio(
   xml: string,
   containerWidth: number,
-  scale: number = 40
+  scale: number = 40,
+  font: string = 'Bravura'
 ): UseVerovioResult {
   const [svgPages, setSvgPages] = useState<string[]>([]);
   const [pageHeights, setPageHeights] = useState<number[]>([]);
@@ -60,6 +61,7 @@ export function useVerovio(
         toolkitRef.current = toolkit;
 
         toolkit.setOptions({
+          font: font.toLowerCase(),
           pageWidth: (containerWidth * 100) / scale,
           pageHeight: 2970,
           scale: scale,
@@ -130,7 +132,7 @@ export function useVerovio(
     return () => {
       cancelled = true;
     };
-  }, [xml, containerWidth, scale]);
+  }, [xml, containerWidth, scale, font]);
 
   return {
     svgPages,
