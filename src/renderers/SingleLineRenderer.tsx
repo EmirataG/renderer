@@ -85,13 +85,8 @@ export default function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
-  const { sections, sectionWidths, sectionHeights, sectionOffsets, sectionStaffOffsets, totalWidth, maxHeight, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale);
+  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale);
 
-  // Compute reference staff Y for vertical alignment across sections
-  // The reference is the minimum Y (topmost staff position) across all sections
-  const referenceStaffY = sectionStaffOffsets.length > 0
-    ? Math.min(...sectionStaffOffsets)
-    : 0;
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -831,27 +826,21 @@ export default function SingleLineRenderer({
                   fontSize: 0,
                 }}
               >
-                {sections.map((svg, i) => {
-                  // Compute alignment offset to align staff lines across sections
-                  // Sections with staff lines lower than the reference get shifted up (negative offset)
-                  const alignmentOffset = referenceStaffY - (sectionStaffOffsets[i] ?? 0);
-                  return (
-                    <div
-                      key={i}
-                      ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                      className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
-                      style={{
-                        flexShrink: 0,
-                        width: sectionWidths[i],
-                        height: maxHeight,
-                        display: 'flex',
-                        alignItems: 'flex-start', // Align SVGs to top for consistent staff line positioning
-                        transform: alignmentOffset !== 0 ? `translateY(${alignmentOffset}px)` : undefined,
-                      }}
-                      dangerouslySetInnerHTML={{ __html: svg }}
-                    />
-                  );
-                })}
+                {sections.map((svg, i) => (
+                  <div
+                    key={i}
+                    ref={(el) => { sectionContainerRefs.current[i] = el; }}
+                    className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
+                    style={{
+                      flexShrink: 0,
+                      width: sectionWidths[i],
+                      height: maxHeight,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                    }}
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
+                ))}
               </div>
             </div>
           </div>
