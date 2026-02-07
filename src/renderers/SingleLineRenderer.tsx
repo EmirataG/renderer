@@ -17,6 +17,11 @@ import {
 
 const WIDTH = 980;
 
+// Linear interpolation helper for smooth camera movement
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * Math.max(0, Math.min(1, t));
+}
+
 interface Props {
   // core
   xml: string;
@@ -243,10 +248,21 @@ export default function SingleLineRenderer({
       if (toolkit) {
         const timemapEvents = extractTimemapEvents(toolkit);
         const containers = sectionContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
+        console.log('[SingleLineRenderer] Event extraction:', {
+          timemapEventsCount: timemapEvents.length,
+          containersCount: containers.length,
+          sectionOffsetsCount: sectionOffsets.length,
+          firstEventSvgIds: timemapEvents[0]?.svgIds,
+        });
         // Compute vertical positions (for compatibility, using section 0 offset as fallback)
         const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, [0]);
         // Compute horizontal positions for camera
         const eventsWithX = computeSectionPositions(cachedEvents, containers, sectionOffsets);
+        console.log('[SingleLineRenderer] Events with positions:', {
+          eventsCount: eventsWithX.length,
+          firstEventSectionIndex: eventsWithX[0]?.sectionIndex,
+          firstEventGlobalX: eventsWithX[0]?.globalX,
+        });
         setEventsInStore(eventsWithX, sections);
       }
     });
@@ -375,10 +391,18 @@ export default function SingleLineRenderer({
         const evt = interpolatedEvents[i];
         if (evt?.svgIds?.length) {
           // For single-line mode, query from the section container if available
-          const sectionIndex = events.find(e => e.id === evt.id)?.sectionIndex;
+          const cachedEvent = events.find(e => e.id === evt.id);
+          const sectionIndex = cachedEvent?.sectionIndex;
           const root = sectionIndex !== undefined && sectionContainerRefs.current[sectionIndex]
             ? sectionContainerRefs.current[sectionIndex]
             : scoreRef.current;
+
+          // Debug: check if element exists
+          const testEl = root?.querySelector(`#${CSS.escape(evt.svgIds[0])}`);
+          if (!testEl) {
+            console.warn('[SingleLineRenderer] Element not found:', evt.svgIds[0], 'in section', sectionIndex);
+          }
+
           animateNoteheads(root, evt.svgIds, {
             scale: activeNoteheadScale,
             entryMs: activeNoteheadAnimationEntryMs,
@@ -391,8 +415,26 @@ export default function SingleLineRenderer({
       }
     }
 
-    // Camera X: use globalX from event for horizontal positioning
-    currentXRef.current = event.x;
+    // Camera X: interpolate between current and next event for smooth scrolling
+    const currentX = event.x;
+    const nextEvent = interpolatedEvents[index + 1];
+
+    if (nextEvent) {
+      // Calculate progress between current and next event
+      const currentTimestamp = event.computedTimestamp;
+      const nextTimestamp = nextEvent.computedTimestamp;
+      const duration = nextTimestamp - currentTimestamp;
+
+      if (duration > 0) {
+        const progress = (currentTime - currentTimestamp) / duration;
+        currentXRef.current = lerp(currentX, nextEvent.x, progress);
+      } else {
+        currentXRef.current = currentX;
+      }
+    } else {
+      // At last event, no interpolation needed
+      currentXRef.current = currentX;
+    }
 
     applyCamera(currentXRef.current);
 
@@ -538,8 +580,24 @@ export default function SingleLineRenderer({
       // Update event index and X position
       eventIndexRef.current = currentIndex;
 
-      // Camera X: use globalX from event
-      currentXRef.current = currentEvent.x;
+      // Camera X: interpolate between current and next event for smooth scrolling
+      const currentX = currentEvent.x;
+      const nextEvent = evts[currentIndex + 1];
+
+      if (nextEvent) {
+        const currentTimestamp = currentEvent.computedTimestamp;
+        const nextTimestamp = nextEvent.computedTimestamp;
+        const duration = nextTimestamp - currentTimestamp;
+
+        if (duration > 0) {
+          const progress = (seconds - currentTimestamp) / duration;
+          currentXRef.current = lerp(currentX, nextEvent.x, progress);
+        } else {
+          currentXRef.current = currentX;
+        }
+      } else {
+        currentXRef.current = currentX;
+      }
 
       applyCamera(currentXRef.current);
 
@@ -753,7 +811,7 @@ export default function SingleLineRenderer({
                 display: "flex",
                 flexDirection: "row",
                 pointerEvents: "none",
-                transition: "transform 200ms ease-out",
+                // No CSS transition - camera position is interpolated frame-by-frame
               }}
             >
               <div
