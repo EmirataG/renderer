@@ -40,8 +40,9 @@ Reduced memory usage and improved rendering performance for long scores through 
 
 - [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio ✓
 - [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments ✓
-- [ ] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling
-- [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions
+- [x] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling ✓
+- [x] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions ✓
+- [ ] **Phase 13.1: Unplayed Score Styling** - Visual differentiation of played vs unplayed score regions (INSERTED)
 
 ## Phase Details
 
@@ -82,8 +83,8 @@ Plans:
   5. Transport controls (play, stop, reset) work correctly with horizontal layout
 **Plans:** 2 plans
 Plans:
-- [ ] 12-01-PLAN.md — Create SingleLineRenderer component with horizontal camera and animation
-- [ ] 12-02-PLAN.md — Visual verification checkpoint
+- [x] 12-01-PLAN.md — Create SingleLineRenderer component with horizontal camera and animation
+- [x] 12-02-PLAN.md — Visual verification checkpoint
 
 ### Phase 13: Section Virtualization
 **Goal**: Only visible sections are mounted in DOM, with seamless transitions that hide section boundaries
@@ -94,6 +95,18 @@ Plans:
   2. Section boundaries are invisible to users (staff lines appear continuous, no gaps or visual seams)
   3. Tied notes and slurs that cross section boundaries render correctly (overlap strategy working)
   4. Switching sections during playback causes no animation glitches or missing noteheads
+**Plans**: TBD
+
+### Phase 13.1: Unplayed Score Styling (INSERTED)
+**Goal**: Inspector option to visually differentiate played vs unplayed score regions using clip-path for complex elements and direct styling for noteheads/stems/accidentals/dots
+**Depends on**: Phase 13
+**Requirements**: STY-01, STY-02, STY-03
+**Success Criteria** (what must be TRUE):
+  1. Inspector has a dropdown/toggle to enable "unplayed styling" with options (e.g., dimmed, invisible, different color)
+  2. Noteheads, stems, accidentals, and dots change style directly when transitioning from unplayed to played
+  3. Staff lines, barlines, beams, and other complex elements use clip-path to reveal played portions progressively
+  4. The clip-path boundary follows the current playback position (X coordinate in SingleLineRenderer)
+  5. Style changes apply to both SingleLineRenderer and RegularRenderer
 **Plans**: TBD
 
 ## Requirement Coverage
@@ -117,8 +130,11 @@ Plans:
 | ANI-01 | Notehead animation works on horizontal layout | Phase 12 |
 | ANI-02 | Animation targets correct section's SVG elements | Phase 12 |
 | ANI-03 | Each event has a single X coordinate for animation targeting | Phase 11 |
+| STY-01 | Inspector option to enable unplayed score styling | Phase 13.1 |
+| STY-02 | Noteheads/stems/accidentals/dots use direct style changes | Phase 13.1 |
+| STY-03 | Staff lines/barlines/beams use clip-path for progressive reveal | Phase 13.1 |
 
-**Coverage: 15/15 requirements mapped**
+**Coverage: 18/18 requirements mapped**
 
 ### Dependency Chain
 
@@ -133,12 +149,15 @@ Phase 12: SingleLineRenderer Core  (requires events with X coordinates from Phas
     |
     v
 Phase 13: Section Virtualization  (requires working renderer from Phase 12)
+    |
+    v
+Phase 13.1: Unplayed Score Styling  (requires virtualization for clip-path boundaries)
 ```
 
 ## Progress
 
 **Execution Order:**
-Phases execute in order: 10 -> 11 -> 12 -> 13
+Phases execute in order: 10 -> 11 -> 12 -> 13 -> 13.1
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -154,5 +173,6 @@ Phases execute in order: 10 -> 11 -> 12 -> 13
 | 9. OSMD Cleanup | v1.1 | 1/1 | Complete | 2026-02-05 |
 | 10. Single-Line Verovio Hook | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 11. Single-Line Event Extraction | v1.2 | 1/1 | Complete | 2026-02-05 |
-| 12. SingleLineRenderer Core | v1.2 | 0/2 | Pending | -- |
-| 13. Section Virtualization | v1.2 | 0/? | Pending | -- |
+| 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
+| 13. Section Virtualization | v1.2 | -- | Complete | 2026-02-07 |
+| 13.1. Unplayed Score Styling | v1.2 | 0/? | Pending | -- |
