@@ -7,6 +7,7 @@ export interface UseSingleLineVerovioResult {
   sectionWidths: number[];      // Width of each section in pixels
   sectionHeights: number[];     // Height of each section in pixels
   sectionOffsets: number[];     // Cumulative X offset for each section
+  sectionStaffOffsets: number[]; // Y position of first staff line in each section (for alignment)
   totalWidth: number;           // Total score width (sum of all widths)
   maxHeight: number;            // Maximum section height for alignment
   sectionCount: number;         // Number of sections
@@ -31,6 +32,41 @@ function extractSectionDimensions(svgString: string): { width: number; height: n
   return { width: 0, height: 0 };
 }
 
+/**
+ * Extract the Y position of the first staff line from an SVG string.
+ * Verovio renders staff lines as horizontal paths inside <g class="staff"> elements.
+ * Staff line paths have the format: d="M x1,y L x2,y" where y is the staff line position.
+ * Returns the Y coordinate of the topmost staff line (first line of first staff).
+ */
+function extractStaffYOffset(svgString: string): number {
+  // Parse the SVG string to find staff line paths
+  // Staff lines are inside <g class="staff"> and have horizontal path elements
+  // Path format: d="M 123,456 L 789,456" where 456 is the Y position
+
+  // Find first staff group
+  const staffMatch = svgString.match(/<g[^>]*class="[^"]*\bstaff\b[^"]*"[^>]*>([\s\S]*?)<\/g>/);
+  if (!staffMatch) {
+    return 0;
+  }
+
+  // Extract all path d attributes from the staff group
+  const staffContent = staffMatch[1];
+  const pathMatches = staffContent.matchAll(/<path[^>]*d="M\s*([\d.]+),([\d.]+)\s*L\s*([\d.]+),([\d.]+)"[^>]*\/>/g);
+
+  let minY = Infinity;
+  for (const match of pathMatches) {
+    const y1 = parseFloat(match[2]);
+    const y2 = parseFloat(match[4]);
+    // Staff lines are horizontal, so y1 === y2
+    // Take the minimum Y to find the topmost staff line
+    if (y1 === y2 && y1 < minY) {
+      minY = y1;
+    }
+  }
+
+  return minY === Infinity ? 0 : minY;
+}
+
 export function useSingleLineVerovio(
   xml: string,
   scale: number = 40,
@@ -40,6 +76,7 @@ export function useSingleLineVerovio(
   const [sectionWidths, setSectionWidths] = useState<number[]>([]);
   const [sectionHeights, setSectionHeights] = useState<number[]>([]);
   const [sectionOffsets, setSectionOffsets] = useState<number[]>([]);
+  const [sectionStaffOffsets, setSectionStaffOffsets] = useState<number[]>([]);
   const [totalWidth, setTotalWidth] = useState<number>(0);
   const [maxHeight, setMaxHeight] = useState<number>(0);
   const [sectionCount, setSectionCount] = useState<number>(0);
@@ -54,6 +91,7 @@ export function useSingleLineVerovio(
       setSectionWidths([]);
       setSectionHeights([]);
       setSectionOffsets([]);
+      setSectionStaffOffsets([]);
       setTotalWidth(0);
       setMaxHeight(0);
       setSectionCount(0);
@@ -99,6 +137,7 @@ export function useSingleLineVerovio(
             setSectionWidths([]);
             setSectionHeights([]);
             setSectionOffsets([]);
+            setSectionStaffOffsets([]);
             setTotalWidth(0);
             setMaxHeight(0);
             setSectionCount(0);
@@ -122,6 +161,7 @@ export function useSingleLineVerovio(
             setSectionWidths([]);
             setSectionHeights([]);
             setSectionOffsets([]);
+            setSectionStaffOffsets([]);
             setTotalWidth(0);
             setMaxHeight(0);
             setSectionCount(0);
@@ -159,11 +199,15 @@ export function useSingleLineVerovio(
           cumulative += w;
         }
 
+        // Compute staff Y offsets for vertical alignment across sections
+        const staffOffsets = renderedSections.map(extractStaffYOffset);
+
         if (!cancelled) {
           setSections(renderedSections);
           setSectionWidths(widths);
           setSectionHeights(heights);
           setSectionOffsets(offsets);
+          setSectionStaffOffsets(staffOffsets);
           setTotalWidth(cumulative);
           setMaxHeight(maxH);
           setSectionCount(renderedSections.length);
@@ -178,6 +222,7 @@ export function useSingleLineVerovio(
           setSectionWidths([]);
           setSectionHeights([]);
           setSectionOffsets([]);
+          setSectionStaffOffsets([]);
           setTotalWidth(0);
           setMaxHeight(0);
           setSectionCount(0);
@@ -199,6 +244,7 @@ export function useSingleLineVerovio(
     sectionWidths,
     sectionHeights,
     sectionOffsets,
+    sectionStaffOffsets,
     totalWidth,
     maxHeight,
     sectionCount,
