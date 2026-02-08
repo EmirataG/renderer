@@ -1,302 +1,345 @@
-# Stack Research: SingleLineRenderer - Verovio Horizontal Rendering
+# Stack Research: PixiJS WebGL Migration
 
-**Domain:** Horizontal single-system score rendering with section-based output for lazy loading
-**Researched:** 2026-02-05
-**Confidence:** HIGH (verified via official Verovio documentation and source code inspection)
+**Domain:** GPU-accelerated rendering for SingleLineRenderer
+**Researched:** 2026-02-08
+**Confidence:** HIGH (verified via official PixiJS documentation and release notes)
+
+---
 
 ## Context
 
-The existing RegularRenderer uses vertical paginated layout with `breaks: 'auto'` and `pageHeight: 2970`. For v1.2 SingleLineRenderer, we need:
+The existing SingleLineRenderer uses SVG DOM rendering with CSS transforms for scrolling. For GPU acceleration, we need:
 
-1. **Horizontal single-line rendering** - All music on one continuous horizontal system
-2. **Section-based rendering** - Render measure ranges separately for performance
-3. **Lazy section loading** - Only mount visible sections in DOM
+1. **GPU-accelerated scrolling** - Container position transforms on GPU, not CPU
+2. **Shader-based highlighting** - Tint property for note highlighting
+3. **SVG-to-texture conversion** - Verovio SVG output rendered as GPU textures
+4. **React 19.1.1 compatibility** - Native integration with existing React app
+
+---
 
 ## Executive Summary
 
-**Verovio fully supports single-line horizontal rendering** via `breaks: 'none'` option. **Section-based rendering is supported** via the `select()` method with `measureRange` parameter. No new dependencies are needed.
+**PixiJS v8 with @pixi/react v8 is the recommended stack.** The @pixi/react v8 library was specifically rebuilt for React 19 and provides a declarative JSX interface. PixiJS v8's "render groups" offload position/scale/rotation transforms to the GPU - precisely what's needed for smooth camera scrolling.
+
+**Key Finding:** PixiJS v8 introduced render groups which handle transforms at the GPU level. Moving a render group container with thousands of children requires zero CPU recalculation of child positions.
+
+---
 
 ## Recommended Stack
 
-### Core Configuration: No New Libraries
+### Core Libraries
 
-The existing Verovio installation (^6.0.1) provides all required APIs. This is the correct approach - Verovio has native support for both horizontal layout and measure-range selection.
+| Library | Version | Purpose | Confidence |
+|---------|---------|---------|------------|
+| `pixi.js` | ^8.16.0 | WebGL/WebGPU 2D rendering engine | HIGH |
+| `@pixi/react` | ^8.0.5 | React 19 bindings for PixiJS | HIGH |
 
-### Verovio Options for SingleLineRenderer
+### Installation
 
-| Option | Value | Purpose |
-|--------|-------|---------|
-| `breaks` | `'none'` | **Critical** - Forces all music onto single horizontal system. No system or page breaks. |
-| `pageHeight` | `100` | Minimal height, used with adjustPageHeight |
-| `adjustPageHeight` | `true` | Shrinks SVG height to actual content (one system height) |
-| `pageWidth` | Large value (e.g., 100000) | Accommodate full score width; SVG will shrink if adjustPageWidth not used |
-| `svgViewBox` | `true` | Enables responsive scaling |
-| `pageMarginTop` | `0` | Remove margins for clean horizontal layout |
-| `pageMarginBottom` | `0` | Remove margins for clean horizontal layout |
-| `scale` | Same as RegularRenderer | Maintain consistent notation size |
-
-### Key Verovio APIs for Section Rendering
-
-| Method | Signature | Purpose | Confidence |
-|--------|-----------|---------|------------|
-| `select()` | `(selection: {measureRange: string}) => boolean` | Select measure range for rendering. Format: `"1-10"`, `"start-20"`, `"15-end"` | HIGH - verified in Verovio source |
-| `redoLayout()` | `() => void` | Re-layout after selection change. **Required** after `select()` | HIGH - documented requirement |
-| `renderToSVG()` | `(pageNo?: number) => string` | Renders selected portion after `select()` + `redoLayout()` | HIGH - verified |
-| `getPageCount()` | `() => number` | Returns page count (will be 1 for sections with `breaks: 'none'`) | HIGH - verified |
-
-**Source:** [Score content selection - Verovio Reference Book](https://book.verovio.org/interactive-notation/content-selection.html)
-
-## Feature 1: Horizontal Single-Line Rendering
-
-### How `breaks: 'none'` Works
-
-Setting `breaks: 'none'` forces Verovio to render all music on a single horizontal system with no line wraps:
-
-```typescript
-toolkit.setOptions({
-  breaks: 'none',           // No system/page breaks - one continuous line
-  pageHeight: 100,          // Minimal, will expand to fit one system
-  adjustPageHeight: true,   // Shrink to actual content height
-  pageWidth: 100000,        // Large width to fit entire score
-  svgViewBox: true,
-  pageMarginTop: 0,
-  pageMarginBottom: 0,
-  scale: 40,               // Match existing RegularRenderer scale
-  header: 'none',
-  footer: 'none',
-});
-
-toolkit.loadData(xml);
-const svg = toolkit.renderToSVG(1);  // Single page, entire score horizontally
+```bash
+npm install pixi.js@^8.16.0 @pixi/react@^8.0.5
 ```
 
-**Warning from official docs:** "Be aware that this can produce very large files, regarding both the dimension of the SVG image and the actual file size."
+**Note:** Both libraries include TypeScript definitions. No additional @types packages needed.
 
-This warning is why section-based rendering is essential for performance.
+---
 
-**Confidence:** HIGH - `breaks: 'none'` behavior is documented at [Layout options - Verovio Reference Book](https://book.verovio.org/advanced-topics/layout-options.html)
+## React 19.1.1 Integration
 
-### SVG Output Characteristics
+### Compatibility Status: CONFIRMED
 
-With `breaks: 'none'` + `adjustPageHeight: true`:
+@pixi/react v8 was "built from the ground up to harness the power of PixiJS v8 and designed exclusively for React 19" ([PixiJS Blog](https://pixijs.com/blog/pixi-react-v8-live)).
 
-| Attribute | Behavior |
-|-----------|----------|
-| SVG width | Expands to fit all measures horizontally |
-| SVG height | Shrinks to single-system height (staff height + margins) |
-| viewBox | Reflects actual content dimensions |
-| Coordinate system | Left-to-right horizontal, element IDs preserved |
+A previous React 19 compatibility issue ([GitHub Issue #551](https://github.com/pixijs/pixi-react/issues/551)) was resolved in `@pixi/react@8.0.0-beta.17` (December 2024). The current stable v8.0.5 includes this fix.
 
-**Note on adjustPageWidth:** The `adjustPageWidth` option (to shrink width to content) is **not implemented** in Verovio as of v6.0.1. The SVG width will be the full `pageWidth` value. Workaround: either use a very large `pageWidth` or post-process the SVG viewBox.
+### Component Registration with `extend`
 
-**Source:** [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - adjustPageWidth not yet implemented
-
-## Feature 2: Section-Based Rendering via `select()`
-
-### The `select()` Method
-
-Verovio's `select()` method enables rendering only a specific measure range. This is the key API for section-based lazy loading.
+@pixi/react v8 uses a tree-shakeable architecture. You must explicitly register PixiJS components before use:
 
 ```typescript
-// Select measures 1-10
-toolkit.select({ measureRange: '1-10' });
-toolkit.redoLayout();  // REQUIRED after selection
-const sectionSvg = toolkit.renderToSVG(1);
+import { Application, extend } from '@pixi/react';
+import { Container, Sprite, Graphics } from 'pixi.js';
 
-// Select measures 11-20
-toolkit.select({ measureRange: '11-20' });
-toolkit.redoLayout();
-const section2Svg = toolkit.renderToSVG(1);
+// Register components for JSX use
+extend({ Container, Sprite, Graphics });
 
-// Clear selection (render full score again)
-toolkit.select({});
-toolkit.redoLayout();
+// Now usable as JSX
+const MyComponent = () => (
+  <Application>
+    <pixiContainer>
+      <pixiSprite texture={myTexture} />
+    </pixiContainer>
+  </Application>
+);
 ```
 
-**measureRange syntax:**
-- `"1-10"` - Measures 1 through 10 (1-indexed by position, not measure number)
-- `"start-10"` - Beginning through measure 10
-- `"15-end"` - Measure 15 through end
-- `"5"` - Just measure 5
+### TypeScript Configuration
 
-**Critical:** `redoLayout()` must be called after `select()` before rendering.
-
-**Confidence:** HIGH - verified via:
-- [Score content selection documentation](https://book.verovio.org/interactive-notation/content-selection.html)
-- Verovio source code inspection (confirmed `select` method exists in `verovio.mjs`)
-- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) confirming implementation
-
-### Section Rendering Strategy
-
-For a score with N measures, divide into sections of M measures each:
+For custom components or extended types, add to a `global.d.ts`:
 
 ```typescript
-interface Section {
-  measureStart: number;  // 1-indexed
-  measureEnd: number;    // 1-indexed
-  svg: string | null;    // Rendered SVG or null if not yet rendered
-  width: number;         // SVG width in pixels (from viewBox)
-  offsetX: number;       // Cumulative X offset from previous sections
-}
+import { PixiReactElementProps } from '@pixi/react';
+import { Container, Sprite } from 'pixi.js';
 
-async function renderSection(
-  toolkit: VerovioToolkit,
-  measureStart: number,
-  measureEnd: number
-): Promise<{ svg: string; width: number }> {
-  toolkit.select({ measureRange: `${measureStart}-${measureEnd}` });
-  toolkit.redoLayout();
-  const svg = toolkit.renderToSVG(1);
-
-  // Extract width from SVG viewBox or width attribute
-  const widthMatch = svg.match(/viewBox="0 0 ([\d.]+)/);
-  const width = widthMatch ? parseFloat(widthMatch[1]) : 0;
-
-  return { svg, width };
-}
-```
-
-**Section size recommendation:** 10-20 measures per section. This balances:
-- Lazy loading benefit (smaller sections = fewer measures loaded at once)
-- Rendering overhead (each section requires `select()` + `redoLayout()` + `renderToSVG()`)
-- SVG fragment count (too many tiny sections = DOM overhead)
-
-### Type Definition Updates
-
-Add `select()` to the existing type augmentation:
-
-```typescript
-// src/types/verovio-augments.d.ts
-declare module 'verovio/esm' {
-  export class VerovioToolkit {
-    // ... existing methods ...
-    select(selection: { measureRange?: string } | {}): boolean;
-    redoLayout(): void;
+declare module '@pixi/react' {
+  interface PixiElements {
+    pixiContainer: PixiReactElementProps<typeof Container>;
+    pixiSprite: PixiReactElementProps<typeof Sprite>;
   }
 }
 ```
 
-**Confidence:** HIGH - `select()` exists in Verovio 6.0.1 (verified in source code)
+---
 
-## Feature 3: Integration with Existing Infrastructure
+## Key PixiJS v8 Features for This Project
 
-### Compatibility with Existing Patterns
+### 1. Render Groups (GPU Transforms)
 
-| Existing Pattern | SingleLineRenderer Compatibility | Notes |
-|------------------|----------------------------------|-------|
-| `renderToTimemap()` | Works across full score before selection | Call once on load, cache globally |
-| `getPageWithElement()` | Works but returns 1 for all (single page per section) | Use section boundaries instead |
-| Event extraction | Same approach, X-coordinates instead of Y | `getBoundingClientRect()` works identically |
-| Notehead animation | Same DOM targeting | `.note`, `.notehead` CSS classes preserved |
-| CSS transform camera | Change `translateY()` to `translateX()` | Same pattern, different axis |
-
-### Timemap and Event Extraction
-
-Verovio's `renderToTimemap()` returns timing for the **entire score** regardless of section selection. Strategy:
-
-1. Load full score, call `renderToTimemap()` once to get all events
-2. For each event, determine which section contains it (by measure range)
-3. Extract element positions when section mounts (same as paginated approach)
+**Critical for scrolling performance.** Render groups offload position transforms to the GPU:
 
 ```typescript
-interface HorizontalEvent extends MusicalEvent {
-  sectionIndex: number;   // Which section contains this event
-  localX: number;         // X within section SVG
-  globalX: number;        // X in overall score coordinate space
-}
+// Create a render group for the camera container
+const camera = new Container({ isRenderGroup: true });
+
+// Moving this container is GPU-accelerated
+// No CPU recalculation of child positions needed
+camera.x = -scrollPosition;
 ```
 
-### Measure Count Discovery
+From the [PixiJS documentation](https://pixijs.com/8.x/guides/concepts/render-groups):
+> "When a container is promoted to a render group, transformations are applied at the GPU level, so moving a render group with complex and numerous children doesn't require recalculating rendering instructions."
 
-To determine section boundaries, first get total measure count:
+**Best practice:** Use sparingly at broad levels (e.g., camera container), not per-child.
+
+### 2. SVG to Texture Conversion
+
+PixiJS v8 supports loading Verovio SVG output as textures:
 
 ```typescript
-// Load full score first to get measure count
-toolkit.loadData(xml);
-const mei = toolkit.getMEI();  // Get MEI to count measures
-// Or use renderToTimemap() and find max measure indices
+import { Assets, Sprite, Graphics } from 'pixi.js';
 
-// Then create sections
-const sections = createSections(totalMeasures, measuresPerSection);
+// Option A: Load SVG string directly via Graphics
+const graphics = new Graphics().svg(verovioSvgString);
+const texture = renderer.generateTexture(graphics);
+const sprite = new Sprite(texture);
+
+// Option B: Higher resolution rasterization
+const texture = await Assets.load({
+  src: 'data:image/svg+xml,' + encodeURIComponent(svgString),
+  data: { resolution: 2 } // 2x resolution for retina
+});
 ```
 
-**Alternative:** Use `renderToTimemap({ includeMeasures: true })` to get measure boundaries from timing data.
+**Limitations:**
+- Maximum texture size: 4096x4096 pixels
+- Text elements, filters (blur, drop shadow), and patterns not supported
+- For very wide scores, split into multiple section textures
 
-## What NOT to Attempt
+### 3. Sprite Tinting for Highlighting
 
-| Approach | Why Not | Use Instead |
-|----------|---------|-------------|
-| Render full horizontal score as single SVG | Memory explosion on long scores. Same problem as pre-v1.1 vertical layout. | Section-based rendering with `select()` |
-| Use `adjustPageWidth` option | Not implemented in Verovio 6.0.1 | Accept large pageWidth or parse/adjust viewBox |
-| Split single large SVG with DOM parsing | Fragile, loses proper scoping, element ID conflicts | Native `select()` + per-section render |
-| Render all sections upfront | Defeats lazy loading purpose | Render sections on demand as they enter viewport |
-| Use vertical virtual scrolling code directly | Camera axis is different (X vs Y) | Adapt visibility calculation for horizontal axis |
+PixiJS sprites have native tinting support - no shaders required:
 
-## Installation
-
-```bash
-# No new dependencies needed.
-# Verovio 6.0.1 already installed with all required APIs.
-```
-
-## Verovio Options Summary
-
-### RegularRenderer (Current - Vertical Paginated)
 ```typescript
-{
-  breaks: 'auto',           // Let Verovio decide line breaks
-  pageHeight: 2970,         // A4 height, produces multiple pages
-  pageWidth: calculated,    // Based on container width
-  adjustPageHeight: true,
-  svgViewBox: true,
-  scale: 40,
-}
+const noteSprite = new Sprite(noteTexture);
+
+// Apply highlight tint (GPU-accelerated)
+noteSprite.tint = 0xFFD700; // Gold highlight
+
+// Reset to original
+noteSprite.tint = 0xFFFFFF; // White = no tint
 ```
 
-### SingleLineRenderer (New - Horizontal Sections)
+From [PixiJS Scene Objects](https://pixijs.com/8.x/guides/components/scene-objects):
+> "You can tint any scene object by setting the tint property, which modifies the color of the rendered pixels."
+
+### 4. cacheAsTexture for Static Content
+
+For static score sections, cache as texture to reduce draw calls:
+
 ```typescript
-{
-  breaks: 'none',           // Force single horizontal system
-  pageHeight: 100,          // Minimal, will adjust to content
-  pageWidth: 100000,        // Large to accommodate horizontal extent
-  adjustPageHeight: true,
-  svgViewBox: true,
-  scale: 40,
-  pageMarginTop: 0,
-  pageMarginBottom: 0,
-}
-// Plus: use select({ measureRange: 'X-Y' }) for section rendering
+// Cache a complex container as a single texture
+scoreSection.cacheAsTexture();
+
+// Update cache when content changes
+scoreSection.updateCacheTexture();
+
+// Disable caching
+scoreSection.cacheAsTexture(false);
 ```
 
-## Confidence Assessment
+**Best for:**
+- Static UI elements
+- Score sections that don't change during playback
+- Complex containers with many children
 
-| Finding | Confidence | Basis |
-|---------|------------|-------|
-| `breaks: 'none'` produces single horizontal system | HIGH | Official documentation, explicit quote |
-| `select()` method exists and works for measure ranges | HIGH | Official docs + source code verification |
-| `redoLayout()` required after `select()` | HIGH | Official docs with code example |
-| `adjustPageWidth` not implemented | HIGH | GitHub issue confirms not available |
-| Section-based rendering viable | HIGH | Combination of verified APIs |
-| TypeScript types need update for `select()` | HIGH | Method exists in source, not in @types/verovio |
+**Avoid:**
+- Containers > 4096x4096 pixels
+- Frequently changing content
+- Containers with very few elements
+
+---
+
+## Vite Compatibility
+
+PixiJS v8 works out of the box with Vite. No special configuration required beyond the existing setup:
+
+```typescript
+// vite.config.ts - no changes needed
+// pixi.js is fully ESM compatible
+```
+
+The existing `vite-plugin-wasm` for Verovio remains unaffected.
+
+---
+
+## What NOT to Add
+
+### Avoid: pixi-viewport
+
+| Library | Reason to Avoid |
+|---------|-----------------|
+| `pixi-viewport` | Overkill for single-axis scrolling. The renderer only needs horizontal camera movement, which is trivially implemented with a render group's `x` property. pixi-viewport adds ~15KB and complexity for features (pinch-zoom, bounce, deceleration) not needed here. |
+
+### Avoid: @pixi/filter-* packages
+
+| Library | Reason to Avoid |
+|---------|-----------------|
+| Filter packages | The highlighting requirement is fully satisfied by Sprite.tint. No need for ColorMatrixFilter or custom shaders. Filters add overhead and memory usage. |
+
+### Avoid: @pixi-essentials/svg
+
+| Library | Reason to Avoid |
+|---------|-----------------|
+| `@pixi-essentials/svg` | PixiJS v8 has built-in SVG support via `Graphics.svg()` and `Assets.load()`. The essentials package is for v7 and adds unnecessary dependency. |
+
+### Avoid: Direct Canvas API
+
+| Approach | Reason to Avoid |
+|----------|-----------------|
+| Raw Canvas 2D/WebGL | Loses React integration benefits. @pixi/react provides declarative components that work with React's reconciler, making state management natural. |
+
+---
+
+## Comparison: PixiJS vs Konva (Already in Project)
+
+The project already has `konva` and `react-konva` installed. Here's the comparison:
+
+| Criterion | PixiJS v8 | Konva |
+|-----------|-----------|-------|
+| **Rendering** | WebGL (GPU) | Canvas 2D (CPU) |
+| **Transform performance** | GPU-accelerated via render groups | CPU-calculated |
+| **React 19 support** | Native (@pixi/react v8) | Requires compatibility shim |
+| **SVG loading** | Built-in, multiple methods | Via image conversion only |
+| **Tinting** | Native sprite.tint | Requires filters/image manipulation |
+| **Bundle size** | ~200KB | ~150KB |
+| **Learning curve** | Moderate | Lower |
+
+**Recommendation:** PixiJS is the better choice for this use case because:
+1. GPU-accelerated transforms are essential for smooth scrolling
+2. Native SVG support aligns with Verovio output
+3. Built-in tinting eliminates shader complexity
+4. React 19 support is first-class
+
+If Konva migration was attempted and found insufficient (as suggested by the branch name), the likely issue was CPU-bound transform calculations. PixiJS's render groups solve this at the GPU level.
+
+---
+
+## Version Compatibility Matrix
+
+| Library | Version | Peer Requirements | Status |
+|---------|---------|-------------------|--------|
+| `pixi.js` | 8.16.0 | None | Latest stable (Feb 3, 2026) |
+| `@pixi/react` | 8.0.5 | `pixi.js ^8.2.6`, `react ^18.0.0 \|\| ^19.0.0` | React 19 compatible |
+| `react` | 19.1.1 | - | Already installed |
+| `react-dom` | 19.1.1 | - | Already installed |
+
+All peer dependencies are satisfied by the existing project setup.
+
+---
+
+## Integration Architecture
+
+Recommended component structure for the PixiJS renderer:
+
+```
+src/renderers/
+  PixiSingleLineRenderer.tsx  # Main component
+  lib/
+    pixiSetup.ts              # extend() registration, app init
+    svgToTexture.ts           # Verovio SVG -> PixiJS texture conversion
+    cameraController.ts       # Render group scrolling logic
+```
+
+### Key Integration Points
+
+1. **Verovio SVG Output:** Convert each section's SVG string to a texture using `Graphics.svg()` + `generateTexture()`
+2. **Camera Container:** Create a Container with `isRenderGroup: true` for GPU-accelerated scrolling
+3. **Event Positions:** Reuse existing `computeEventPositions()` logic - positions remain valid
+4. **Highlighting:** Replace CSS-based notehead animation with sprite tinting
+
+---
+
+## Migration Path from SVG DOM
+
+The existing SingleLineRenderer uses:
+- `cameraRef.current.style.transform = translateX(...)` for scrolling
+- CSS animations for notehead highlighting
+- `dangerouslySetInnerHTML` for SVG injection
+
+PixiJS equivalent:
+
+| Current (SVG DOM) | PixiJS v8 |
+|-------------------|-----------|
+| CSS transform translateX | Container.x with render group |
+| CSS fill color animation | Sprite.tint interpolation |
+| SVG DOM elements | Sprite textures from SVG |
+| requestAnimationFrame loop | PixiJS Ticker or external RAF |
+
+---
 
 ## Sources
 
-### Primary (HIGH confidence)
-- [Layout options - Verovio Reference Book](https://book.verovio.org/advanced-topics/layout-options.html) - `breaks: 'none'` documentation
-- [Score content selection - Verovio Reference Book](https://book.verovio.org/interactive-notation/content-selection.html) - `select()` method with `measureRange`
-- [Toolkit methods - Verovio Reference Book](https://book.verovio.org/toolkit-reference/toolkit-methods.html) - API reference
-- [Toolkit options - Verovio Reference Book](https://book.verovio.org/toolkit-reference/toolkit-options.html) - All option documentation
-- Verovio source code (`node_modules/verovio/dist/verovio.mjs`) - Confirmed `select` method exists
+**Official Documentation:**
+- [PixiJS v8 Render Groups](https://pixijs.com/8.x/guides/concepts/render-groups)
+- [PixiJS SVG Loading](https://pixijs.com/8.x/guides/components/assets/svg)
+- [PixiJS Performance Tips](https://pixijs.com/8.x/guides/concepts/performance-tips)
+- [PixiJS cacheAsTexture](https://pixijs.com/8.x/guides/components/scene-objects/container/cache-as-texture)
+- [PixiJS Scene Objects (Tinting)](https://pixijs.com/8.x/guides/components/scene-objects)
+- [@pixi/react v8 Announcement](https://pixijs.com/blog/pixi-react-v8-live)
+- [@pixi/react extend API](https://react.pixijs.io/extend/)
+- [@pixi/react Getting Started](https://react.pixijs.io/getting-started/)
 
-### Secondary (MEDIUM confidence)
-- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) - Partial score rendering feature confirmation
-- [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - `adjustPageWidth` not implemented confirmation
+**Version Information:**
+- [PixiJS GitHub Releases](https://github.com/pixijs/pixijs/releases) - v8.16.0 (Feb 3, 2026)
+- [pixi-react GitHub](https://github.com/pixijs/pixi-react) - v8.0.5
 
-### Codebase References
-- `src/hooks/useVerovio.ts` - Current Verovio integration pattern
-- `src/types/verovio-augments.d.ts` - Type definitions to update
-- `src/lib/verovioService.ts` - Toolkit instantiation
+**React 19 Compatibility:**
+- [React 19 Issue Resolution](https://github.com/pixijs/pixi-react/issues/551) - Fixed in beta.17
 
 ---
-*Stack research for: SingleLineRenderer - Horizontal rendering with section-based output*
-*Researched: 2026-02-05*
+
+## Confidence Assessment
+
+| Area | Confidence | Reasoning |
+|------|------------|-----------|
+| Core versions | HIGH | Verified via GitHub releases and official docs |
+| React 19 compatibility | HIGH | Official announcement + issue resolution confirmed |
+| SVG to texture | HIGH | Official documentation with code examples |
+| Render groups for scrolling | HIGH | Official docs explicitly describe GPU transform offloading |
+| Tinting approach | HIGH | Built-in sprite.tint is documented |
+| What NOT to add | MEDIUM | Based on feature analysis, not production testing |
+
+---
+
+## Open Questions for Phase-Specific Research
+
+1. **SVG Text Handling:** Verovio SVG includes text elements (lyrics, dynamics). PixiJS SVG loader doesn't support text. Need to investigate if Verovio can render text as paths, or if text needs separate handling.
+
+2. **Texture Memory:** Large scores may create many textures. Should profile memory usage and consider texture atlasing or on-demand loading for very long pieces.
+
+3. **Transition Strategy:** Whether to run PixiJS and SVG renderers in parallel during migration, or full replacement.
+
+---
+
+*Stack research for: PixiJS WebGL Migration*
+*Researched: 2026-02-08*

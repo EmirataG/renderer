@@ -1,220 +1,323 @@
 # Project Research Summary
 
-**Project:** Manuscript Renderer v1.2 - SingleLineRenderer
-**Domain:** Horizontal single-line music notation rendering with section-based virtualization
-**Researched:** 2026-02-05
+**Project:** Manuscript Renderer v1.3 - PixiJS WebGL Migration
+**Domain:** GPU-accelerated horizontal scrolling music notation renderer
+**Researched:** 2026-02-08
 **Confidence:** HIGH
 
 ## Executive Summary
 
-The SingleLineRenderer adds horizontal single-system score rendering to Manuscript's existing vertical paginated renderer. This is a well-established pattern in music software (Soundslice, MuseScore, Yousician) where the playhead stays fixed while music scrolls beneath it like a teleprompter. The key insight is that most existing infrastructure (animation, event extraction, interpolation) can be reused with only axis changes.
+This project migrates SingleLineRenderer from SVG/DOM to PixiJS WebGL rendering to achieve 60fps smooth scrolling. The existing system uses SVG with CSS transforms for horizontal camera movement, which works but has performance limitations. A previous Konva.js (Canvas 2D) migration was abandoned because Canvas 2D is CPU-bound - every position change triggers full canvas redraws, making 60fps scrolling too expensive.
 
-Verovio fully supports this use case through `breaks: 'none'` configuration and section-based rendering via the `select({ measureRange })` API. No new dependencies are required. The critical architectural decision is section-based rendering: rendering the entire score as one massive horizontal SVG causes memory explosion on long scores, so we must render 10-20 measure chunks and lazy-load them based on camera position, exactly like the existing vertical virtual scrolling.
+PixiJS v8 solves this through GPU-accelerated render groups. When a container is marked as a render group, position transforms are applied at the GPU level without recalculating rendering instructions. This is the critical architectural difference: Konva redraws from scratch every frame, while PixiJS applies transforms as GPU shader operations on pre-compiled instructions. Combined with shader-based sprite tinting for note highlighting, PixiJS provides true WebGL rendering where the expensive operations (position transforms, color changes) happen on the GPU in parallel.
 
-The primary risks are coordinate axis confusion (mixing X/Y logic between renderers), section boundary visual seams (horizontal staff lines must appear unbroken), and section loading race conditions (DOM queries during mount/unmount transitions). All are preventable through systematic axis mapping, CSS overlap strategies, and mount guards. Overall this is a low-risk addition that leverages proven patterns from RegularRenderer in a new orientation.
+The recommended approach uses PixiJS v8.16.0 with @pixi/react v8.0.5 for React 19 integration. Verovio continues to render MusicXML to SVG strings (unchanged), which are then converted to GPU textures using a data URI pipeline. The architecture maintains the existing section-based rendering approach but replaces DOM manipulation with declarative PixiJS components. Key risks include WebGL context loss, texture size limits (4096x4096), and SVG text/font rendering issues - all of which have documented mitigation strategies.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Verovio 6.0.1 (already installed) provides all required functionality for horizontal single-line rendering. No new dependencies needed.
+PixiJS v8 with @pixi/react v8 is the recommended stack. The @pixi/react v8 library was specifically rebuilt for React 19 and provides a declarative JSX interface that integrates naturally with React's lifecycle. PixiJS v8's "render groups" feature offloads position, scale, and rotation transforms to the GPU - precisely what's needed for smooth camera scrolling without CPU overhead.
 
 **Core technologies:**
-- **Verovio `breaks: 'none'`**: Forces single horizontal system with no line wrapping (verified in official docs)
-- **Verovio `select({ measureRange })`**: Renders specific measure ranges as independent sections (verified in official docs + source code)
-- **Verovio `redoLayout()`**: Required after selection changes to recompute layout (documented requirement)
+- **pixi.js ^8.16.0**: WebGL/WebGPU 2D rendering engine - provides GPU-accelerated transforms via render groups, eliminating CPU-bound redraws that killed Konva performance
+- **@pixi/react ^8.0.5**: React 19 bindings for PixiJS - declarative component system with tree-shakeable architecture, officially built for React 19 compatibility
+- **Verovio (unchanged)**: Continues rendering MusicXML to SVG strings - only the rendering pipeline changes, not the notation generation
 
-**Configuration for horizontal layout:**
-```typescript
-{
-  breaks: 'none',           // Single horizontal system
-  pageWidth: 100000,        // Large width to accommodate score extent
-  pageHeight: 100,          // Minimal height, adjusts to content
-  adjustPageHeight: true,   // Shrink to single-system height
-  pageMarginTop: 0,         // Remove margins for clean layout
-  pageMarginBottom: 0,
-}
-```
+**Critical version requirements:**
+- PixiJS v8+ required for render groups (v7 lacks this feature)
+- @pixi/react v8.0.5 includes React 19 fix (issue #551 resolved in beta.17)
+- No additional @types packages needed (TypeScript definitions included)
 
-**Section rendering workflow:**
-1. Divide score into 10-20 measure sections
-2. For each section: `toolkit.select({ measureRange: '1-10' })` → `toolkit.redoLayout()` → `toolkit.renderToSVG(1)`
-3. Extract section widths from SVG viewBox
-4. Mount/unmount sections based on camera visibility
-
-**Confidence:** HIGH - All APIs verified in Verovio official documentation and source code inspection.
+**What NOT to add:**
+- pixi-viewport: Overkill for single-axis scrolling, adds 15KB for unused features
+- @pixi/filter-* packages: Sprite.tint handles highlighting, no need for filters
+- @pixi-essentials/svg: PixiJS v8 has built-in SVG support
 
 ### Expected Features
 
-Based on analysis of Soundslice, MuseScore, and guitar learning apps, the industry has converged on a fixed-playhead pattern for play-along scenarios.
+Single-line horizontal score displays are well-established in music notation software. The key design decision is camera behavior - whether the playhead stays fixed while music scrolls beneath it, or whether the playhead moves within the viewport. Industry leaders (Soundslice, Yousician, MuseScore) have converged on fixed-playhead as the preferred mode for play-along scenarios.
 
 **Must have (table stakes):**
-- Horizontal continuous layout - Defines the renderer type
-- Fixed-center playhead - Active note stays at predictable location (center of viewport)
-- Smooth scrolling - CSS transform transitions, no jumpy discrete scrolling
-- Score scrolls beneath playhead - Music moves left as playback progresses
-- Notehead animation - Reuse existing `animateNoteheads()` from RegularRenderer
-- Score region bounds - Control viewport position/size
+- Horizontal continuous layout - defines the renderer type, users expect left-to-right flow
+- Fixed playhead position - industry standard, active note stays at center or left
+- Smooth scrolling - jumpy scrolling is jarring and makes following music difficult
+- Score scrolls beneath fixed playhead - opposite of traditional page-based scrolling
+- Notehead animation - already exists in RegularRenderer, users expect consistent behavior
+- Score region bounds - control viewport over background (already implemented)
+- Audio sync - playback tied to timestamps (already implemented via syncAnchors)
 
-**Should have (performance critical):**
-- Section-based rendering - Required for long scores, same reason as vertical virtual scrolling
-- Lazy section loading - Only mount visible + buffer sections
-- Seamless section transitions - Section boundaries must be invisible to users
+**Should have (competitive differentiators):**
+- Seamless section rendering - section boundaries must be invisible during scrolling
+- Lookahead preview - show upcoming measures with reduced opacity (low-hanging fruit)
+- Fixed-left playhead option - alternative to fixed-center (Soundslice offers this)
 
 **Defer (v2+):**
-- Adaptive scroll speed - Faster through rests, slower through dense passages
-- Lookahead preview - Fade upcoming measures for anticipation
-- Fixed-left playhead option - Alternative to center (Soundslice offers this)
-- Measure number overlay
-- Horizontal zoom control
+- Adaptive scroll speed - velocity matches musical density (complex, requires timestamp-aware calculations)
+- Horizontal zoom/scale - adjust visible measure count (may conflict with Verovio rendering)
+- Measure number overlay - show current measure outside score region
 
-**Critical UX insight:** Users are extremely sensitive to scroll jitter and page jumps in horizontal mode. MuseScore users consistently complain about "music redraws too late" causing "notes entirely lost" at page boundaries. This makes seamless section rendering the key differentiator.
+**PixiJS-specific capabilities:**
+- SVG-to-texture conversion via data URI + Image decode
+- GPU-accelerated camera via render groups (Container.isRenderGroup)
+- Shader-based highlighting via Sprite.tint (multiplicative blending)
+- Section virtualization via Sprite.visible flag (skips transform calculations)
+
+**Anti-features to avoid:**
+- Page-at-a-time scrolling - causes jarring jumps, users consistently complain
+- Playhead moving across screen - forces user to track moving element
+- Per-sprite render groups - destroys batching, worse performance than no render groups
+- Graphics clear/redraw pattern - leaks ~10MB/second in PixiJS v8
+- CSS transitions on sprites - PixiJS doesn't use DOM
 
 ### Architecture Approach
 
-Most animation and event infrastructure can be reused between RegularRenderer (vertical) and SingleLineRenderer (horizontal). The core differences are rendering mode (Verovio options) and camera direction (translateX vs translateY).
+The architecture maintains the existing section-based approach but replaces DOM manipulation with PixiJS WebGL rendering. Verovio continues generating SVG strings, which are converted to GPU textures via a data URI pipeline. The critical insight: animation state (camera position, tint values) uses refs instead of React state to avoid re-renders during 60fps animation loops. PixiJS Ticker provides the animation loop, and render groups enable GPU-accelerated transforms.
 
 **Major components:**
-1. **useSingleLineVerovio hook** - Section-based rendering with `breaks: 'none'` + measure range selection. Returns `{ sections, sectionWidths, sectionOffsets, toolkit }` (analogous to `{ svgPages, pageHeights, pageOffsets }` in RegularRenderer).
-2. **SingleLineRenderer component** - Horizontal camera with center-tracking, section-based virtual scrolling. Reuses `animateNoteheads()`, `interpolateTimestamps()`, transport controls.
-3. **singleLineEventStore** - Event cache with `globalX` and `sectionIndex` instead of `globalY` and `pageIndex`. Same lookup patterns.
 
-**Reusable without changes:**
-- `noteAnimation.ts` - Targets SVG elements by ID, layout-agnostic
-- `interpolation.ts` - Pure function on event arrays
-- `animationController.ts` - Queries DOM by element ID
-- `ScoreRegionEditor.tsx` - Viewport bounds work for horizontal too
+1. **svgToPixi.ts conversion module** - converts Verovio SVG strings to PixiJS Textures using data URI + HTMLImageElement approach, includes texture caching system
 
-**Reusable with axis modifications:**
-- `getEvents.ts` - Add `computeSectionPositions()` for horizontal X extraction
-- `eventStore.ts` - Extend interface or create parallel store with `globalX`/`sectionIndex`
+2. **PixiSingleLineRenderer.tsx** - main component using @pixi/react Application, replaces SingleLineRenderer.tsx with declarative PixiJS components instead of DOM manipulation
 
-**Camera system comparison:**
-- RegularRenderer: `translateY(-(targetY - viewportHeight/2))` with system-boundary snapping
-- SingleLineRenderer: `translateX(-(targetX - viewportWidth*0.3))` with continuous tracking and asymmetric centering (30% from left edge for lookahead)
+3. **Camera container with render group** - Container with isRenderGroup: true enables GPU transforms, moving position.x scrolls entire score without redraw
 
-**Virtual scrolling analogy:**
-- Vertical: Mount 3-4 pages near camera Y, placeholder divs for unmounted pages
-- Horizontal: Mount 3 sections near camera X, placeholder divs for unmounted sections
+4. **Animation refs pattern** - refs hold cameraContainer, sprites, and frame state to avoid React re-renders during useTick animation loop
+
+5. **Sprite tinting for highlights** - GPU shader operation (sprite.tint) replaces DOM-based CSS animations for notehead highlighting
+
+**Data flow:**
+MusicXML → Verovio (SVG) → svgToTexture (GPU texture) → Sprite display → useTick loop (camera position + tint updates) → WebGL render
+
+**Integration with existing code:**
+- useSingleLineVerovio hook unchanged (continues producing SVG strings)
+- eventStore unchanged (CachedEvent structure preserved)
+- interpolation logic unchanged (pure function, layout-agnostic)
+- Only SingleLineRenderer.tsx and noteAnimation.ts change
 
 ### Critical Pitfalls
 
-1. **Coordinate axis confusion** - Systematically mixing Y/X throughout code causes camera to move perpendicular to score flow. Prevention: Create explicit type aliases (`HorizontalOffset` vs `VerticalOffset`), build mapping table (globalY→globalX, translateY→translateX, pageHeights→sectionWidths), code review grep for 'Y', 'height', 'top', 'vertical' in SingleLine code.
+These are the mistakes that cause rewrites or major performance failures:
 
-2. **Section boundary visual seams** - Hairline gaps or misaligned staff lines at section joins break the seamless illusion. Prevention: Use `display: flex` with `gap: 0` (not inline-block), render sections with 1-2 measure overlap then clip-path, extend staff lines 1-2px beyond boundaries, round section offsets to whole pixels, test with colored background.
+1. **WebGL Context Loss Without Recovery** - WebGL contexts can be lost when browser reclaims GPU resources. Without handlers, renderer goes blank and cannot recover. Prevention: Register webglcontextlost/restored event listeners from start, keep application state separate from PixiJS objects, store texture source references for recreation. Must design from Phase 1, cannot retrofit.
 
-3. **Event position cache invalidation** - Switching between renderers uses wrong axis data if cache doesn't include renderer type. Prevention: Include `rendererType: 'regular' | 'singleLine'` in cache key, invalidate position cache on renderer switch (timing cache can persist).
+2. **Dual Animation Loop Conflict** - Running both PixiJS Ticker AND custom requestAnimationFrame causes dropped frames and audio-visual desync. Prevention: Use PixiJS Ticker exclusively OR disable Ticker and use custom RAF with manual app.render() calls. Never mix both.
 
-4. **Section loading race conditions** - DOM queries during mount/unmount transitions return null intermittently. Prevention: Mount-before-query guards (`if (!sectionRefs.current[sectionIndex]) return`), animation section locking (prevent unmounting sections with active animations), synchronous section mounting for Puppeteer seek (`flushSync`), camera lookahead (keep 1 section ahead mounted).
+3. **Graphics Clear/Redraw Memory Leak** - Using graphics.clear() and redrawing every frame leaks ~10MB/second due to WebGLBuffer objects not being deallocated in v8. Prevention: Never clear and redraw Graphics each frame, use Sprite.tint for highlighting instead of redrawing geometry.
 
-5. **Horizontal camera centering math** - Direct Y→X translation produces symmetric centering, but horizontal reading is asymmetric (need to see upcoming notes). Prevention: Use asymmetric centering `targetX - viewportWidth * 0.3` (30% from left, not 50%), clamp at score edges to avoid empty space, make configurable for tuning.
+4. **SVG Text/Font Rendering Failure** - Text elements with custom fonts render incorrectly when converted to textures because fonts are lazy-loaded and PixiJS cannot detect readiness. Prevention: Use Verovio's text-as-paths option, OR pre-load fonts with document.fonts.load() before texture conversion.
+
+5. **Texture Size Limit (4096x4096) Exceeded** - GPU texture size is limited (typically 4096x4096, mobile may be less). Long sections that exceed this fail silently or get clipped. Prevention: Query gl.MAX_TEXTURE_SIZE on init, keep sections under 2048px width (safe for all devices), calculate maxMeasuresPerSection based on limit.
+
+6. **Render Group Overuse** - Creating too many render groups (one per section, one per note) destroys batching and slows rendering. Prevention: Use ONE render group for entire score container, NOT one per section or note. Profile before adding more render groups.
+
+7. **React useEffect Cleanup Memory Leak** - Destroying PixiJS application without proper options leaves GPU resources allocated. Prevention: Call app.destroy(true, { children: true, texture: true, textureSource: true }) in cleanup, stop ticker first, remove canvas from DOM.
+
+**Konva lessons applied:**
+- Konva failure: Canvas 2D position changes trigger full redraw → PixiJS solution: Render groups handle transforms on GPU without redraw
+- Konva failure: Layer caching didn't prevent position redraws → PixiJS solution: cacheAsTexture + render groups = near-zero CPU during scroll
+- Konva failure: 60fps updates were too expensive → PixiJS solution: Position is GPU uniform, benchmarks show 60fps sustained
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure follows dependency chain from rendering to camera to virtualization.
+Based on research, the migration follows a foundation-first approach where conversion infrastructure is validated before adding complexity. The build order ensures each phase has working dependencies and produces testable output.
 
-### Phase 1: Single-Line Verovio Hook
-**Rationale:** Foundation layer - must render horizontal sections before building camera/events on top.
-**Delivers:** `useSingleLineVerovio.ts` hook that takes MusicXML and returns horizontal sections array.
-**Addresses:** Horizontal continuous layout (table stakes feature).
-**Avoids:** Verovio configuration pitfall by verifying `breaks: 'none'` + `select()` behavior upfront.
-**Research flag:** Skip research-phase - Verovio APIs are well-documented (book.verovio.org).
+### Phase 1: SVG-to-Texture Pipeline
+**Rationale:** Cannot display sprites without textures. This is the foundation that validates the entire approach - if Verovio SVG doesn't convert cleanly to GPU textures, the migration fails here before investing in animation complexity.
 
-### Phase 2: Single-Line Event Extraction
-**Rationale:** Events must be extracted with horizontal coordinates before camera can track them.
-**Delivers:** `computeSectionPositions()` function, `SingleLineEvent` type with `globalX`/`sectionIndex`.
-**Uses:** Section containers from Phase 1 for DOM measurement.
-**Addresses:** Event extraction (required for animation).
-**Avoids:** Coordinate axis confusion via explicit X-axis naming, cache invalidation via renderer-type key.
-**Research flag:** Skip research-phase - Pattern proven in vertical case, just different axis.
+**Delivers:**
+- svgToPixi.ts conversion module with svgToTexture() and sectionsToTextures() functions
+- Texture caching system (Map-based with cache keys)
+- Validation that Verovio-generated SVG converts to GPU textures correctly
 
-### Phase 3: SingleLineRenderer Core
-**Rationale:** Camera and animation working end-to-end validates the approach before adding virtualization complexity.
-**Delivers:** `SingleLineRenderer.tsx` with horizontal camera, notehead animation, smooth scrolling.
-**Implements:** Camera system with asymmetric centering (30/70 split for lookahead).
-**Addresses:** Fixed-center playhead, smooth scrolling, notehead animation (all table stakes).
-**Avoids:** Camera centering math pitfall by using asymmetric formula from start.
-**Research flag:** Skip research-phase - Reuses proven RegularRenderer patterns on different axis.
+**Addresses:** SVG text/font rendering pitfall (must handle before textures are created)
 
-### Phase 4: Section Virtualization
-**Rationale:** Performance optimization for long scores. Add after core functionality working to avoid premature optimization.
-**Delivers:** Section visibility calculation, mount/unmount based on camera position, placeholder divs.
-**Implements:** Horizontal virtual scrolling (analogous to vertical page virtualization).
-**Addresses:** Lazy section loading (performance-critical feature).
-**Avoids:** Section loading race conditions via mount guards and section locking, section boundary seams via overlap strategy.
-**Research flag:** Consider research-phase - Seamless section transitions are critical and may need experimentation.
+**Avoids:** Texture size limit pitfall (implement MAX_TEXTURE_SIZE check from start)
 
-### Phase 5: Integration and Polish
-**Rationale:** Final integration after all core functionality validated.
-**Delivers:** Renderer type toggle in App.tsx, score region bounds for horizontal, border handling.
-**Addresses:** Complete feature set for v1.2 milestone.
-**Research flag:** Skip research-phase - Integration patterns established.
+**Research flag:** May need phase-specific research on Verovio text-as-paths option if font rendering fails
+
+---
+
+### Phase 2: Basic PixiJS Renderer
+**Rationale:** Prove the rendering approach works before adding animation. Static display validates @pixi/react integration, texture positioning, and coordinate space mapping. Catching integration issues early prevents rework in later phases.
+
+**Delivers:**
+- PixiSingleLineRenderer.tsx component with @pixi/react Application
+- Declarative section sprites positioned horizontally using sectionOffsets
+- Static score display (no animation loop yet)
+- Proper useEffect cleanup with app.destroy() options
+
+**Uses:** pixi.js and @pixi/react from stack, textures from Phase 1
+
+**Implements:** Basic component structure from architecture (Application wrapper, sprite children)
+
+**Avoids:** React cleanup memory leak (implement proper destroy() sequence from start), render group overuse (establish correct pattern before animation)
+
+**Research flag:** Standard pattern, well-documented in PixiJS docs - skip research-phase
+
+---
+
+### Phase 3: Camera System
+**Rationale:** Camera movement is the core value proposition - must work before adding highlighting complexity. This phase validates that render groups actually deliver 60fps scrolling without CPU overhead, proving the PixiJS approach superior to Konva.
+
+**Delivers:**
+- Camera container with isRenderGroup: true for GPU transforms
+- useTick animation loop integrated with audio timestamps
+- Smooth interpolation (lerp) for camera position updates
+- Refs pattern for animation state (no React re-renders during animation)
+
+**Addresses:** Fixed-center playhead (table stakes feature), smooth scrolling (table stakes)
+
+**Avoids:** Dual animation loop conflict (use PixiJS Ticker exclusively, no custom RAF)
+
+**Validates:** 60fps sustained scrolling - the core success metric for this migration
+
+**Research flag:** Standard animation pattern - skip research-phase
+
+---
+
+### Phase 4: Note Highlighting
+**Rationale:** With working camera, add the visual feedback that makes the renderer useful. Highlighting is simpler in PixiJS (sprite.tint) than in DOM (CSS animations), but requires event-to-sprite mapping logic.
+
+**Delivers:**
+- Section tinting for active section (MVP approach: tint entire section when it contains active note)
+- Event-to-section mapping using CachedEvent.sectionIndex
+- Animation timing (hold/exit durations matching existing RegularRenderer)
+- GPU shader-based color changes (sprite.tint property)
+
+**Addresses:** Notehead animation (table stakes feature parity with RegularRenderer)
+
+**Avoids:** Graphics clear/redraw memory leak (use tint instead of redrawing geometry), blend mode batch breaking (stick to normal blend mode)
+
+**Research flag:** Standard pattern - skip research-phase
+
+---
+
+### Phase 5: Section Virtualization
+**Rationale:** Optimization phase that enables long scores. Only necessary after features work. Premature optimization would complicate earlier phases without delivering user-facing value.
+
+**Delivers:**
+- Visibility calculation from camera position and viewport bounds
+- Sprite.visible toggling (not mount/unmount) based on distance from viewport
+- Buffer strategy (load current + 1 ahead + 1 behind)
+- Section loading/unloading triggers
+
+**Addresses:** Seamless section rendering (differentiator feature)
+
+**Avoids:** Texture GC timing issues (extend textureGCMaxIdle setting), culling configuration backfire (use simple visible flag instead of PixiJS culling system)
+
+**Research flag:** Standard optimization pattern - skip research-phase
+
+---
+
+### Phase 6: Integration and Polish
+**Rationale:** Final integration phase ensuring feature parity with SVG renderer. Handles edge cases and production requirements like Puppeteer frame capture.
+
+**Delivers:**
+- Transport controls integration (play/pause/seek from existing controls)
+- Score region bounds compatibility (horizontal viewport awareness)
+- Border rendering (may need hybrid approach or separate canvas)
+- Puppeteer frame capture support (app.renderer.extract.canvas())
+
+**Addresses:** Score region bounds (table stakes), full replacement of SVG renderer
+
+**Avoids:** N/A (polish phase)
+
+**Research flag:** Puppeteer integration may need research-phase (different extraction API from DOM-based approach)
+
+---
 
 ### Phase Ordering Rationale
 
-- **Foundation-first:** Hook → Events → Renderer → Virtualization follows natural dependency chain. Can't build camera without events, can't extract events without rendered sections.
-- **Validation before optimization:** Core functionality (Phases 1-3) working end-to-end before adding virtualization complexity. This allows early testing with short scores and validates the approach.
-- **Reuse maximization:** Existing infrastructure (noteAnimation.ts, interpolation.ts) reused immediately in Phase 3, minimizing new code surface area.
-- **Risk mitigation:** Critical pitfalls (axis confusion, cache invalidation, camera math) addressed in early phases before compounding with virtualization complexity.
+The phases follow strict dependencies:
+1. **Pipeline before display** - Phase 1 creates textures, Phase 2 displays them
+2. **Display before animation** - Phase 2 proves rendering works, Phase 3 adds movement
+3. **Camera before highlights** - Phase 3 establishes position system, Phase 4 animates notes
+4. **Features before optimization** - Phase 4 completes functionality, Phase 5 adds virtualization
+
+**Why this order avoids pitfalls:**
+- WebGL context loss handling designed in Phase 2 (cleanup), not retrofitted later
+- Render group architecture established in Phase 2 before animation complexity
+- Animation loop pattern (Ticker vs RAF) decided in Phase 3, avoiding dual-loop conflict
+- Tint approach proven in Phase 4 before virtualization adds complexity
+- Texture GC configuration tuned in Phase 5 when virtualization reveals the need
+
+**Critical path validation:**
+- Phase 1 validates: SVG converts to textures (if this fails, entire approach fails)
+- Phase 2 validates: PixiJS displays textures (coordinate space mapping works)
+- Phase 3 validates: Render groups deliver 60fps (core performance goal)
+- Phase 4 validates: Tinting works for highlighting (feature parity)
+- Phase 5 validates: Virtualization handles long scores (scalability)
 
 ### Research Flags
 
-**Phases likely needing deeper research during planning:**
-- **Phase 4 (Section Virtualization):** Seamless section transitions are the key differentiator. May need experimentation with overlap amounts, clipping strategies, and visual testing across browsers. Consider `/gsd:research-phase` to investigate section boundary rendering techniques.
+Phases with standard patterns (skip research-phase):
+- **Phase 2:** Basic PixiJS rendering - well-documented in @pixi/react getting started guide
+- **Phase 3:** Camera system - standard Ticker animation loop pattern in PixiJS docs
+- **Phase 4:** Note highlighting - sprite.tint is documented feature with examples
+- **Phase 5:** Section virtualization - standard optimization pattern (visibility toggling)
 
-**Phases with standard patterns (skip research-phase):**
-- **Phase 1 (Verovio Hook):** Verovio APIs well-documented, section-based rendering is straightforward.
-- **Phase 2 (Event Extraction):** Proven pattern from RegularRenderer, just different axis.
-- **Phase 3 (Renderer Core):** Camera and animation patterns established, horizontal is variant.
-- **Phase 5 (Integration):** Standard React component integration.
+Phases likely needing deeper research during planning:
+- **Phase 1:** SVG-to-texture pipeline - may need Verovio-specific research if text rendering fails (text-as-paths option, font embedding, pre-loading strategy)
+- **Phase 6:** Puppeteer integration - different extraction API from DOM-based approach, may need research on app.renderer.extract usage with headless Chrome
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All Verovio APIs verified in official documentation and source code. No new dependencies needed. |
-| Features | HIGH | Multiple authoritative sources (Soundslice official docs, MuseScore forums) agree on fixed-playhead pattern. Table stakes clearly defined. |
-| Architecture | HIGH | Existing RegularRenderer provides proven reference implementation. Component reuse strategy validated through code analysis. |
-| Pitfalls | HIGH | Based on actual codebase experience (Phase 8 virtual scrolling lessons), verified DOM/CSS behavior, MuseScore community pain points. |
+| Stack | HIGH | Verified via GitHub releases and official PixiJS documentation, React 19 compatibility confirmed via issue resolution and blog announcement |
+| Features | HIGH | Multiple authoritative sources (Soundslice docs) agree on fixed-playhead approach, PixiJS capabilities verified via official guides and benchmarks |
+| Architecture | HIGH | @pixi/react integration documented with examples, render groups explicitly described in v8 guides, refs pattern is standard React optimization |
+| Pitfalls | HIGH | Each pitfall sourced from GitHub issues with maintainer responses, Konva failure analysis provides direct comparison, mitigation strategies documented in official guides |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Section overlap amount:** Research suggests 1-2 measure overlap for seamless staff lines, but exact amount may need tuning during implementation. Test with various scores to find optimal overlap.
+Areas where research was inconclusive or needs validation during implementation:
 
-- **Asymmetric camera centering ratio:** Recommended 30% from left edge (0.3 factor) based on reading direction, but optimal value should be validated with user testing. Make configurable for easy adjustment.
+- **Verovio text rendering as paths:** Documentation confirms PixiJS text-in-SVG issue, but need to verify Verovio's text-as-paths option exists and produces acceptable output. Validation: Test Verovio renderToSVG with text-as-paths flag during Phase 1.
 
-- **Section size (measures per section):** Suggested 10-20 measures balances lazy loading benefit vs rendering overhead, but optimal size may vary with score density. Monitor performance during implementation.
+- **Texture memory for long scores:** Calculated ~3MB per section at 2000x400px, but need actual profiling with real scores. Validation: Monitor GPU memory in Chrome Task Manager during Phase 5 virtualization testing.
 
-- **Maximum score width limits:** Browsers have SVG width limits (~32767px in some). Long scores may hit this even with sectioning if sections are very wide. Validate with stress testing (100+ measure sections).
+- **Puppeteer frame capture API:** Architecture suggests app.renderer.extract.canvas() but this differs from DOM-based capture. Validation: Test extraction with headless Chrome during Phase 6, may need format conversion.
 
-All gaps are tuning parameters rather than fundamental unknowns. Implementation can proceed with conservative defaults and adjust based on testing.
+- **Coordinate space mapping:** CachedEvent.globalX positions were measured from DOM. PixiJS sprites use different coordinate space but offsets should be preserved. Validation: Verify note positions during Phase 4 highlighting implementation.
+
+- **Font pre-loading timing:** Unclear if document.fonts.load() is sufficient or if need to wait for document.fonts.ready promise. Validation: Test font loading sequence during Phase 1 texture conversion.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Verovio Layout Options](https://book.verovio.org/advanced-topics/layout-options.html) - `breaks: 'none'` documentation
-- [Verovio Score Content Selection](https://book.verovio.org/interactive-notation/content-selection.html) - `select()` API with `measureRange`
-- [Verovio Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) - All option documentation
-- [Verovio Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) - `select()`, `redoLayout()`, `renderToSVG()` methods
-- Verovio source code (`node_modules/verovio/dist/verovio.mjs`) - Confirmed `select` method exists
-- [Soundslice Playhead Scrolling Options](https://www.soundslice.com/help/en/player/advanced/116/playhead-scrolling-options/) - Fixed-playhead pattern documentation
-- [Soundslice Horizontal Layout](https://www.soundslice.com/help/en/player/advanced/115/horizontal-layout/) - Horizontal scrollable mode
-- Existing codebase analysis - RegularRenderer.tsx, useVerovio.ts, getEvents.ts, noteAnimation.ts, eventStore.ts
+- [PixiJS v8 Render Groups](https://pixijs.com/8.x/guides/concepts/render-groups) - GPU transform documentation
+- [PixiJS v8 Performance Tips](https://pixijs.com/8.x/guides/concepts/performance-tips) - Optimization strategies and render group usage
+- [PixiJS SVG Loading](https://pixijs.com/8.x/guides/components/assets/svg) - SVG-to-texture conversion methods
+- [@pixi/react v8 Announcement](https://pixijs.com/blog/pixi-react-v8-live) - React 19 compatibility confirmation
+- [@pixi/react Getting Started](https://react.pixijs.io/getting-started/) - Component integration patterns
+- [PixiJS GitHub Releases](https://github.com/pixijs/pixijs/releases) - Version 8.16.0 release notes
+- [PixiJS Garbage Collection Guide](https://pixijs.com/8.x/guides/concepts/garbage-collection) - Texture GC behavior
+- [PixiJS Cache As Texture](https://pixijs.com/8.x/guides/components/scene-objects/container/cache-as-texture) - Texture size limits
+- [Soundslice Playhead Scrolling Options](https://www.soundslice.com/help/en/player/advanced/116/playhead-scrolling-options/) - Industry patterns for camera behavior
+- [Soundslice Horizontal Layout](https://www.soundslice.com/help/en/player/advanced/115/horizontal-layout/) - Feature design rationale
 
 ### Secondary (MEDIUM confidence)
-- [MuseScore Ticker-like Scrolling](https://musescore.org/en/node/109511) - Community requests for fixed-cursor scrolling
-- [MuseScore Smooth Pan](https://musescore.org/en/node/339030) - Smooth scrolling implementation discussion
-- [MuseScore Playback Cursor Sync Issues](https://musescore.org/en/node/276676) - User pain points with page jumps
-- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) - Partial score rendering feature confirmation
-- [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - `adjustPageWidth` not implemented
-- Previous phase research - `.planning/phases/08-virtual-scrolling/08-RESEARCH.md`, `.planning/phases/06-paginated-rendering-and-camera/06-RESEARCH.md`
+- [React 19 Issue Resolution](https://github.com/pixijs/pixi-react/issues/551) - React 19 compatibility fix in beta.17
+- [Dynamic SVG Textures Discussion](https://github.com/pixijs/pixijs/discussions/10953) - Data URI approach validation
+- [PixiJS Tint Implementation](https://github.com/pixijs/pixijs/issues/3004) - Shader tint mechanism explanation
+- [SVG Text and Font Loading](https://github.com/pixijs/pixijs/discussions/7448) - Text rendering limitations
+- MuseScore forum discussions on continuous scrolling (multiple threads on page jumping issues)
 
-### Tertiary (LOW confidence)
-- [Yousician Guitar App](https://yousician.com/guitar) - Scrolling fretboard pattern validation
-- [Teleprompter Scroll Modes](https://www.speakflow.com/docs/scroll-modes-flow-auto) - Smooth scroll UX patterns
+### GitHub Issues (HIGH confidence for specific bugs)
+- [Issue #6494: WebGL Context Loss](https://github.com/pixijs/pixijs/issues/6494) - Context loss recovery patterns
+- [Issue #10549: Graphics Redraw Memory Leak](https://github.com/pixijs/pixijs/issues/10549) - Memory leak in v8 with clear/redraw
+- [Issue #8986: Memory Leak After Destroy](https://github.com/pixijs/pixijs/issues/8986) - Cleanup options for proper disposal
+- [Issue #1897: requestAnimationFrame Conflict](https://github.com/pixijs/pixijs/issues/1897) - Dual animation loop issues
+
+### Project-Specific (HIGH confidence)
+- Previous Konva migration attempt in this codebase (feature/canvas-konva-migration branch)
+- Existing RegularRenderer.tsx for animation pattern reference
+- useSingleLineVerovio.ts hook for section generation logic
 
 ---
-*Research completed: 2026-02-05*
+*Research completed: 2026-02-08*
 *Ready for roadmap: yes*

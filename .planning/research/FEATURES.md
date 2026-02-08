@@ -2,6 +2,7 @@
 
 **Domain:** Single-line horizontal score display for music notation playback
 **Researched:** 2026-02-05
+**Updated:** 2026-02-08 (PixiJS WebGL capabilities added)
 
 ## Executive Summary
 
@@ -228,18 +229,235 @@ Mounted:      [   ][===========][   ]
 
 ---
 
+## PixiJS WebGL Capabilities (v1.3 Migration)
+
+**Added:** 2026-02-08
+**Purpose:** Document PixiJS-specific features for WebGL migration
+
+### SVG-to-Texture Pipeline
+
+PixiJS v8 supports two primary methods for converting SVG to renderable content:
+
+#### Method 1: SVG as Texture (Rasterization) - RECOMMENDED
+
+The preferred approach for Verovio SVG sections:
+
+```javascript
+// From dynamic SVG string (Verovio output)
+const image = new Image();
+image.src = `data:image/svg+xml,${encodeURIComponent(svgString)}`;
+await image.decode();
+const texture = Texture.from(image);
+const sprite = new Sprite(texture);
+```
+
+**Characteristics:**
+- Fast to render (single quad, not geometry)
+- GPU-accelerated display
+- Supports tint property for color modification
+- Does NOT scale cleanly (pixelation when zoomed)
+- Maximum texture size: 4096x4096 pixels
+
+#### Resolution Control
+
+```javascript
+// Higher resolution = sharper at larger sizes, more VRAM
+const texture = await Assets.load('section.svg', { resolution: 2 });
+```
+
+**Recommendation for music scores:**
+- Use `resolution: 2` for standard displays
+- Use `resolution: 3-4` for retina/HiDPI displays
+- Pre-calculate section dimensions to avoid 4096px limit
+
+**Source:** [PixiJS SVG Documentation](https://pixijs.com/8.x/guides/components/assets/svg)
+
+---
+
+### GPU-Accelerated Camera (Render Groups)
+
+Render Groups enable true GPU-accelerated camera movement by offloading transform calculations to the GPU:
+
+```javascript
+// Create a render group for the entire score world
+const scoreWorld = new Container({ isRenderGroup: true });
+
+// Add all section sprites to this container
+for (const section of sections) {
+  scoreWorld.addChild(section.sprite);
+}
+
+// Camera movement = moving the container (GPU-handled)
+scoreWorld.position.x = -cameraX;
+```
+
+**Why this matters:**
+- Moving a render group does NOT recalculate child transforms on CPU
+- Transform (position, scale, rotation), tint, and alpha are GPU-computed
+- Perfect for panning large static worlds (exactly our use case)
+
+**Performance Benefits (from PixiJS v8 benchmarks):**
+- 100k stationary sprites: CPU improvement of 17,417% (v7: ~21ms, v8: ~0.12ms)
+- 100k moving sprites: CPU improvement of 233% (v7: ~50ms, v8: ~15ms)
+
+**When NOT to Use Render Groups:**
+> "Render groups do not batch together...turning every container into a render group could actually slow things down."
+
+**Best practice:**
+- Use ONE render group for the score world (all sections)
+- Do NOT make each section sprite a render group
+- The root stage is automatically a render group
+
+**Source:** [PixiJS Render Groups](https://pixijs.com/8.x/guides/concepts/render-groups), [PixiJS v8 Launch Blog](https://pixijs.com/blog/pixi-v8-launches)
+
+---
+
+### Tint-Based Highlighting
+
+Tint is implemented via GPU fragment shader - it multiplies each pixel's color by the tint color:
+
+```javascript
+// Fragment shader logic (simplified):
+// outputColor = textureColor * tintColor
+
+sprite.tint = 0xff0000;  // Red tint
+sprite.tint = 0xffffff;  // No tint (white = identity for multiply)
+```
+
+**Technical implementation:**
+1. Tint color added to vertex buffer
+2. Uploaded as attribute to GPU
+3. Passed to fragment shader via varying
+4. Texture color multiplied by tint color per-pixel
+
+**Performance advantage over SVG/DOM:**
+- Tint change = updating a shader uniform
+- NO redraw of geometry required
+- NO DOM manipulation
+- GPU handles the color math per-pixel in parallel
+
+**Critical Limitation: Multiply-Only**
+- Can darken colors (multiply by < 1.0)
+- Can colorize (shift hue via RGB multipliers)
+- CANNOT brighten a channel that's 0 in the original
+
+```javascript
+// Example: Cannot turn black to red via tint
+// Black texture (0, 0, 0) * Red tint (1, 0, 0) = still (0, 0, 0)
+```
+
+**Workaround for black noteheads:**
+- Use light gray noteheads in SVG to enable tint-based colorization
+- OR use ColorMatrixFilter for additive color changes (more expensive)
+
+**Source:** [PixiJS Tint Implementation (GitHub)](https://github.com/pixijs/pixijs/issues/3004)
+
+---
+
+### Sprite Visibility (Virtualization)
+
+The `visible` property is the performant way to hide/show sprites:
+
+```javascript
+// Hide a section (completely skips rendering AND transform calculation)
+sectionSprite.visible = false;
+
+// Show a section
+sectionSprite.visible = true;
+```
+
+**Key optimization:** When `visible = false`:
+- Object is not drawn
+- Transform calculations are SKIPPED entirely
+- Children also hidden (inherited)
+
+| Property | Rendering | Transform Calc | Use Case |
+|----------|-----------|----------------|----------|
+| `visible = false` | Skipped | Skipped | Static hiding (virtualization) |
+| `renderable = false` | Skipped | Still runs | Animated hiding (need position updates) |
+
+**For section virtualization:** Use `visible` - we don't need transforms for off-screen sections.
+
+**Source:** [PixiJS Container API](https://pixijs.download/dev/docs/scene.Container.html)
+
+---
+
+### Text Handling in SVG
+
+**Critical Limitation:** SVG Text elements are NOT supported when rendering SVGs in PixiJS.
+
+This is a browser limitation:
+- SVG text requires fonts to be loaded
+- Canvas drawImage() can't access lazy-loaded fonts
+
+**Workarounds:**
+1. **Convert Text to Paths (RECOMMENDED)** - Verovio uses SMuFL font glyphs as paths
+2. **Base64 Encode Fonts** - Embed fonts directly in SVG (increases size)
+3. **Use PixiJS Text Objects** - For dynamic text requirements
+
+**Verification needed:** Check if Verovio's SMuFL fonts render as `<use>` references to glyph paths or as actual text elements.
+
+**Source:** [PixiJS GitHub Discussion #7448](https://github.com/pixijs/pixijs/discussions/7448)
+
+---
+
+## PixiJS Table Stakes vs Differentiators
+
+### Table Stakes (Must Have for PixiJS Migration)
+
+| Feature | PixiJS Capability | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| SVG-to-Texture conversion | `Texture.from(image)` | Low | Core workflow |
+| Horizontal scrolling | Container.position.x | Low | Render group for GPU |
+| Section visibility toggle | Sprite.visible | Low | Automatic transform skip |
+| Basic note highlighting | Sprite.tint | Low | Multiplicative only |
+| 60fps smooth scrolling | Render groups | Medium | v8 required |
+| Score color customization | Shader/tint | Medium | May need ColorMatrixFilter |
+
+### PixiJS Differentiators (vs Canvas 2D / SVG)
+
+| Feature | Why It's Better | Impact |
+|---------|-----------------|--------|
+| GPU-accelerated camera | No CPU transform recalculation on pan | 60fps vs 23fps (Konva) |
+| Shader-based tint | No DOM/canvas redraw for highlighting | Instant color changes |
+| WebGL batching | Multiple sprites in single draw call | Better GPU utilization |
+| Render groups | Transform offloading to GPU | Scales to 100k+ sprites |
+| Reactive render loop | Only update what changed | Power efficiency |
+
+### PixiJS Anti-Features (Deliberately NOT Build)
+
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| Per-sprite render groups | Destroys batching, worse performance | One render group for score world |
+| Dynamic SVG scaling | Pixelation, defeats GPU caching | Pre-render at target resolution |
+| Additive tint for black | Not possible with multiply blend | Use light gray base OR ColorMatrixFilter |
+| Text as SVG text elements | Browser font loading issues | Verovio path-based glyphs |
+| Manual texture management | Memory leaks, complex lifecycle | Use Assets API with proper disposal |
+| CSS transitions on sprites | PixiJS doesn't use DOM | Implement in animation loop |
+
+---
+
 ## Sources
 
 ### HIGH Confidence (Official Documentation)
 - [Soundslice Playhead Scrolling Options](https://www.soundslice.com/help/en/player/advanced/116/playhead-scrolling-options/) - Detailed playhead behavior options
 - [Soundslice Horizontal Layout](https://www.soundslice.com/help/en/player/advanced/115/horizontal-layout/) - Horizontal scrollable mode documentation
 - [Soundslice Introducing Horizontal View](https://www.soundslice.com/blog/47/introducing-horizontal-view-and-advanced-settings/) - Feature design rationale
+- [PixiJS SVG Documentation](https://pixijs.com/8.x/guides/components/assets/svg)
+- [PixiJS Render Groups](https://pixijs.com/8.x/guides/concepts/render-groups)
+- [PixiJS Container API](https://pixijs.download/dev/docs/scene.Container.html)
+- [PixiJS Sprite API](https://pixijs.download/release/docs/scene.Sprite.html)
+- [PixiJS v8 Launch Blog](https://pixijs.com/blog/pixi-v8-launches)
 
 ### MEDIUM Confidence (Multiple Sources Agree)
 - [MuseScore Ticker-like Scrolling](https://musescore.org/en/node/109511) - User request for fixed-cursor scrolling
 - [MuseScore Add Scroll View with Fixed Playback Cursor](https://musescore.org/en/node/386609) - Feature discussion
 - [MuseScore Keep Cursor Centered](https://musescore.org/en/node/93376) - Centered playhead request
 - [MuseScore Smooth Pan](https://musescore.org/en/node/339030) - Smooth scrolling implementation
+- [Dynamic SVG Textures in v8](https://github.com/pixijs/pixijs/discussions/10953)
+- [Tint Implementation Details](https://github.com/pixijs/pixijs/issues/3004)
+- [SVG Text and Font Loading](https://github.com/pixijs/pixijs/discussions/7448)
+- [Container Performance Regression](https://github.com/pixijs/pixijs/issues/10353)
 
 ### LOW Confidence (Single Source / Community)
 - [Logic Pro Score Editor](https://support.apple.com/guide/logicpro/view-music-notation-lgcp8535c066/mac) - Linear view mentioned
@@ -262,3 +480,7 @@ Mounted:      [   ][===========][   ]
 | Section-based rendering need | HIGH | Already proven necessary in RegularRenderer; same principles apply horizontally |
 | Seamless transitions | MEDIUM | Concept well-understood; implementation specifics depend on Verovio capabilities |
 | Feature priorities | MEDIUM | Based on synthesis of competitor features and Manuscript's existing patterns |
+| PixiJS SVG-to-texture | HIGH | Verified via official PixiJS documentation and GitHub discussions |
+| PixiJS render groups | HIGH | Official documentation with benchmark data |
+| PixiJS tint mechanism | HIGH | Verified via GitHub issue with maintainer explanation |
+| PixiJS text handling | HIGH | Documented limitation in official compatibility table |
