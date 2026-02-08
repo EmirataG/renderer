@@ -883,21 +883,40 @@ export default function SingleLineRenderer({
                   fontSize: 0,
                 }}
               >
-                {sections.map((svg, i) => (
-                  <div
-                    key={i}
-                    ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                    className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
-                    style={{
-                      flexShrink: 0,
-                      width: sectionWidths[i],
-                      height: maxHeight,
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                    }}
-                    dangerouslySetInnerHTML={{ __html: svg }}
-                  />
-                ))}
+                {sections.map((svg, i) => {
+                  const isVisible = visibleSectionIndices.has(i);
+
+                  if (isVisible) {
+                    return (
+                      <div
+                        key={i}
+                        ref={(el) => { sectionContainerRefs.current[i] = el; }}
+                        className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
+                        style={{
+                          flexShrink: 0,
+                          width: sectionWidths[i],
+                          height: maxHeight,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                        }}
+                        dangerouslySetInnerHTML={{ __html: svg }}
+                      />
+                    );
+                  } else {
+                    // Placeholder div maintains layout spacing
+                    return (
+                      <div
+                        key={i}
+                        ref={(el) => { sectionContainerRefs.current[i] = el; }}
+                        style={{
+                          flexShrink: 0,
+                          width: sectionWidths[i],
+                          height: maxHeight,
+                        }}
+                      />
+                    );
+                  }
+                })}
               </div>
             </div>
           </div>
