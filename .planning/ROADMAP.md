@@ -5,6 +5,7 @@
 - **v1.0 Migration** - Phases 1-5 (shipped 2026-02-04)
 - **v1.1 Efficiency** - Phases 6-9 (shipped 2026-02-05)
 - **v1.2 SingleLineRenderer** - Phases 10-13 (in progress)
+- **v1.3 PixiJS SingleLineRenderer** - Phases 14-19 (planned)
 
 ## Phases
 
@@ -34,138 +35,163 @@ Reduced memory usage and improved rendering performance for long scores through 
 
 </details>
 
-### v1.2 SingleLineRenderer (IN PROGRESS)
+<details>
+<summary>v1.2 SingleLineRenderer (Phases 10-13) - IN PROGRESS</summary>
 
 **Milestone Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance. Music scrolls beneath a fixed center point while notehead animations highlight active notes.
 
-- [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio ✓
-- [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments ✓
-- [x] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling ✓
+- [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio
+- [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments
+- [x] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling
 - [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions
 - [ ] **Phase 13.1: Unplayed Score Styling** - Visual differentiation of played vs unplayed score regions (INSERTED)
 
+</details>
+
+### v1.3 PixiJS SingleLineRenderer (IN PROGRESS)
+
+**Milestone Goal:** Migrate SingleLineRenderer from SVG to PixiJS WebGL rendering to achieve smooth 60fps scrolling and GPU-accelerated note highlighting. PixiJS provides true GPU rendering where position transforms and color changes happen on the GPU via shaders, eliminating the CPU-bound redraws that made Konva.js Canvas 2D unsuitable.
+
+- [ ] **Phase 14: SVG-to-Texture Pipeline** - Convert Verovio SVG sections to PixiJS GPU textures
+- [ ] **Phase 15: Basic PixiJS Renderer** - Static score display with @pixi/react components
+- [ ] **Phase 16: Camera System** - GPU-accelerated horizontal scrolling via render groups
+- [ ] **Phase 17: Note Highlighting** - Section tinting via GPU shader (sprite.tint)
+- [ ] **Phase 18: Section Virtualization** - Sprite visibility toggling for long scores
+- [ ] **Phase 19: Integration and Polish** - Transport controls, color options, renderer toggle
+
 ## Phase Details
 
-### Phase 10: Single-Line Verovio Hook
-**Goal**: Verovio renders score as horizontal sections using `breaks: 'none'` configuration and measure-range selection
-**Depends on**: v1.1 complete
-**Requirements**: HOR-01, HOR-02, SEC-01, SEC-02
+### Phase 14: SVG-to-Texture Pipeline
+**Goal**: Verovio SVG sections convert reliably to PixiJS GPU textures with proper font handling and caching
+**Depends on**: v1.2 complete (useSingleLineVerovio hook provides SVG sections)
+**Requirements**: TEX-01, TEX-02, TEX-03, TEX-04, TEX-05
 **Success Criteria** (what must be TRUE):
-  1. A MusicXML file renders as a single horizontal system with no line breaks (one continuous staff line)
-  2. Long scores are divided into 10-20 measure sections, each rendered as a separate SVG via `select({ measureRange })`
-  3. Section SVGs can be laid out horizontally with correct widths from viewBox dimensions
-  4. Changing the score produces new sections with correct measure assignments
-**Plans:** 1 plan
-Plans:
-- [x] 10-01-PLAN.md — Type augments + useSingleLineVerovio hook
+  1. A Verovio-generated SVG section renders as a PixiJS Texture without missing glyphs or font rendering issues
+  2. Converting the same section twice returns the cached texture (no duplicate conversion)
+  3. Black (#000) elements in SVG appear as dark gray (#111) in the texture (enabling tint highlighting)
+  4. Music fonts (Bravura, etc.) are fully loaded before any texture conversion begins
+  5. Long sections exceeding GPU texture limits are detected and handled (error or split)
+**Plans**: TBD
 
-### Phase 11: Single-Line Event Extraction
-**Goal**: Musical events are extracted with X coordinates and section assignments for horizontal positioning
-**Depends on**: Phase 10
-**Requirements**: ANI-03
+### Phase 15: Basic PixiJS Renderer
+**Goal**: Static score displays correctly in PixiJS with proper React integration and resource cleanup
+**Depends on**: Phase 14
+**Requirements**: REN-01, REN-02, REN-03, REN-04, REN-05
 **Success Criteria** (what must be TRUE):
-  1. Each event has a `globalX` coordinate representing its horizontal position across all sections
-  2. Each event has a `sectionIndex` identifying which section SVG contains it
-  3. X coordinates are computed from section offsets plus local element positions (analogous to vertical page offsets)
-**Plans:** 1 plan
-Plans:
-- [x] 11-01-PLAN.md — Extend CachedEvent type + computeSectionPositions function
+  1. Score sections appear horizontally laid out in the PixiJS canvas, matching the SVG SingleLineRenderer layout
+  2. PixiJS stage dimensions match the score region bounds (no overflow or clipping)
+  3. Unmounting the renderer releases all GPU resources (no memory leak on component unmount)
+  4. WebGL context loss triggers recovery handlers (renderer can rebuild after GPU reclaim)
+  5. Score is positioned at start (leftmost section visible, not centered on empty space)
+**Plans**: TBD
 
-### Phase 12: SingleLineRenderer Core
-**Goal**: Users can play back a score in horizontal single-line mode with smooth camera tracking and notehead animation
-**Depends on**: Phase 10, Phase 11
-**Requirements**: CAM-01, CAM-02, CAM-03, CAM-04, CAM-05, ANI-01, ANI-02
+### Phase 16: Camera System
+**Goal**: Smooth 60fps horizontal scrolling keeps active note centered using GPU-accelerated transforms
+**Depends on**: Phase 15
+**Requirements**: CAM-01, CAM-02, CAM-03, CAM-04, CAM-05, CAM-06
 **Success Criteria** (what must be TRUE):
-  1. During playback, the active note stays near the center of the score region (not drifting to edges)
-  2. Camera movement uses CSS `translateX()` with smooth easing transitions (no jumps or jitter)
-  3. Notehead animation (scale, color, entry/hold/exit) works identically to RegularRenderer on the horizontal layout
-  4. Score region bounds control the animation viewport (same as RegularRenderer)
-  5. Transport controls (play, stop, reset) work correctly with horizontal layout
-**Plans:** 2 plans
-Plans:
-- [x] 12-01-PLAN.md — Create SingleLineRenderer component with horizontal camera and animation
-- [x] 12-02-PLAN.md — Visual verification checkpoint
+  1. During playback, the active note stays at the center of the viewport (fixed playhead behavior)
+  2. Camera movement is smooth with no jitter or frame drops (60fps sustained)
+  3. Camera position updates via container.position.x without triggering React re-renders
+  4. Score region bounds constrain the visible area (camera respects region edges)
+  5. Stopping/resetting playback smoothly transitions camera to appropriate position
+**Plans**: TBD
 
-### Phase 13: Section Virtualization
-**Goal**: Only visible sections are mounted in DOM, with seamless transitions that hide section boundaries
-**Depends on**: Phase 12
-**Requirements**: SEC-03, SEC-04, HOR-03
+### Phase 17: Note Highlighting
+**Goal**: Active section highlights via GPU shader without redraw, matching RegularRenderer timing
+**Depends on**: Phase 16
+**Requirements**: HLT-01, HLT-02, HLT-03, HLT-04
 **Success Criteria** (what must be TRUE):
-  1. During playback, inspecting the DOM shows only 3 sections mounted at any time (current + buffer), with placeholder divs for unmounted sections
-  2. Section boundaries are invisible to users (staff lines appear continuous, no gaps or visual seams)
-  3. Tied notes and slurs that cross section boundaries render correctly (overlap strategy working)
-  4. Switching sections during playback causes no animation glitches or missing noteheads
-**Plans:** 3 plans
-Plans:
-- [ ] 13-01-PLAN.md — Basic virtualization (cameraX tracking, visibleSectionIndices, conditional rendering)
-- [ ] 13-02-PLAN.md — Overlap rendering + clip-path for seamless boundaries
-- [ ] 13-03-PLAN.md — Visual verification checkpoint
+  1. When a note plays, its containing section visibly highlights (color shift via tint)
+  2. Highlight timing (entry, hold, exit) matches RegularRenderer behavior
+  3. Highlight color respects the user's score color setting
+  4. Highlighting causes no frame drops or performance degradation (GPU shader operation)
+**Plans**: TBD
 
-### Phase 13.1: Unplayed Score Styling (INSERTED)
-**Goal**: Inspector option to visually differentiate played vs unplayed score regions using clip-path for complex elements and direct styling for noteheads/stems/accidentals/dots
-**Depends on**: Phase 13
-**Requirements**: STY-01, STY-02, STY-03
+### Phase 18: Section Virtualization
+**Goal**: Only visible sections consume GPU resources, enabling smooth playback of long scores
+**Depends on**: Phase 17
+**Requirements**: VIR-01, VIR-02, VIR-03, VIR-04
 **Success Criteria** (what must be TRUE):
-  1. Inspector has a dropdown/toggle to enable "unplayed styling" with options (e.g., dimmed, invisible, different color)
-  2. Noteheads, stems, accidentals, and dots change style directly when transitioning from unplayed to played
-  3. Staff lines, barlines, beams, and other complex elements use clip-path to reveal played portions progressively
-  4. The clip-path boundary follows the current playback position (X coordinate in SingleLineRenderer)
-  5. Style changes apply to both SingleLineRenderer and RegularRenderer
-**Plans:** 3 plans
-Plans:
-- [x] 13.1-01-PLAN.md — Store + Inspector UI controls
-- [x] 13.1-02-PLAN.md — Core styling logic + SingleLineRenderer integration
-- [ ] 13.1-03-PLAN.md — RegularRenderer integration + visual verification
+  1. Inspecting the scene graph shows only visible sections plus buffer (current +/- 1) have active sprites
+  2. Off-screen sections are hidden via sprite.visible (not unmounted) for instant reveal
+  3. Long scores (100+ sections) play back without memory growth or texture disposal issues
+  4. Section transitions during playback are seamless (no pop-in or missing sections)
+**Plans**: TBD
+
+### Phase 19: Integration and Polish
+**Goal**: PixiJS renderer integrates fully with existing app controls and options
+**Depends on**: Phase 18
+**Requirements**: INT-01, INT-02, INT-03, INT-04
+**Success Criteria** (what must be TRUE):
+  1. Transport controls (play/pause/reset) work correctly with PixiJS renderer
+  2. Inspector toggle switches between SVG and PixiJS SingleLineRenderer
+  3. Score color option applies to PixiJS-rendered score (texture tinting or regeneration)
+  4. Music font selector works with PixiJS renderer (textures regenerate on font change)
+**Plans**: TBD
 
 ## Requirement Coverage
 
-### v1.2 Requirements
+### v1.3 Requirements
 
 | ID | Requirement | Phase |
 |----|-------------|-------|
-| HOR-01 | Score renders as single horizontal line with no system breaks | Phase 10 |
-| HOR-02 | Verovio configured with `breaks: 'none'` for single-system output | Phase 10 |
-| HOR-03 | Section transitions are visually seamless (no gaps, staff lines continuous) | Phase 13 |
-| CAM-01 | Horizontal camera tracking keeps active note in viewport | Phase 12 |
-| CAM-02 | Camera uses CSS `translateX()` transforms | Phase 12 |
-| CAM-03 | Score region bounds control animation viewport | Phase 12 |
-| CAM-04 | Active event positioned at center of score region | Phase 12 |
-| CAM-05 | Smooth easing transitions during camera movement | Phase 12 |
-| SEC-01 | Long scores split into sections (10-20 measures each) | Phase 10 |
-| SEC-02 | Sections rendered via Verovio `select({ measureRange })` API | Phase 10 |
-| SEC-03 | Lazy loading -- only visible sections mounted in DOM | Phase 13 |
-| SEC-04 | Section overlap for tied notes/slurs continuity | Phase 13 |
-| ANI-01 | Notehead animation works on horizontal layout | Phase 12 |
-| ANI-02 | Animation targets correct section's SVG elements | Phase 12 |
-| ANI-03 | Each event has a single X coordinate for animation targeting | Phase 11 |
-| STY-01 | Inspector option to enable unplayed score styling | Phase 13.1 |
-| STY-02 | Noteheads/stems/accidentals/dots use direct style changes | Phase 13.1 |
-| STY-03 | Staff lines/barlines/beams use clip-path for progressive reveal | Phase 13.1 |
+| TEX-01 | Verovio SVG sections convert to PixiJS Texture objects | Phase 14 |
+| TEX-02 | SVG-to-texture conversion uses data URI + HTMLImageElement pipeline | Phase 14 |
+| TEX-03 | Textures are cached (same section + settings = same texture) | Phase 14 |
+| TEX-04 | Black colors (#000) pre-processed to dark gray (#111) for tint | Phase 14 |
+| TEX-05 | Music fonts fully loaded before texture conversion begins | Phase 14 |
+| REN-01 | PixiSingleLineRenderer uses @pixi/react Application | Phase 15 |
+| REN-02 | Section sprites positioned horizontally using sectionOffsets | Phase 15 |
+| REN-03 | Stage dimensions match score region bounds | Phase 15 |
+| REN-04 | Proper useEffect cleanup destroys PixiJS app and textures | Phase 15 |
+| REN-05 | WebGL context loss recovery handlers registered | Phase 15 |
+| CAM-01 | Camera container uses isRenderGroup: true for GPU transforms | Phase 16 |
+| CAM-02 | Active note stays centered in viewport (fixed playhead at 50%) | Phase 16 |
+| CAM-03 | Camera position updates via container.position.x (no React state) | Phase 16 |
+| CAM-04 | Smooth interpolation using lerp for camera movement | Phase 16 |
+| CAM-05 | Animation loop uses PixiJS Ticker exclusively (no custom RAF) | Phase 16 |
+| CAM-06 | Score region bounds control visible viewport | Phase 16 |
+| HLT-01 | Active section highlights via sprite.tint (GPU shader) | Phase 17 |
+| HLT-02 | Highlight timing matches RegularRenderer (entry/hold/exit) | Phase 17 |
+| HLT-03 | Highlight color configurable via score color option | Phase 17 |
+| HLT-04 | Animation state stored in refs (no React state during playback) | Phase 17 |
+| VIR-01 | Only visible sections + buffer have sprites created | Phase 18 |
+| VIR-02 | Off-screen sections use sprite.visible = false (not unmount) | Phase 18 |
+| VIR-03 | Texture GC timeout extended to prevent premature cleanup | Phase 18 |
+| VIR-04 | Memory cleanup on section unload (texture disposal) | Phase 18 |
+| INT-01 | Transport controls work with PixiJS renderer | Phase 19 |
+| INT-02 | Renderer toggle switches between SVG and PixiJS SingleLineRenderer | Phase 19 |
+| INT-03 | Score color option applies to PixiJS-rendered score | Phase 19 |
+| INT-04 | Music font selector works with PixiJS renderer | Phase 19 |
 
-**Coverage: 18/18 requirements mapped**
+**Coverage: 28/28 v1.3 requirements mapped**
 
 ### Dependency Chain
 
 ```
-Phase 10: Single-Line Verovio Hook
+Phase 14: SVG-to-Texture Pipeline
     |
     v
-Phase 11: Single-Line Event Extraction  (requires section containers from Phase 10)
+Phase 15: Basic PixiJS Renderer  (requires textures from Phase 14)
     |
     v
-Phase 12: SingleLineRenderer Core  (requires events with X coordinates from Phase 11)
+Phase 16: Camera System  (requires working renderer from Phase 15)
     |
     v
-Phase 13: Section Virtualization  (requires working renderer from Phase 12)
+Phase 17: Note Highlighting  (requires camera positioning from Phase 16)
     |
     v
-Phase 13.1: Unplayed Score Styling  (requires virtualization for clip-path boundaries)
+Phase 18: Section Virtualization  (requires highlighting working from Phase 17)
+    |
+    v
+Phase 19: Integration and Polish  (requires all features working)
 ```
 
 ## Progress
 
 **Execution Order:**
-Phases execute in order: 10 -> 11 -> 12 -> 13 -> 13.1
+Phases execute in order: 14 -> 15 -> 16 -> 17 -> 18 -> 19
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -184,3 +210,9 @@ Phases execute in order: 10 -> 11 -> 12 -> 13 -> 13.1
 | 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
 | 13. Section Virtualization | v1.2 | 0/3 | Planned | -- |
 | 13.1. Unplayed Score Styling | v1.2 | 2/3 | In Progress | -- |
+| 14. SVG-to-Texture Pipeline | v1.3 | 0/TBD | Not started | -- |
+| 15. Basic PixiJS Renderer | v1.3 | 0/TBD | Not started | -- |
+| 16. Camera System | v1.3 | 0/TBD | Not started | -- |
+| 17. Note Highlighting | v1.3 | 0/TBD | Not started | -- |
+| 18. Section Virtualization | v1.3 | 0/TBD | Not started | -- |
+| 19. Integration and Polish | v1.3 | 0/TBD | Not started | -- |
