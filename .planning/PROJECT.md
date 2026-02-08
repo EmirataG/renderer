@@ -43,16 +43,19 @@ Capabilities shipped and confirmed working:
 - ✓ EFF-02: Cache event positions after extraction (avoid repeated DOM queries) — v1.1
 - ✓ EFF-03: Virtual scrolling (only mount SVG pages near current camera position) — v1.1
 - ✓ CLN-01: Remove OSMD dependency entirely (package.json, dead imports, old code) — v1.1
+- ✓ SLR-01: SingleLineRenderer component displaying score as one horizontal line — v1.2
+- ✓ SLR-02: Horizontal camera system keeping active note centered in score region — v1.2
+- ✓ SLR-03: Section-based rendering via Verovio for performance optimization — v1.2
 
 ### Active
 
-- SLR-01: SingleLineRenderer component displaying score as one horizontal line
-- SLR-02: Horizontal camera system keeping active note centered in score region
-- SLR-03: Section-based rendering via Verovio for performance optimization
-- SLR-04: Lazy section loading (only visible sections mounted in DOM)
-- SLR-05: Seamless section transitions (breaks invisible to users)
-- SLR-06: Notehead animation working on horizontal layout
-- SLR-07: Score region bounds controlling animation viewport
+- PIX-01: PixiJS WebGL renderer for SingleLineRenderer
+- PIX-02: SVG-to-texture pipeline (Verovio SVG → PixiJS Sprite)
+- PIX-03: GPU-accelerated camera via container transforms
+- PIX-04: Tint-based note highlighting (GPU shader, no redraw)
+- PIX-05: Render group architecture for true GPU camera movement
+- PIX-06: Section virtualization via sprite visibility toggling
+- PIX-07: Transport controls integration with WebGL renderer
 
 ### Out of Scope
 
@@ -61,47 +64,65 @@ Capabilities shipped and confirmed working:
 - BPM-based playback — permanently removed in v1.0
 - Server-side rendering — remains a client-side SPA
 - Mobile support — not in scope
-- Canvas rendering — investigated, poor cost-benefit vs paginated SVG
+- Konva.js Canvas 2D — investigated in v1.3, abandoned due to CPU-bound redraws on position changes
 - Web Worker rendering — defer until profiling shows need
+- RegularRenderer WebGL migration — SVG works well for vertical, only SingleLineRenderer migrates
 
-## Current Milestone: v1.2 SingleLineRenderer
+## Current Milestone: v1.3 PixiJS SingleLineRenderer
 
-**Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance.
+**Goal:** Migrate SingleLineRenderer from SVG to PixiJS WebGL rendering to achieve smooth 60fps scrolling and GPU-accelerated note highlighting.
+
+**Why PixiJS over Konva.js:**
+- True WebGL/GPU rendering (not Canvas 2D which is CPU-bound)
+- Render groups enable GPU-accelerated camera movement (no redraw on position change)
+- Tint property applies via GPU shader (highlighting without redraw)
+- 60fps benchmark performance vs 23fps for Canvas 2D alternatives
+- Native SVG-to-texture support
 
 **Target features:**
-- SingleLineRenderer component with horizontal layout
-- Horizontal camera tracking (active note stays centered)
-- Section-based Verovio rendering for performance
-- Lazy section loading (only visible sections in DOM)
-- Seamless section transitions (invisible breaks)
-- Same notehead animation as RegularRenderer
-- Score region bounds control animation viewport
+- PixiJS Stage with render group for GPU camera
+- Verovio SVG → PixiJS texture conversion pipeline
+- Container position for smooth scrolling (GPU-accelerated)
+- Sprite tint for note highlighting (shader-based, no redraw)
+- Section virtualization via sprite visibility
+- Transport controls integration
 
 ## Context
 
-**Current architecture (post-v1.1):** React SPA with Verovio (WASM) rendering MusicXML to paginated SVGs. Events are extracted once via Verovio's timemap API and cached with page assignments. Virtual scrolling mounts only 3-4 pages near the camera position. Camera uses CSS `transform: translateY()` with system-boundary snapping.
+**Current architecture (post-v1.2):** React SPA with Verovio (WASM) rendering MusicXML to section SVGs. SingleLineRenderer displays horizontal single-line layout with section-based rendering. Events are extracted once via Verovio's timemap API and cached with section assignments.
 
-**RegularRenderer:** Vertical paginated layout with smooth camera scrolling. Uses page-based virtual scrolling for memory efficiency. This is the existing renderer and should remain available.
+**Why WebGL migration:**
+The SVG-based SingleLineRenderer works but has limitations:
+1. CSS transform scrolling is GPU-accelerated, but React re-renders can cause jitter
+2. Note highlighting requires DOM manipulation (style changes)
+3. Section virtualization requires React state management in RAF loops
 
-**SingleLineRenderer (new):** Horizontal single-line layout. Camera moves horizontally to keep active note centered. Needs section-based rendering for performance (long horizontal lines would have same memory issues as pre-v1.1 vertical layout).
+PixiJS solves these by:
+1. Container.position for scrolling (pure GPU, no React involvement)
+2. Sprite.tint for highlighting (GPU shader, no DOM)
+3. Sprite.visible for virtualization (no mounting/unmounting)
 
-**Verovio rendering modes:**
-- Current: `pageHeight: 2970` (A4) produces vertical pages
-- Single-line: Need to research Verovio options for horizontal/single-system output, or measure-range rendering
+**Konva.js attempt (v1.3-abandoned):**
+Attempted Canvas 2D migration via Konva.js. Failed because:
+- Canvas 2D is CPU-rendered, not GPU
+- Every position change triggers full canvas redraw
+- Layer caching doesn't prevent stage position redraws
+- 60 redraws/second for scrolling was too expensive
 
-**Verovio SVG structure:**
-- Systems: `<g class="system">` — one per staff system line
-- Notes: `<g id="..." class="note">` with `<g class="notehead">` containing `<use>` elements
-- Measures: `<g class="measure">`
-- IDs are unique per element, used for animation targeting and event extraction
+**PixiJS advantages:**
+- WebGL is true GPU rendering
+- Render groups (v8) enable GPU-accelerated transforms
+- Tint is a shader uniform, not a redraw
+- Benchmarked at 60fps vs Konva's effective ~23fps
 
 ## Constraints
 
-- **Tech stack**: Verovio WASM — already integrated
-- **RegularRenderer preserved**: Existing vertical renderer must remain functional
-- **SVG compatibility**: Must maintain DOM queryability for animation and event extraction
+- **Tech stack**: Verovio WASM (kept) + PixiJS v8 (new)
+- **RegularRenderer preserved**: Existing vertical SVG renderer unchanged
+- **Event extraction**: Must still map to Verovio timemap IDs
 - **Score region**: Animation viewport controlled by existing score region editor
-- **Skip Puppeteer**: SingleLineRenderer does not need Puppeteer support for v1.2
+- **Skip Puppeteer**: WebGL Puppeteer support deferred to future milestone
+- **Text handling**: SVG text must be converted to paths or pre-rendered as textures
 
 ## Key Decisions
 
@@ -112,9 +133,10 @@ Capabilities shipped and confirmed working:
 | BPM mode permanently removed | Sync-only simplifies playback path | ✓ Good |
 | Camera uses g.system DOM elements for Y | Eliminates threshold heuristics, no jitter | ✓ Good |
 | 5-phase sequential migration | Strict dependency chain worked well | ✓ Good |
-| No Canvas migration | SVG DOM APIs too deeply integrated, paginated SVG is better path | ✓ Good |
 | Paginated rendering over Web Workers | Addresses root cause (DOM size) not symptom (render speed) | ✓ Good |
 | Virtual scrolling with CSS transform camera | Custom visibility manager, not scroll-based libraries | ✓ Good |
+| Konva.js abandoned | Canvas 2D is CPU-bound, 60fps position updates too expensive | ⚠️ Lesson learned |
+| PixiJS over Konva | True WebGL, GPU transforms, shader-based tint, 60fps benchmarks | — Pending |
 
 ---
-*Last updated: 2026-02-05 after v1.2 milestone start*
+*Last updated: 2026-02-08 after v1.3 PixiJS milestone start*
