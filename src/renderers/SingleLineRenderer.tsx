@@ -93,112 +93,7 @@ export default function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
-  const { sections, sectionWidths, sectionHeights, sectionOffsets, sectionOverlapWidths, totalWidth, maxHeight, sectionCount, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
-
-  // Detect render mode early (needed for virtualization decision)
-  const isRenderMode =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("render") === "true";
-
-  // Track which section is currently active (for virtualization)
-  // Use state here because we want React to re-render when sections change
-  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
-
-  // Compute which sections should be mounted based on current section
-  const visibleSectionIndices = useMemo(() => {
-    // Short scores: mount all sections
-    if (sectionCount <= 3) {
-      return new Set(Array.from({ length: sectionCount }, (_, i) => i));
-    }
-
-    // Render mode: mount all sections for Puppeteer capture
-    if (isRenderMode) {
-      return new Set(Array.from({ length: sectionCount }, (_, i) => i));
-    }
-
-    // Window: current section +/- 1 (buffer for smooth transitions)
-    const visible = new Set<number>();
-    for (let i = Math.max(0, currentSectionIndex - 1); i <= Math.min(sectionCount - 1, currentSectionIndex + 1); i++) {
-      visible.add(i);
-    }
-    return visible;
-  }, [currentSectionIndex, sectionCount, isRenderMode]);
-
-  // Helper to find which section a camera X position is in
-  const findSectionAtX = useCallback((camX: number): number => {
-    for (let i = 0; i < sectionOffsets.length; i++) {
-      const sectionEnd = sectionOffsets[i] + sectionWidths[i];
-      if (camX < sectionEnd) {
-        return i;
-      }
-    }
-    return Math.max(0, sectionOffsets.length - 1);
-  }, [sectionOffsets, sectionWidths]);
-
-  // Store section geometry in refs for use in animation loop
-  const sectionOffsetsRef = useRef(sectionOffsets);
-  const sectionWidthsRef = useRef(sectionWidths);
-  const sectionCountRef = useRef(sectionCount);
-
-  useEffect(() => {
-    sectionOffsetsRef.current = sectionOffsets;
-    sectionWidthsRef.current = sectionWidths;
-    sectionCountRef.current = sectionCount;
-  }, [sectionOffsets, sectionWidths, sectionCount]);
-
-  // Compute visible section indices from camera position (for use in animation loop)
-  // This avoids relying on React state which may lag behind
-  const computeVisibleSections = useCallback((camX: number): Set<number> => {
-    const count = sectionCountRef.current;
-    const offsets = sectionOffsetsRef.current;
-    const widths = sectionWidthsRef.current;
-
-    // Short scores: all sections visible
-    if (count <= 3) {
-      return new Set(Array.from({ length: count }, (_, i) => i));
-    }
-
-    // Render mode: all sections visible
-    if (isRenderMode) {
-      return new Set(Array.from({ length: count }, (_, i) => i));
-    }
-
-    // Find current section
-    let currentSection = 0;
-    for (let i = 0; i < offsets.length; i++) {
-      const sectionEnd = offsets[i] + widths[i];
-      if (camX < sectionEnd) {
-        currentSection = i;
-        break;
-      }
-      currentSection = i;
-    }
-
-    // Window: current +/- 1
-    const visible = new Set<number>();
-    for (let i = Math.max(0, currentSection - 1); i <= Math.min(count - 1, currentSection + 1); i++) {
-      visible.add(i);
-    }
-    return visible;
-  }, [isRenderMode]);
-
-  // Refs for values accessed during animation loop (avoids stale closure issues)
-  const visibleSectionIndicesRef = useRef(visibleSectionIndices);
-  const eventsRef = useRef(events);
-  const interpolatedEventsRef = useRef(interpolatedEvents);
-
-  // Keep refs in sync with latest values
-  useEffect(() => {
-    visibleSectionIndicesRef.current = visibleSectionIndices;
-  }, [visibleSectionIndices]);
-
-  useEffect(() => {
-    eventsRef.current = events;
-  }, [events]);
-
-  useEffect(() => {
-    interpolatedEventsRef.current = interpolatedEvents;
-  }, [interpolatedEvents]);
+  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
 
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
@@ -264,6 +159,12 @@ export default function SingleLineRenderer({
       setInterpolatedEvents([]);
     }
   }, [events, syncAnchors]);
+
+  /* ---------------- detect render mode ---------------- */
+
+  const isRenderMode =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("render") === "true";
 
   /* ---------------- background / dimensions ---------------- */
 
@@ -374,9 +275,10 @@ export default function SingleLineRenderer({
         setEventsInStore(eventsWithX, sections);
       }
     });
-    // NOTE: Camera position is NOT reset here. Initial position is 0 from state.
-    // During playback, camera is controlled by animateSync. Resetting here
-    // would interrupt playback when React re-renders (e.g., section changes).
+
+    // Camera starts at left
+    currentXRef.current = 0;
+    applyCamera(0);
   }, [sections, svgPagesRef, toolkit, sectionOffsets, setEventsInStore]);
 
   /* ---------------- score color and styling ---------------- */
@@ -427,30 +329,20 @@ export default function SingleLineRenderer({
 
   /* ---------------- camera (horizontal) ---------------- */
 
-  // Track last known section to avoid unnecessary state updates
-  const lastSectionRef = useRef(0);
-
   function applyCamera(targetX: number) {
     const scoreWidth = totalWidth || 0;
     const viewportWidth = scoreRegion?.width ?? containerWidth;
 
     // Keep the target X position in the horizontal center of the viewport (50%)
     // Exception: at the beginning and end, don't scroll past the edges
-    let camX = targetX - viewportWidth / 2;
+    let cameraX = targetX - viewportWidth / 2;
 
     // Clamp to valid range: don't scroll left of 0 or right of the maximum scroll
-    camX = Math.max(0, camX);
-    camX = Math.min(camX, Math.max(0, scoreWidth - viewportWidth));
-
-    // Only update section state when crossing a section boundary (avoids re-renders every frame)
-    const newSection = findSectionAtX(camX);
-    if (newSection !== lastSectionRef.current) {
-      lastSectionRef.current = newSection;
-      setCurrentSectionIndex(newSection);
-    }
+    cameraX = Math.max(0, cameraX);
+    cameraX = Math.min(cameraX, Math.max(0, scoreWidth - viewportWidth));
 
     if (cameraRef.current) {
-      cameraRef.current.style.transform = `translateX(${-camX}px)`;
+      cameraRef.current.style.transform = `translateX(${-cameraX}px)`;
     }
   }
 
@@ -461,18 +353,16 @@ export default function SingleLineRenderer({
     event: (typeof interpolatedEvents)[0] | null;
     index: number;
   } {
-    // Use ref to get latest interpolated events (avoids stale closure)
-    const evts = interpolatedEventsRef.current;
-    if (evts.length === 0) return { event: null, index: -1 };
+    if (interpolatedEvents.length === 0) return { event: null, index: -1 };
 
     // Binary search for the last event whose computedTimestamp <= timestampSec
     let low = 0;
-    let high = evts.length - 1;
+    let high = interpolatedEvents.length - 1;
     let result = -1;
 
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
-      if (evts[mid].computedTimestamp <= timestampSec) {
+      if (interpolatedEvents[mid].computedTimestamp <= timestampSec) {
         result = mid;
         low = mid + 1;
       } else {
@@ -481,7 +371,7 @@ export default function SingleLineRenderer({
     }
 
     if (result < 0) return { event: null, index: -1 };
-    return { event: evts[result], index: result };
+    return { event: interpolatedEvents[result], index: result };
   }
 
   // Sync-based animation: driven by audio currentTime
@@ -505,13 +395,6 @@ export default function SingleLineRenderer({
       return;
     }
 
-    // Get current refs to avoid stale closures
-    const currentEvents = eventsRef.current;
-    const currentInterpolatedEvents = interpolatedEventsRef.current;
-
-    // Compute visible sections from current camera position (more accurate than React state)
-    const currentVisibleIndices = computeVisibleSections(currentXRef.current);
-
     // Check if we moved to a new event - animate ALL skipped events
     if (index !== eventIndexRef.current) {
       const prevIndex = eventIndexRef.current;
@@ -521,20 +404,20 @@ export default function SingleLineRenderer({
       // This prevents skipping events when multiple occur between frames
       const startIdx = Math.max(0, prevIndex + 1);
       for (let i = startIdx; i <= index; i++) {
-        const evt = currentInterpolatedEvents[i];
+        const evt = interpolatedEvents[i];
         if (evt?.svgIds?.length) {
           // For single-line mode, query from the section container if available
-          const cachedEvent = currentEvents.find(e => e.id === evt.id);
+          const cachedEvent = events.find(e => e.id === evt.id);
           const sectionIndex = cachedEvent?.sectionIndex;
-
-          // Guard: skip if section not mounted (prevents querying unmounted DOM)
-          if (sectionIndex !== undefined && !currentVisibleIndices.has(sectionIndex)) {
-            continue;
-          }
-
           const root = sectionIndex !== undefined && sectionContainerRefs.current[sectionIndex]
             ? sectionContainerRefs.current[sectionIndex]
             : scoreRef.current;
+
+          // Debug: check if element exists
+          const testEl = root?.querySelector(`#${CSS.escape(evt.svgIds[0])}`);
+          if (!testEl) {
+            console.warn('[SingleLineRenderer] Element not found:', evt.svgIds[0], 'in section', sectionIndex);
+          }
 
           animateNoteheads(root, evt.svgIds, {
             scale: activeNoteheadScale,
@@ -550,7 +433,7 @@ export default function SingleLineRenderer({
 
     // Camera X: interpolate between current and next event for smooth scrolling
     const currentX = event.x;
-    const nextEvent = currentInterpolatedEvents[index + 1];
+    const nextEvent = interpolatedEvents[index + 1];
 
     if (nextEvent) {
       // Calculate progress between current and next event
@@ -622,10 +505,8 @@ export default function SingleLineRenderer({
     stop();
 
     eventIndexRef.current = -1; // -1 so first event triggers animation on next play
-    currentXRef.current = eventsRef.current[0]?.globalX ?? 0;
+    currentXRef.current = events[0]?.globalX ?? 0;
     applyCamera(currentXRef.current);
-    lastSectionRef.current = 0;
-    setCurrentSectionIndex(0);
 
     // Reset audio to beginning
     if (audioRef.current) {
@@ -759,15 +640,6 @@ export default function SingleLineRenderer({
         const timeSinceEvent = seconds - eventTime;
 
         if (timeSinceEvent < 0 || !event.svgIds?.length) continue;
-
-        // Skip events whose sections are not mounted (shouldn't happen in render mode but defensive)
-        const cachedEvent = eventsRef.current.find(e => e.id === event.id);
-        const eventSectionIndex = cachedEvent?.sectionIndex;
-        // In render mode all sections mounted; otherwise compute from camera position
-        const visibleNow = computeVisibleSections(currentXRef.current);
-        if (eventSectionIndex !== undefined && !visibleNow.has(eventSectionIndex)) {
-          continue;
-        }
 
         let scale: number;
         let color: string | undefined;
@@ -975,47 +847,21 @@ export default function SingleLineRenderer({
                   fontSize: 0,
                 }}
               >
-                {sections.map((svg, i) => {
-                  const isVisible = visibleSectionIndices.has(i);
-                  const overlapWidth = sectionOverlapWidths[i] || 0;
-                  const hasOverlap = i > 0 && overlapWidth > 0;
-
-                  if (isVisible) {
-                    return (
-                      <div
-                        key={i}
-                        ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                        className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
-                        style={{
-                          flexShrink: 0,
-                          width: sectionWidths[i],
-                          height: maxHeight,
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          // Clip the overlap from the left edge of continuation sections
-                          clipPath: hasOverlap ? `inset(0 0 0 ${overlapWidth}px)` : undefined,
-                          // Shift left to close the gap created by clipping
-                          marginLeft: hasOverlap ? -overlapWidth : 0,
-                        }}
-                        dangerouslySetInnerHTML={{ __html: svg }}
-                      />
-                    );
-                  } else {
-                    // Placeholder div maintains layout spacing
-                    // Visual width is full width minus clipped overlap
-                    return (
-                      <div
-                        key={i}
-                        ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                        style={{
-                          flexShrink: 0,
-                          width: sectionWidths[i] - (hasOverlap ? overlapWidth : 0),
-                          height: maxHeight,
-                        }}
-                      />
-                    );
-                  }
-                })}
+                {sections.map((svg, i) => (
+                  <div
+                    key={i}
+                    ref={(el) => { sectionContainerRefs.current[i] = el; }}
+                    className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
+                    style={{
+                      flexShrink: 0,
+                      width: sectionWidths[i],
+                      height: maxHeight,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                    }}
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
+                ))}
               </div>
             </div>
           </div>
