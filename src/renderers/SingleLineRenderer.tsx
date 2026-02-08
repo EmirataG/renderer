@@ -100,10 +100,11 @@ export default function SingleLineRenderer({
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("render") === "true";
 
-  // Track camera X position for visibility calculation
-  const [cameraX, setCameraX] = useState(0);
+  // Track which section is currently active (for virtualization)
+  // Use state here because we want React to re-render when sections change
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
 
-  // Compute which sections should be mounted based on camera position
+  // Compute which sections should be mounted based on current section
   const visibleSectionIndices = useMemo(() => {
     // Short scores: mount all sections
     if (sectionCount <= 3) {
@@ -115,24 +116,42 @@ export default function SingleLineRenderer({
       return new Set(Array.from({ length: sectionCount }, (_, i) => i));
     }
 
-    // Find which section the camera X position is in
-    let currentSection = 0;
-    for (let i = 0; i < sectionOffsets.length; i++) {
-      const sectionEnd = sectionOffsets[i] + sectionWidths[i];
-      if (cameraX < sectionEnd) {
-        currentSection = i;
-        break;
-      }
-      currentSection = i; // Handle case where cameraX is past all sections
-    }
-
     // Window: current section +/- 1 (buffer for smooth transitions)
     const visible = new Set<number>();
-    for (let i = Math.max(0, currentSection - 1); i <= Math.min(sectionCount - 1, currentSection + 1); i++) {
+    for (let i = Math.max(0, currentSectionIndex - 1); i <= Math.min(sectionCount - 1, currentSectionIndex + 1); i++) {
       visible.add(i);
     }
     return visible;
-  }, [cameraX, sectionOffsets, sectionWidths, sectionCount, isRenderMode]);
+  }, [currentSectionIndex, sectionCount, isRenderMode]);
+
+  // Helper to find which section a camera X position is in
+  const findSectionAtX = useCallback((camX: number): number => {
+    for (let i = 0; i < sectionOffsets.length; i++) {
+      const sectionEnd = sectionOffsets[i] + sectionWidths[i];
+      if (camX < sectionEnd) {
+        return i;
+      }
+    }
+    return Math.max(0, sectionOffsets.length - 1);
+  }, [sectionOffsets, sectionWidths]);
+
+  // Refs for values accessed during animation loop (avoids stale closure issues)
+  const visibleSectionIndicesRef = useRef(visibleSectionIndices);
+  const eventsRef = useRef(events);
+  const interpolatedEventsRef = useRef(interpolatedEvents);
+
+  // Keep refs in sync with latest values
+  useEffect(() => {
+    visibleSectionIndicesRef.current = visibleSectionIndices;
+  }, [visibleSectionIndices]);
+
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
+
+  useEffect(() => {
+    interpolatedEventsRef.current = interpolatedEvents;
+  }, [interpolatedEvents]);
 
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
@@ -362,6 +381,9 @@ export default function SingleLineRenderer({
 
   /* ---------------- camera (horizontal) ---------------- */
 
+  // Track last known section to avoid unnecessary state updates
+  const lastSectionRef = useRef(0);
+
   function applyCamera(targetX: number) {
     const scoreWidth = totalWidth || 0;
     const viewportWidth = scoreRegion?.width ?? containerWidth;
@@ -374,8 +396,12 @@ export default function SingleLineRenderer({
     camX = Math.max(0, camX);
     camX = Math.min(camX, Math.max(0, scoreWidth - viewportWidth));
 
-    // Update state for visibility calculation
-    setCameraX(camX);
+    // Only update section state when crossing a section boundary (avoids re-renders every frame)
+    const newSection = findSectionAtX(camX);
+    if (newSection !== lastSectionRef.current) {
+      lastSectionRef.current = newSection;
+      setCurrentSectionIndex(newSection);
+    }
 
     if (cameraRef.current) {
       cameraRef.current.style.transform = `translateX(${-camX}px)`;
@@ -389,16 +415,18 @@ export default function SingleLineRenderer({
     event: (typeof interpolatedEvents)[0] | null;
     index: number;
   } {
-    if (interpolatedEvents.length === 0) return { event: null, index: -1 };
+    // Use ref to get latest interpolated events (avoids stale closure)
+    const evts = interpolatedEventsRef.current;
+    if (evts.length === 0) return { event: null, index: -1 };
 
     // Binary search for the last event whose computedTimestamp <= timestampSec
     let low = 0;
-    let high = interpolatedEvents.length - 1;
+    let high = evts.length - 1;
     let result = -1;
 
     while (low <= high) {
       const mid = Math.floor((low + high) / 2);
-      if (interpolatedEvents[mid].computedTimestamp <= timestampSec) {
+      if (evts[mid].computedTimestamp <= timestampSec) {
         result = mid;
         low = mid + 1;
       } else {
@@ -407,7 +435,7 @@ export default function SingleLineRenderer({
     }
 
     if (result < 0) return { event: null, index: -1 };
-    return { event: interpolatedEvents[result], index: result };
+    return { event: evts[result], index: result };
   }
 
   // Sync-based animation: driven by audio currentTime
@@ -431,6 +459,11 @@ export default function SingleLineRenderer({
       return;
     }
 
+    // Get current refs to avoid stale closures
+    const currentEvents = eventsRef.current;
+    const currentInterpolatedEvents = interpolatedEventsRef.current;
+    const currentVisibleIndices = visibleSectionIndicesRef.current;
+
     // Check if we moved to a new event - animate ALL skipped events
     if (index !== eventIndexRef.current) {
       const prevIndex = eventIndexRef.current;
@@ -440,26 +473,20 @@ export default function SingleLineRenderer({
       // This prevents skipping events when multiple occur between frames
       const startIdx = Math.max(0, prevIndex + 1);
       for (let i = startIdx; i <= index; i++) {
-        const evt = interpolatedEvents[i];
+        const evt = currentInterpolatedEvents[i];
         if (evt?.svgIds?.length) {
           // For single-line mode, query from the section container if available
-          const cachedEvent = events.find(e => e.id === evt.id);
+          const cachedEvent = currentEvents.find(e => e.id === evt.id);
           const sectionIndex = cachedEvent?.sectionIndex;
 
           // Guard: skip if section not mounted (prevents querying unmounted DOM)
-          if (sectionIndex !== undefined && !visibleSectionIndices.has(sectionIndex)) {
+          if (sectionIndex !== undefined && !currentVisibleIndices.has(sectionIndex)) {
             continue;
           }
 
           const root = sectionIndex !== undefined && sectionContainerRefs.current[sectionIndex]
             ? sectionContainerRefs.current[sectionIndex]
             : scoreRef.current;
-
-          // Debug: check if element exists
-          const testEl = root?.querySelector(`#${CSS.escape(evt.svgIds[0])}`);
-          if (!testEl) {
-            console.warn('[SingleLineRenderer] Element not found:', evt.svgIds[0], 'in section', sectionIndex);
-          }
 
           animateNoteheads(root, evt.svgIds, {
             scale: activeNoteheadScale,
@@ -475,7 +502,7 @@ export default function SingleLineRenderer({
 
     // Camera X: interpolate between current and next event for smooth scrolling
     const currentX = event.x;
-    const nextEvent = interpolatedEvents[index + 1];
+    const nextEvent = currentInterpolatedEvents[index + 1];
 
     if (nextEvent) {
       // Calculate progress between current and next event
@@ -684,9 +711,9 @@ export default function SingleLineRenderer({
         if (timeSinceEvent < 0 || !event.svgIds?.length) continue;
 
         // Skip events whose sections are not mounted (shouldn't happen in render mode but defensive)
-        const cachedEvent = events.find(e => e.id === event.id);
+        const cachedEvent = eventsRef.current.find(e => e.id === event.id);
         const eventSectionIndex = cachedEvent?.sectionIndex;
-        if (eventSectionIndex !== undefined && !visibleSectionIndices.has(eventSectionIndex)) {
+        if (eventSectionIndex !== undefined && !visibleSectionIndicesRef.current.has(eventSectionIndex)) {
           continue;
         }
 
