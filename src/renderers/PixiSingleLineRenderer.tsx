@@ -13,9 +13,9 @@
  * @module PixiSingleLineRenderer
  */
 
-import { Application, extend, useApplication } from '@pixi/react';
-import { Container, Sprite } from 'pixi.js';
-import { useEffect, useState } from 'react';
+import { Application, extend, useApplication, useTick } from '@pixi/react';
+import { Container, Sprite, Ticker } from 'pixi.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSingleLineVerovio } from '../hooks/useSingleLineVerovio';
 import {
   sectionsToTextures,
@@ -77,6 +77,65 @@ function ContextLossHandler(): null {
 }
 
 // =============================================================================
+// CameraController
+// =============================================================================
+
+/**
+ * Child component for GPU-accelerated camera animation.
+ *
+ * Uses useTick hook to update camera position every frame with exponential
+ * smoothing for smooth, frame-rate-independent animation.
+ *
+ * Must be a child of Application because useTick uses PixiJS Ticker.
+ */
+interface CameraControllerProps {
+  containerRef: React.RefObject<Container | null>;
+  targetX: number;
+  viewportWidth: number;
+  scoreWidth: number;
+  isPlaying: boolean;
+}
+
+function CameraController({
+  containerRef,
+  targetX,
+  viewportWidth,
+  scoreWidth,
+  isPlaying,
+}: CameraControllerProps): null {
+  const currentXRef = useRef(targetX);
+
+  // CRITICAL: Memoize callback to prevent ticker re-registration
+  const animate = useCallback(
+    (ticker: Ticker) => {
+      if (!containerRef.current) return;
+
+      const dt = ticker.deltaMS / 1000;
+      const speed = 10; // Smoothing factor (higher = snappier)
+
+      // Frame-rate-independent exponential smoothing
+      currentXRef.current +=
+        (targetX - currentXRef.current) * (1 - Math.exp(-speed * dt));
+
+      // Calculate bounded camera position
+      let cameraX = currentXRef.current - viewportWidth / 2;
+      cameraX = Math.max(
+        0,
+        Math.min(cameraX, Math.max(0, scoreWidth - viewportWidth))
+      );
+
+      // Apply to container (negative X scrolls content left)
+      containerRef.current.position.x = -cameraX;
+    },
+    [containerRef, targetX, viewportWidth, scoreWidth]
+  );
+
+  useTick({ callback: animate, isEnabled: isPlaying });
+
+  return null;
+}
+
+// =============================================================================
 // PixiSingleLineRenderer
 // =============================================================================
 
@@ -101,6 +160,9 @@ export default function PixiSingleLineRenderer({
   // Get sections and layout info from Verovio
   const { sections, sectionOffsets, totalWidth, maxHeight, isLoading } =
     useSingleLineVerovio(xml, verovioScale, 15, musicFont);
+
+  // Camera refs for GPU-accelerated transforms
+  const cameraContainerRef = useRef<Container>(null);
 
   // Texture state for rendered sections
   const [textures, setTextures] = useState<TextureResult[]>([]);
@@ -142,7 +204,19 @@ export default function PixiSingleLineRenderer({
       backgroundAlpha={0}
     >
       <ContextLossHandler />
-      <pixiContainer x={0} y={0}>
+      <CameraController
+        containerRef={cameraContainerRef}
+        targetX={0} // Will be wired to playback in Task 2
+        viewportWidth={totalWidth} // Temporary: will use scoreRegion in Task 2
+        scoreWidth={totalWidth}
+        isPlaying={false} // Will be wired to playback in Task 2
+      />
+      <pixiContainer
+        ref={cameraContainerRef}
+        isRenderGroup={true}
+        x={0}
+        y={0}
+      >
         {textures.map((result, index) => (
           <pixiSprite
             key={index}
