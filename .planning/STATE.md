@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 ## Current Position
 
-Phase: 13.1 - Unplayed Score Styling
-Plan: 2 of 3
+Phase: 12 - SingleLineRenderer Core
+Plan: 2 of 2
 Status: In progress
-Last activity: 2026-02-07 -- Completed 13.1-02-PLAN.md
+Last activity: 2026-02-08 -- Reverted Phase 13.1 (quick-006)
 
-Progress: [========= ] 88% (v1.0 complete, v1.1 complete, v1.2 phases 10-13.1-02 complete)
+Progress: [========  ] 80% (v1.0 complete, v1.1 complete, v1.2 phases 10-12 complete)
 
 ## Performance Metrics
 
@@ -77,8 +77,6 @@ Recent decisions affecting current work:
 - [v1.2]: Camera interpolates position per-frame using lerp() -- no CSS transitions
 - [v1.2]: Staff alignment reverted -- quick-003 approach didn't work correctly
 - [v1.2]: Music font selectable via dropdown (Bravura, Petaluma, Leland, Gootville, Leipzig)
-- [v1.2]: Unplayed styling uses hybrid approach: direct styles for discrete elements, clip-path for continuous
-- [v1.2]: Clip-path boundary tracks currentXRef.current with userSpaceOnUse coordinates
 
 ### v1.2 Research Insights
 
@@ -92,7 +90,7 @@ Key findings from research/SUMMARY.md:
 
 ### Roadmap Evolution
 
-- Phase 13.1 inserted after Phase 13: Unplayed Score Styling (clip-path for complex elements, direct style for noteheads)
+- Phase 13.1 reverted -- unplayed styling feature did not work correctly
 
 ### Pending Todos
 
@@ -106,10 +104,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Completed 13.1-02-PLAN.md (Clip-Path Renderer Integration)
+Last session: 2026-02-08
+Stopped at: Reverted Phase 13.1 via quick-006
 Resume file: None
-Next: Execute 13.1-03-PLAN.md (RegularRenderer Integration)
+Next: Continue with Phase 12-02 test harness or new phase
 
 ### Quick Tasks Completed
 
@@ -117,3 +115,4 @@ Next: Execute 13.1-03-PLAN.md (RegularRenderer Integration)
 - quick-003: Staff line vertical alignment across sections using Y offset extraction (REVERTED in quick-004)
 - quick-004: Revert quick-003 staff alignment + add music font selector to inspector
 - quick-005: Fix music font selector - add fontLoadAll: true to Verovio hooks
+- quick-006: Revert Phase 13.1 (Unplayed Score Styling) - feature didn't work correctly
