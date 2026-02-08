@@ -9,6 +9,12 @@ import {
   destroyAnimationController,
 } from "../lib/animationController";
 import { useEventStore } from "../stores/eventStore";
+import { useUnplayedStyleStore } from "../stores/unplayedStyleStore";
+import {
+  applyUnplayedStyleToNote,
+  applyUnplayedStyleToAllNotes,
+  resetUnplayedStyleOnAllNotes,
+} from "../lib/unplayedStyling";
 
 import {
   animateNoteheads,
@@ -73,6 +79,14 @@ export default function RegularRenderer({
   const svgPagesRef = useEventStore((state) => state.svgPagesRef);
   const setEventsInStore = useEventStore((state) => state.setEvents);
 
+  // Unplayed styling store
+  const {
+    enabled: unplayedStylingEnabled,
+    mode: unplayedMode,
+    dimOpacity: unplayedDimOpacity,
+    unplayedColor,
+  } = useUnplayedStyleStore();
+
   // Interpolated events with computed timestamps (when syncAnchors provided)
   // Includes `y` for camera positioning (mapped from globalY)
   const [interpolatedEvents, setInterpolatedEvents] = useState<
@@ -84,6 +98,7 @@ export default function RegularRenderer({
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
   const scoreWidth = scoreRegion?.width ?? containerWidth;
+  console.log('[RegularRenderer] Calling useVerovio with musicFont:', musicFont);
   const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
@@ -94,6 +109,7 @@ export default function RegularRenderer({
 
   const eventIndexRef = useRef(-1); // -1 so first event (index 0) triggers animation
   const currentYRef = useRef(0);
+  const lastStyledEventIndexRef = useRef(-1); // Track last styled event for unplayed styling
 
   function setDims(w: number, h: number) {
     const f = WIDTH / w;
@@ -257,6 +273,28 @@ export default function RegularRenderer({
     applyCamera(0);
   }, [svgPages, svgPagesRef, toolkit, pageOffsets, setEventsInStore]);
 
+  /* ---------------- unplayed styling effect ---------------- */
+
+  // Apply unplayed styling when enabled and score is rendered
+  useEffect(() => {
+    if (!scoreRef.current || svgPages.length === 0) return;
+
+    if (unplayedStylingEnabled) {
+      // Apply unplayed style to all notes initially
+      applyUnplayedStyleToAllNotes(scoreRef.current, {
+        mode: unplayedMode,
+        dimOpacity: unplayedDimOpacity,
+        unplayedColor,
+        playedColor: scoreColor,
+      });
+      lastStyledEventIndexRef.current = -1;
+    } else {
+      // Reset all notes when disabled
+      resetUnplayedStyleOnAllNotes(scoreRef.current);
+      lastStyledEventIndexRef.current = -1;
+    }
+  }, [unplayedStylingEnabled, unplayedMode, unplayedDimOpacity, unplayedColor, scoreColor, svgPages]);
+
   /* ---------------- score color and styling ---------------- */
 
   // Score color CSS is rendered as React-managed JSX <style> to avoid
@@ -379,6 +417,27 @@ export default function RegularRenderer({
           });
         }
       }
+
+      // Update unplayed styling for all events up to current
+      if (unplayedStylingEnabled) {
+        for (let i = lastStyledEventIndexRef.current + 1; i <= index; i++) {
+          const evt = interpolatedEvents[i];
+          if (evt?.svgIds?.length) {
+            for (const id of evt.svgIds) {
+              const noteEl = scoreRef.current?.querySelector(`#${CSS.escape(id)}`);
+              if (noteEl) {
+                applyUnplayedStyleToNote(noteEl, true, {
+                  mode: unplayedMode,
+                  dimOpacity: unplayedDimOpacity,
+                  unplayedColor,
+                  playedColor: scoreColor,
+                });
+              }
+            }
+          }
+        }
+        lastStyledEventIndexRef.current = index;
+      }
     }
 
     // Camera Y: events in the same system share identical Y values
@@ -448,6 +507,17 @@ export default function RegularRenderer({
 
     if (scoreRef.current) {
       resetNoteheadAnimations(scoreRef.current);
+    }
+
+    // Reset unplayed styling
+    if (unplayedStylingEnabled && scoreRef.current) {
+      applyUnplayedStyleToAllNotes(scoreRef.current, {
+        mode: unplayedMode,
+        dimOpacity: unplayedDimOpacity,
+        unplayedColor,
+        playedColor: scoreColor,
+      });
+      lastStyledEventIndexRef.current = -1;
     }
   }
 
@@ -627,6 +697,44 @@ export default function RegularRenderer({
         }
       }
 
+      // Apply unplayed styling for Puppeteer frame capture
+      if (unplayedStylingEnabled && scoreRef.current) {
+        // Mark all events up to currentIndex as played
+        for (let i = 0; i <= currentIndex; i++) {
+          const event = events[i];
+          if (event?.svgIds?.length) {
+            for (const id of event.svgIds) {
+              const noteEl = scoreRef.current.querySelector(`#${CSS.escape(id)}`);
+              if (noteEl) {
+                applyUnplayedStyleToNote(noteEl, true, {
+                  mode: unplayedMode,
+                  dimOpacity: unplayedDimOpacity,
+                  unplayedColor,
+                  playedColor: scoreColor,
+                });
+              }
+            }
+          }
+        }
+        // Mark all events after currentIndex as unplayed
+        for (let i = currentIndex + 1; i < totalEvents; i++) {
+          const event = events[i];
+          if (event?.svgIds?.length) {
+            for (const id of event.svgIds) {
+              const noteEl = scoreRef.current.querySelector(`#${CSS.escape(id)}`);
+              if (noteEl) {
+                applyUnplayedStyleToNote(noteEl, false, {
+                  mode: unplayedMode,
+                  dimOpacity: unplayedDimOpacity,
+                  unplayedColor,
+                  playedColor: scoreColor,
+                });
+              }
+            }
+          }
+        }
+      }
+
       // Force reflow to ensure CSS styles are applied synchronously
       // before Puppeteer takes the screenshot
       void scoreRef.current.offsetHeight;
@@ -641,6 +749,10 @@ export default function RegularRenderer({
       colorFullNote,
       scoreColor,
       interpolateColor,
+      unplayedStylingEnabled,
+      unplayedMode,
+      unplayedDimOpacity,
+      unplayedColor,
     ],
   );
 
