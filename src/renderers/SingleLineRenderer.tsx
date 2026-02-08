@@ -9,6 +9,13 @@ import {
   destroyAnimationController,
 } from "../lib/animationController";
 import { useEventStore } from "../stores/eventStore";
+import { useUnplayedStyleStore } from "../stores/unplayedStyleStore";
+import {
+  applyUnplayedStyleToNote,
+  applyUnplayedStyleToAllNotes,
+  resetUnplayedStyleOnAllNotes,
+  CONTINUOUS_ELEMENT_SELECTORS,
+} from "../lib/unplayedStyling";
 
 import {
   animateNoteheads,
@@ -72,11 +79,23 @@ export default function SingleLineRenderer({
   const scoreRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sectionContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const clipPathRectRef = useRef<SVGRectElement>(null);
+
+  // Unique ID for clip-path to avoid conflicts
+  const [clipPathId] = useState(() => `playback-clip-${Math.random().toString(36).substr(2, 9)}`);
 
   // Event cache from Zustand store
   const events = useEventStore((state) => state.events);
   const svgPagesRef = useEventStore((state) => state.svgPagesRef);
   const setEventsInStore = useEventStore((state) => state.setEvents);
+
+  // Unplayed styling settings from store
+  const {
+    enabled: unplayedStylingEnabled,
+    mode: unplayedMode,
+    dimOpacity: unplayedDimOpacity,
+    unplayedColor,
+  } = useUnplayedStyleStore();
 
   // Interpolated events with computed timestamps (when syncAnchors provided)
   // Includes `x` for camera positioning (mapped from globalX)
@@ -88,6 +107,7 @@ export default function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
+  console.log('[SingleLineRenderer] Calling useSingleLineVerovio with musicFont:', musicFont);
   const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
 
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
@@ -276,6 +296,30 @@ export default function SingleLineRenderer({
     applyCamera(0);
   }, [sections, svgPagesRef, toolkit, sectionOffsets, setEventsInStore]);
 
+  /* ---------------- unplayed styling effect ---------------- */
+
+  // Apply unplayed styling when enabled and score is rendered
+  useEffect(() => {
+    if (!scoreRef.current || sections.length === 0) return;
+
+    if (unplayedStylingEnabled) {
+      // Apply unplayed style to all notes initially
+      applyUnplayedStyleToAllNotes(scoreRef.current, {
+        mode: unplayedMode,
+        dimOpacity: unplayedDimOpacity,
+        unplayedColor,
+        playedColor: scoreColor,
+      });
+      // Reset clip-path to 0
+      if (clipPathRectRef.current) {
+        clipPathRectRef.current.setAttribute('width', '0');
+      }
+    } else {
+      // Reset all notes when disabled
+      resetUnplayedStyleOnAllNotes(scoreRef.current);
+    }
+  }, [unplayedStylingEnabled, unplayedMode, unplayedDimOpacity, unplayedColor, scoreColor, sections]);
+
   /* ---------------- score color and styling ---------------- */
 
   // Score color CSS is rendered as React-managed JSX <style> to avoid
@@ -320,6 +364,13 @@ export default function SingleLineRenderer({
       display: none !important;
     }
   `;
+
+  // Clip-path CSS for unplayed styling (continuous elements)
+  const clipPathCss = unplayedStylingEnabled ? `
+    .preview-score.unplayed-styling ${CONTINUOUS_ELEMENT_SELECTORS.split(',').map(s => s.trim()).join(',\n    .preview-score.unplayed-styling ')} {
+      clip-path: url(#${clipPathId});
+    }
+  ` : '';
 
   /* ---------------- camera (horizontal) ---------------- */
 
@@ -415,6 +466,21 @@ export default function SingleLineRenderer({
             color: activeNoteheadColor,
             colorFullNote,
           });
+
+          // Mark newly played notes for unplayed styling
+          if (unplayedStylingEnabled) {
+            for (const id of evt.svgIds) {
+              const noteEl = root?.querySelector(`#${CSS.escape(id)}`);
+              if (noteEl) {
+                applyUnplayedStyleToNote(noteEl, true, {
+                  mode: unplayedMode,
+                  dimOpacity: unplayedDimOpacity,
+                  unplayedColor,
+                  playedColor: scoreColor,
+                });
+              }
+            }
+          }
         }
       }
     }
@@ -441,6 +507,11 @@ export default function SingleLineRenderer({
     }
 
     applyCamera(currentXRef.current);
+
+    // Update clip-path for unplayed styling
+    if (unplayedStylingEnabled && clipPathRectRef.current) {
+      clipPathRectRef.current.setAttribute('width', String(currentXRef.current));
+    }
 
     // Check if audio ended
     if (audioRef.current.ended) {
@@ -503,6 +574,20 @@ export default function SingleLineRenderer({
 
     if (scoreRef.current) {
       resetNoteheadAnimations(scoreRef.current);
+
+      // Reset unplayed styling
+      if (unplayedStylingEnabled) {
+        applyUnplayedStyleToAllNotes(scoreRef.current, {
+          mode: unplayedMode,
+          dimOpacity: unplayedDimOpacity,
+          unplayedColor,
+          playedColor: scoreColor,
+        });
+        // Reset clip-path to 0
+        if (clipPathRectRef.current) {
+          clipPathRectRef.current.setAttribute('width', '0');
+        }
+      }
     }
   }
 
@@ -604,6 +689,11 @@ export default function SingleLineRenderer({
       }
 
       applyCamera(currentXRef.current);
+
+      // Update unplayed styling for frame capture
+      if (unplayedStylingEnabled && clipPathRectRef.current) {
+        clipPathRectRef.current.setAttribute('width', String(currentXRef.current));
+      }
 
       // For frame capture, we need to calculate exact animation state for each event
       // and apply it directly (no CSS transitions)
@@ -773,7 +863,23 @@ export default function SingleLineRenderer({
   return (
     <div>
       {/* React-managed score color styles -- survives dangerouslySetInnerHTML updates */}
-      <style dangerouslySetInnerHTML={{ __html: scoreColorCss }} />
+      <style dangerouslySetInnerHTML={{ __html: scoreColorCss + clipPathCss }} />
+      {/* Clip-path definition for unplayed styling */}
+      {unplayedStylingEnabled && (
+        <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+          <defs>
+            <clipPath id={clipPathId} clipPathUnits="userSpaceOnUse">
+              <rect
+                ref={clipPathRectRef}
+                x="0"
+                y="-9999"
+                width="0"
+                height="99999"
+              />
+            </clipPath>
+          </defs>
+        </svg>
+      )}
       {/* Renderer - in render mode, scale to fill viewport while preserving aspect ratio */}
       <div
         className="select-none pointer-events-none cursor-default"
@@ -820,7 +926,7 @@ export default function SingleLineRenderer({
             >
               <div
                 ref={scoreRef}
-                className="preview-score"
+                className={`preview-score${unplayedStylingEnabled ? ' unplayed-styling' : ''}`}
                 style={{
                   display: "flex",
                   flexDirection: "row",
