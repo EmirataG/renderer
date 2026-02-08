@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 ## Current Position
 
 Phase: 13.1 - Unplayed Score Styling
-Plan: 1 of 2
+Plan: 2 of 3
 Status: In progress
-Last activity: 2026-02-07 -- Completed 13.1-01-PLAN.md
+Last activity: 2026-02-07 -- Completed 13.1-02-PLAN.md
 
-Progress: [========= ] 85% (v1.0 complete, v1.1 complete, v1.2 phases 10-13.1-01 complete)
+Progress: [========= ] 88% (v1.0 complete, v1.1 complete, v1.2 phases 10-13.1-02 complete)
 
 ## Performance Metrics
 
@@ -77,6 +77,8 @@ Recent decisions affecting current work:
 - [v1.2]: Camera interpolates position per-frame using lerp() -- no CSS transitions
 - [v1.2]: Staff alignment reverted -- quick-003 approach didn't work correctly
 - [v1.2]: Music font selectable via dropdown (Bravura, Petaluma, Leland, Gootville, Leipzig)
+- [v1.2]: Unplayed styling uses hybrid approach: direct styles for discrete elements, clip-path for continuous
+- [v1.2]: Clip-path boundary tracks currentXRef.current with userSpaceOnUse coordinates
 
 ### v1.2 Research Insights
 
@@ -105,9 +107,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Completed 13.1-01-PLAN.md (Settings Store & Inspector UI)
+Stopped at: Completed 13.1-02-PLAN.md (Clip-Path Renderer Integration)
 Resume file: None
-Next: Execute 13.1-02-PLAN.md (Clip-Path Renderer Integration)
+Next: Execute 13.1-03-PLAN.md (RegularRenderer Integration)
 
 ### Quick Tasks Completed
 
