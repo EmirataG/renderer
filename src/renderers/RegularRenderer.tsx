@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useVerovio } from "../hooks/useVerovio";
 import { extractTimemapEvents, computeEventPositions } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
@@ -68,10 +69,14 @@ export default function RegularRenderer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pageContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Event cache from Zustand store
-  const events = useEventStore((state) => state.events);
-  const svgPagesRef = useEventStore((state) => state.svgPagesRef);
-  const setEventsInStore = useEventStore((state) => state.setEvents);
+  // Event cache from Zustand store (useShallow prevents re-renders on unrelated state changes)
+  const { events, svgPagesRef, setEvents: setEventsInStore } = useEventStore(
+    useShallow((state) => ({
+      events: state.events,
+      svgPagesRef: state.svgPagesRef,
+      setEvents: state.setEvents,
+    }))
+  );
 
   // Interpolated events with computed timestamps (when syncAnchors provided)
   // Includes `y` for camera positioning (mapped from globalY)
@@ -261,7 +266,8 @@ export default function RegularRenderer({
 
   // Score color CSS is rendered as React-managed JSX <style> to avoid
   // being destroyed when dangerouslySetInnerHTML replaces the SVG container.
-  const scoreColorCss = `
+  // Memoized to prevent CSS string recreation on every render.
+  const scoreColorCss = useMemo(() => `
     .preview-score svg.definition-scale {
       color: ${scoreColor};
     }
@@ -294,7 +300,7 @@ export default function RegularRenderer({
       cursor: default !important;
       user-select: none !important;
     }
-  `;
+  `, [scoreColor]);
 
   /* ---------------- camera (vertical) ---------------- */
 
@@ -317,24 +323,30 @@ export default function RegularRenderer({
 
   /* ---------------- motion ---------------- */
 
-  // Sync-based timing: find event at given timestamp
+  // Sync-based timing: find event at given timestamp using binary search O(log n)
   function getEventAtTimestamp(timestampSec: number): {
     event: (typeof interpolatedEvents)[0] | null;
     index: number;
   } {
     if (interpolatedEvents.length === 0) return { event: null, index: -1 };
 
-    // Find the last event whose computedTimestamp <= timestampSec
-    let targetIndex = -1;
-    for (let i = interpolatedEvents.length - 1; i >= 0; i--) {
-      if (interpolatedEvents[i].computedTimestamp <= timestampSec) {
-        targetIndex = i;
-        break;
+    // Binary search for the last event whose computedTimestamp <= timestampSec
+    let low = 0;
+    let high = interpolatedEvents.length - 1;
+    let result = -1;
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (interpolatedEvents[mid].computedTimestamp <= timestampSec) {
+        result = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
       }
     }
 
-    if (targetIndex < 0) return { event: null, index: -1 };
-    return { event: interpolatedEvents[targetIndex], index: targetIndex };
+    if (result < 0) return { event: null, index: -1 };
+    return { event: interpolatedEvents[result], index: result };
   }
 
   // Sync-based animation: driven by audio currentTime
@@ -515,12 +527,18 @@ export default function RegularRenderer({
 
       if (totalEvents === 0) return;
 
-      // Find current event at timestamp for camera positioning
+      // Binary search for current event at timestamp for camera positioning
+      let low = 0;
+      let high = totalEvents - 1;
       let currentIndex = -1;
-      for (let i = totalEvents - 1; i >= 0; i--) {
-        if (events[i].computedTimestamp <= seconds) {
-          currentIndex = i;
-          break;
+
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (events[mid].computedTimestamp <= seconds) {
+          currentIndex = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
         }
       }
       if (currentIndex < 0) return;
