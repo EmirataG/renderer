@@ -46,13 +46,13 @@ Capabilities shipped and confirmed working:
 
 ### Active
 
-- SLR-01: SingleLineRenderer component displaying score as one horizontal line
-- SLR-02: Horizontal camera system keeping active note centered in score region
-- SLR-03: Section-based rendering via Verovio for performance optimization
-- SLR-04: Lazy section loading (only visible sections mounted in DOM)
-- SLR-05: Seamless section transitions (breaks invisible to users)
-- SLR-06: Notehead animation working on horizontal layout
-- SLR-07: Score region bounds controlling animation viewport
+- KNV-01: SingleLineRenderer using Konva.js canvas instead of SVG
+- KNV-02: Verovio SVG → Konva conversion layer
+- KNV-03: Horizontal camera with smooth tracking via Konva stage positioning
+- KNV-04: Note highlighting via Konva tweens (color/scale animation)
+- KNV-05: Click-to-edit note selection via Konva hit testing
+- KNV-06: Section-based caching (Konva layer.cache()) for performance
+- KNV-07: Section virtualization via Konva layer visibility
 
 ### Out of Scope
 
@@ -61,47 +61,58 @@ Capabilities shipped and confirmed working:
 - BPM-based playback — permanently removed in v1.0
 - Server-side rendering — remains a client-side SPA
 - Mobile support — not in scope
-- Canvas rendering — investigated, poor cost-benefit vs paginated SVG
 - Web Worker rendering — defer until profiling shows need
+- RegularRenderer canvas migration — SVG works well for vertical, only SingleLineRenderer migrates
+- Puppeteer support for canvas — defer to future milestone
 
-## Current Milestone: v1.2 SingleLineRenderer
+## Current Milestone: v1.3 Canvas SingleLineRenderer
 
-**Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance.
+**Goal:** Migrate SingleLineRenderer from SVG to Konva.js canvas rendering to eliminate React state/effect timing issues that caused animation glitches in SVG virtualization.
 
 **Target features:**
-- SingleLineRenderer component with horizontal layout
-- Horizontal camera tracking (active note stays centered)
-- Section-based Verovio rendering for performance
-- Lazy section loading (only visible sections in DOM)
-- Seamless section transitions (invisible breaks)
-- Same notehead animation as RegularRenderer
-- Score region bounds control animation viewport
+- Verovio SVG → Konva shape conversion pipeline
+- Konva Stage with horizontal camera tracking
+- Section-based layer caching for performance
+- Layer visibility for virtualization (no React state needed)
+- Built-in Konva.Tween for smooth note animations
+- Konva hit testing for click-to-edit functionality
+- RegularRenderer unchanged (stays SVG)
+
+**Why Canvas/Konva.js:**
+- Eliminates React re-render timing issues with requestAnimationFrame
+- Built-in tweening (no manual animation loop management)
+- Layer caching provides virtualization without React state
+- Hit testing built-in (no manual bounding box tracking)
+- Stage positioning for camera (no CSS transform conflicts)
 
 ## Context
 
-**Current architecture (post-v1.1):** React SPA with Verovio (WASM) rendering MusicXML to paginated SVGs. Events are extracted once via Verovio's timemap API and cached with page assignments. Virtual scrolling mounts only 3-4 pages near the camera position. Camera uses CSS `transform: translateY()` with system-boundary snapping.
+**Current architecture (post-v1.1):** React SPA with Verovio (WASM) rendering MusicXML to paginated SVGs. Events are extracted once via Verovio's timemap API and cached with page assignments.
 
-**RegularRenderer:** Vertical paginated layout with smooth camera scrolling. Uses page-based virtual scrolling for memory efficiency. This is the existing renderer and should remain available.
+**RegularRenderer:** Vertical paginated layout with smooth camera scrolling. Uses page-based virtual scrolling for memory efficiency. Stays as SVG — working well.
 
-**SingleLineRenderer (new):** Horizontal single-line layout. Camera moves horizontally to keep active note centered. Needs section-based rendering for performance (long horizontal lines would have same memory issues as pre-v1.1 vertical layout).
+**SingleLineRenderer (v1.2 attempt):** Horizontal single-line layout using SVG. Hit React state/effect timing issues with section virtualization — camera would snap back to beginning, animations would stop at section boundaries. Root cause: React's setState in requestAnimationFrame loops causes re-renders that break animation continuity.
 
-**Verovio rendering modes:**
-- Current: `pageHeight: 2970` (A4) produces vertical pages
-- Single-line: Need to research Verovio options for horizontal/single-system output, or measure-range rendering
+**Canvas migration rationale:**
+- Konva.js provides object model with per-shape events (like SVG DOM)
+- Layer caching replaces virtualization (cached layers are bitmap textures)
+- Stage.position() for camera (no React state needed)
+- Konva.Tween handles animation interpolation (no manual RAF management)
+- SVG-to-Konva conversion is the main technical challenge
 
-**Verovio SVG structure:**
-- Systems: `<g class="system">` — one per staff system line
-- Notes: `<g id="..." class="note">` with `<g class="notehead">` containing `<use>` elements
-- Measures: `<g class="measure">`
-- IDs are unique per element, used for animation targeting and event extraction
+**Verovio integration:**
+- Verovio still generates SVG from MusicXML
+- New conversion layer parses SVG and creates Konva shapes
+- Element IDs preserved for event extraction mapping
+- One-time conversion per section, then cached as Konva layer
 
 ## Constraints
 
-- **Tech stack**: Verovio WASM — already integrated
-- **RegularRenderer preserved**: Existing vertical renderer must remain functional
-- **SVG compatibility**: Must maintain DOM queryability for animation and event extraction
+- **Tech stack**: Verovio WASM (kept) + Konva.js (new)
+- **RegularRenderer preserved**: Existing vertical SVG renderer unchanged
+- **Event extraction**: Must still map to Verovio timemap IDs
 - **Score region**: Animation viewport controlled by existing score region editor
-- **Skip Puppeteer**: SingleLineRenderer does not need Puppeteer support for v1.2
+- **Skip Puppeteer**: Canvas Puppeteer support deferred to future milestone
 
 ## Key Decisions
 
@@ -112,9 +123,11 @@ Capabilities shipped and confirmed working:
 | BPM mode permanently removed | Sync-only simplifies playback path | ✓ Good |
 | Camera uses g.system DOM elements for Y | Eliminates threshold heuristics, no jitter | ✓ Good |
 | 5-phase sequential migration | Strict dependency chain worked well | ✓ Good |
-| No Canvas migration | SVG DOM APIs too deeply integrated, paginated SVG is better path | ✓ Good |
 | Paginated rendering over Web Workers | Addresses root cause (DOM size) not symptom (render speed) | ✓ Good |
 | Virtual scrolling with CSS transform camera | Custom visibility manager, not scroll-based libraries | ✓ Good |
+| Konva.js over PixiJS | Better SVG compat, built-in tweening, simpler API, no WebGL edge cases | — Pending |
+| SVG virtualization abandoned | React state timing issues in RAF loops unfixable without architectural change | ⚠️ Revisit |
+| SingleLineRenderer-only canvas migration | RegularRenderer SVG works well, minimize scope | — Pending |
 
 ---
-*Last updated: 2026-02-05 after v1.2 milestone start*
+*Last updated: 2026-02-07 after v1.3 Canvas migration milestone start*
