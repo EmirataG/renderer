@@ -41,7 +41,7 @@ Reduced memory usage and improved rendering performance for long scores through 
 - [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio ✓
 - [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments ✓
 - [x] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling ✓
-- [x] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions ✓
+- [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions
 - [ ] **Phase 13.1: Unplayed Score Styling** - Visual differentiation of played vs unplayed score regions (INSERTED)
 
 ## Phase Details
@@ -95,7 +95,11 @@ Plans:
   2. Section boundaries are invisible to users (staff lines appear continuous, no gaps or visual seams)
   3. Tied notes and slurs that cross section boundaries render correctly (overlap strategy working)
   4. Switching sections during playback causes no animation glitches or missing noteheads
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 13-01-PLAN.md — Basic virtualization (cameraX tracking, visibleSectionIndices, conditional rendering)
+- [ ] 13-02-PLAN.md — Overlap rendering + clip-path for seamless boundaries
+- [ ] 13-03-PLAN.md — Visual verification checkpoint
 
 ### Phase 13.1: Unplayed Score Styling (INSERTED)
 **Goal**: Inspector option to visually differentiate played vs unplayed score regions using clip-path for complex elements and direct styling for noteheads/stems/accidentals/dots
@@ -178,5 +182,5 @@ Phases execute in order: 10 -> 11 -> 12 -> 13 -> 13.1
 | 10. Single-Line Verovio Hook | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 11. Single-Line Event Extraction | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
-| 13. Section Virtualization | v1.2 | -- | Complete | 2026-02-07 |
+| 13. Section Virtualization | v1.2 | 0/3 | Planned | -- |
 | 13.1. Unplayed Score Styling | v1.2 | 2/3 | In Progress | -- |
