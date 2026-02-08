@@ -100,7 +100,9 @@ Plans:
   3. Camera position updates via container.position.x without triggering React re-renders
   4. Score region bounds constrain the visible area (camera respects region edges)
   5. Stopping/resetting playback smoothly transitions camera to appropriate position
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 16-01-PLAN.md - Add CameraController with isRenderGroup, useTick animation, and playback integration
 
 ### Phase 17: Note Highlighting
 **Goal**: Active section highlights via GPU shader without redraw, matching RegularRenderer timing
@@ -216,8 +218,8 @@ Phases execute in order: 14 -> 15 -> 16 -> 17 -> 18 -> 19
 | 13. Section Virtualization | v1.2 | 0/3 | Planned | -- |
 | 13.1. Unplayed Score Styling | v1.2 | 2/3 | In Progress | -- |
 | 14. SVG-to-Texture Pipeline | v1.3 | 2/2 | Complete | 2026-02-08 |
-| 15. Basic PixiJS Renderer | v1.3 | 0/1 | Planned | -- |
-| 16. Camera System | v1.3 | 0/TBD | Not started | -- |
+| 15. Basic PixiJS Renderer | v1.3 | 1/1 | Complete | 2026-02-08 |
+| 16. Camera System | v1.3 | 0/1 | Planned | -- |
 | 17. Note Highlighting | v1.3 | 0/TBD | Not started | -- |
 | 18. Section Virtualization | v1.3 | 0/TBD | Not started | -- |
 | 19. Integration and Polish | v1.3 | 0/TBD | Not started | -- |
