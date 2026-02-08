@@ -66,6 +66,7 @@ export function useSingleLineVerovio(
     let cancelled = false;
 
     async function render() {
+      console.log('[useSingleLineVerovio] Render starting with font:', font);
       setIsLoading(true);
       setError(null);
 
@@ -76,8 +77,8 @@ export function useSingleLineVerovio(
         toolkitRef.current = toolkit;
 
         // Verovio options for horizontal layout (single system, no breaks)
-        toolkit.setOptions({
-          font: font.toLowerCase(),
+        const options = {
+          font: font,  // Font name (Bravura, Petaluma, Leland, Gootville, Leipzig)
           fontLoadAll: true,           // Load all music fonts to enable runtime font switching
           breaks: 'none',              // Force single horizontal system
           pageWidth: 100000,           // Large width to prevent wrapping
@@ -92,7 +93,9 @@ export function useSingleLineVerovio(
           svgRemoveXlink: true,
           header: 'none',
           footer: 'none',
-        });
+        };
+        toolkit.setOptions(options);
+        console.log('[useSingleLineVerovio] Options set, font:', font);
 
         const loaded = toolkit.loadData(xml);
         if (!loaded) {

@@ -60,8 +60,8 @@ export function useVerovio(
 
         toolkitRef.current = toolkit;
 
-        toolkit.setOptions({
-          font: font.toLowerCase(),
+        const options = {
+          font: font,  // Font name (Bravura, Petaluma, Leland, Gootville, Leipzig)
           fontLoadAll: true,  // Load all music fonts to enable runtime font switching
           pageWidth: (containerWidth * 100) / scale,
           pageHeight: 2970,
@@ -73,7 +73,8 @@ export function useVerovio(
           breaks: 'auto',
           header: 'none',
           footer: 'none',
-        });
+        };
+        toolkit.setOptions(options);
 
         const loaded = toolkit.loadData(xml);
         if (!loaded) {

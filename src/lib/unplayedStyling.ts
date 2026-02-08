@@ -27,7 +27,8 @@ export const DISCRETE_ELEMENT_SELECTORS = `
   g.dots ellipse,
   g.dots use,
   g.flag use,
-  g.artic use
+  g.artic use,
+  g.rest use
 `;
 
 /**
@@ -44,6 +45,9 @@ export const CONTINUOUS_ELEMENT_SELECTORS = `
 /**
  * Apply unplayed styling to a note element and its children
  * Used for discrete elements (noteheads, stems, accidentals, dots)
+ *
+ * When isPlayed=true, we REMOVE unplayed styling (let CSS handle default appearance).
+ * This prevents conflicts with noteAnimation which also manipulates inline styles.
  */
 export function applyUnplayedStyleToNote(
   noteElement: Element,
@@ -53,14 +57,21 @@ export function applyUnplayedStyleToNote(
   const targets = noteElement.querySelectorAll<SVGElement>(DISCRETE_ELEMENT_SELECTORS);
 
   targets.forEach(el => {
-    if (options.mode === 'invisible') {
-      el.style.opacity = isPlayed ? '1' : '0';
-    } else if (options.mode === 'dimmed') {
-      el.style.opacity = isPlayed ? '1' : String(options.dimOpacity ?? 0.3);
-    } else if (options.mode === 'color') {
-      const color = isPlayed ? (options.playedColor ?? '') : (options.unplayedColor ?? '#666666');
-      el.style.fill = color;
-      el.style.stroke = color;
+    if (isPlayed) {
+      // Remove unplayed styling - let CSS handle the played appearance
+      el.style.opacity = '';
+      el.style.fill = '';
+      el.style.stroke = '';
+    } else {
+      // Apply unplayed styling
+      if (options.mode === 'invisible') {
+        el.style.opacity = '0';
+      } else if (options.mode === 'dimmed') {
+        el.style.opacity = String(options.dimOpacity ?? 0.3);
+      } else if (options.mode === 'color') {
+        el.style.fill = options.unplayedColor ?? '#666666';
+        el.style.stroke = options.unplayedColor ?? '#666666';
+      }
     }
   });
 }
@@ -80,25 +91,26 @@ export function resetUnplayedStyleOnNote(noteElement: Element): void {
 }
 
 /**
- * Apply unplayed styling to all notes in a container
+ * Apply unplayed styling to all notes and rests in a container
  * Used for initial state (before playback) or after reset
  */
 export function applyUnplayedStyleToAllNotes(
   container: Element,
   options: UnplayedStyleOptions
 ): void {
-  const notes = container.querySelectorAll('g.note');
-  notes.forEach(note => {
-    applyUnplayedStyleToNote(note, false, options);
+  // Include both notes and rests
+  const elements = container.querySelectorAll('g.note, g.rest, g.chord');
+  elements.forEach(el => {
+    applyUnplayedStyleToNote(el, false, options);
   });
 }
 
 /**
- * Reset unplayed styling on all notes in a container
+ * Reset unplayed styling on all notes and rests in a container
  */
 export function resetUnplayedStyleOnAllNotes(container: Element): void {
-  const notes = container.querySelectorAll('g.note');
-  notes.forEach(note => {
-    resetUnplayedStyleOnNote(note);
+  const elements = container.querySelectorAll('g.note, g.rest, g.chord');
+  elements.forEach(el => {
+    resetUnplayedStyleOnNote(el);
   });
 }

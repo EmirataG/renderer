@@ -299,25 +299,37 @@ export default function SingleLineRenderer({
   /* ---------------- unplayed styling effect ---------------- */
 
   // Apply unplayed styling when enabled and score is rendered
+  // Use requestAnimationFrame to wait for DOM to be fully rendered
   useEffect(() => {
     if (!scoreRef.current || sections.length === 0) return;
 
-    if (unplayedStylingEnabled) {
-      // Apply unplayed style to all notes initially
-      applyUnplayedStyleToAllNotes(scoreRef.current, {
-        mode: unplayedMode,
-        dimOpacity: unplayedDimOpacity,
-        unplayedColor,
-        playedColor: scoreColor,
-      });
-      // Reset clip-path to 0
-      if (clipPathRectRef.current) {
-        clipPathRectRef.current.setAttribute('width', '0');
+    // Wait for next paint to ensure Verovio SVG is in the DOM
+    const rafId = requestAnimationFrame(() => {
+      if (!scoreRef.current) return;
+
+      // Verify SVG is actually present
+      const verovioSvg = scoreRef.current.querySelector('svg.definition-scale');
+      if (!verovioSvg) {
+        console.warn('[SingleLineRenderer] Unplayed styling: SVG not found');
+        return;
       }
-    } else {
-      // Reset all notes when disabled
-      resetUnplayedStyleOnAllNotes(scoreRef.current);
-    }
+
+      if (unplayedStylingEnabled) {
+        // Apply unplayed style to all notes initially
+        console.log('[SingleLineRenderer] Applying unplayed styling to all notes');
+        applyUnplayedStyleToAllNotes(scoreRef.current, {
+          mode: unplayedMode,
+          dimOpacity: unplayedDimOpacity,
+          unplayedColor,
+          playedColor: scoreColor,
+        });
+      } else {
+        // Reset all notes when disabled
+        resetUnplayedStyleOnAllNotes(scoreRef.current);
+      }
+    });
+
+    return () => cancelAnimationFrame(rafId);
   }, [unplayedStylingEnabled, unplayedMode, unplayedDimOpacity, unplayedColor, scoreColor, sections]);
 
   /* ---------------- score color and styling ---------------- */
@@ -365,12 +377,10 @@ export default function SingleLineRenderer({
     }
   `;
 
-  // Clip-path CSS for unplayed styling (continuous elements)
-  const clipPathCss = unplayedStylingEnabled ? `
-    .preview-score.unplayed-styling ${CONTINUOUS_ELEMENT_SELECTORS.split(',').map(s => s.trim()).join(',\n    .preview-score.unplayed-styling ')} {
-      clip-path: url(#${clipPathId});
-    }
-  ` : '';
+  // Note: Clip-path for continuous elements (staff lines, beams) is disabled for v1
+  // because each section SVG has its own coordinate system, making global clip-path complex.
+  // Continuous elements remain visible while discrete elements (notes, rests) show played/unplayed state.
+  const clipPathCss = '';
 
   /* ---------------- camera (horizontal) ---------------- */
 
