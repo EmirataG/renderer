@@ -86,7 +86,9 @@ Plans:
   3. Unmounting the renderer releases all GPU resources (no memory leak on component unmount)
   4. WebGL context loss triggers recovery handlers (renderer can rebuild after GPU reclaim)
   5. Score is positioned at start (leftmost section visible, not centered on empty space)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 15-01-PLAN.md - Install @pixi/react and create PixiSingleLineRenderer component
 
 ### Phase 16: Camera System
 **Goal**: Smooth 60fps horizontal scrolling keeps active note centered using GPU-accelerated transforms
@@ -213,8 +215,8 @@ Phases execute in order: 14 -> 15 -> 16 -> 17 -> 18 -> 19
 | 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
 | 13. Section Virtualization | v1.2 | 0/3 | Planned | -- |
 | 13.1. Unplayed Score Styling | v1.2 | 2/3 | In Progress | -- |
-| 14. SVG-to-Texture Pipeline | v1.3 | 0/2 | Planned | -- |
-| 15. Basic PixiJS Renderer | v1.3 | 0/TBD | Not started | -- |
+| 14. SVG-to-Texture Pipeline | v1.3 | 2/2 | Complete | 2026-02-08 |
+| 15. Basic PixiJS Renderer | v1.3 | 0/1 | Planned | -- |
 | 16. Camera System | v1.3 | 0/TBD | Not started | -- |
 | 17. Note Highlighting | v1.3 | 0/TBD | Not started | -- |
 | 18. Section Virtualization | v1.3 | 0/TBD | Not started | -- |
