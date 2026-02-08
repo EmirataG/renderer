@@ -8,11 +8,24 @@ import { ScoreRegionEditor } from "./components/ScoreRegionEditor";
 import { BorderPicker } from "./components/BorderPicker";
 import { BorderStyle } from "./borders";
 import { useSyncStore } from "./stores/syncStore";
+import { useUnplayedStyleStore, UnplayedStyleMode } from "./stores/unplayedStyleStore";
 import type { ScoreRegion } from "./types/score";
 
 export default function App() {
   // Get sync anchors from store
   const { anchors } = useSyncStore();
+
+  // Unplayed score styling settings
+  const {
+    enabled: unplayedStylingEnabled,
+    mode: unplayedMode,
+    dimOpacity: unplayedDimOpacity,
+    unplayedColor,
+    setEnabled: setUnplayedStylingEnabled,
+    setMode: setUnplayedMode,
+    setDimOpacity: setUnplayedDimOpacity,
+    setUnplayedColor,
+  } = useUnplayedStyleStore();
 
   // Check for renderer mode via URL query param
   const useSingleLineRenderer = typeof window !== 'undefined' &&
@@ -270,7 +283,10 @@ export default function App() {
                   </label>
                   <select
                     value={musicFont}
-                    onChange={(e) => setMusicFont(e.target.value)}
+                    onChange={(e) => {
+                      console.log('[App] Music font changed to:', e.target.value);
+                      setMusicFont(e.target.value);
+                    }}
                     className="grunge-select w-full"
                   >
                     <option value="Bravura">Bravura</option>
@@ -349,6 +365,86 @@ export default function App() {
                     </p>
                   )}
                 </div>
+              </div>
+            </section>
+
+            {/* UNPLAYED SCORE STYLING SECTION */}
+            <section className="mb-5">
+              <h2 className="grunge-section-title">
+                Unplayed Score Styling
+              </h2>
+              <div className="p-3 space-y-4">
+                <div className="pt-1">
+                  <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={unplayedStylingEnabled}
+                      onChange={(e) => setUnplayedStylingEnabled(e.target.checked)}
+                      className="grunge-checkbox"
+                    />
+                    <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
+                      Style Unplayed Score
+                    </span>
+                  </label>
+                </div>
+
+                {unplayedStylingEnabled && (
+                  <>
+                    <div className="space-y-2">
+                      <label className="block text-xs text-neutral-300 font-medium">
+                        Unplayed Style
+                      </label>
+                      <select
+                        value={unplayedMode}
+                        onChange={(e) => setUnplayedMode(e.target.value as UnplayedStyleMode)}
+                        className="grunge-select w-full"
+                      >
+                        <option value="dimmed">Dimmed</option>
+                        <option value="invisible">Invisible</option>
+                        <option value="color">Different Color</option>
+                      </select>
+                    </div>
+
+                    {unplayedMode === 'dimmed' && (
+                      <div className="space-y-2">
+                        <label className="flex justify-between text-xs font-medium">
+                          <span className="text-neutral-300">Dim Opacity</span>
+                          <span className="text-white font-mono tabular-nums">
+                            {Math.round(unplayedDimOpacity * 100)}%
+                          </span>
+                        </label>
+                        <input
+                          type="range"
+                          min={0.1}
+                          max={0.9}
+                          step={0.05}
+                          value={unplayedDimOpacity}
+                          onChange={(e) => setUnplayedDimOpacity(Number(e.target.value))}
+                          className="grunge-range"
+                        />
+                      </div>
+                    )}
+
+                    {unplayedMode === 'color' && (
+                      <div className="space-y-2">
+                        <label className="block text-xs text-neutral-300 font-medium">
+                          Unplayed Color
+                        </label>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="color"
+                            value={unplayedColor}
+                            onChange={(e) => setUnplayedColor(e.target.value)}
+                            className="grunge-color-picker"
+                          />
+                          <span className="text-xs text-neutral-400 font-mono">
+                            {unplayedColor}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </section>
 
