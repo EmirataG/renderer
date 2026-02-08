@@ -12,8 +12,9 @@ export interface UseSingleLineVerovioResult {
   sections: string[];           // Array of SVG strings, one per section
   sectionWidths: number[];      // Width of each section in pixels
   sectionHeights: number[];     // Height of each section in pixels
-  sectionOffsets: number[];     // Cumulative X offset for each section
-  totalWidth: number;           // Total score width (sum of all widths)
+  sectionOffsets: number[];     // Cumulative X offset for each section (accounting for overlap clipping)
+  sectionOverlapWidths: number[];  // Width of overlap region per section (0 for first section)
+  totalWidth: number;           // Total visual width (accounting for clipped overlaps)
   maxHeight: number;            // Maximum section height for alignment
   sectionCount: number;         // Number of sections
   measureCount: number;         // Total measures in score
@@ -41,12 +42,14 @@ export function useSingleLineVerovio(
   xml: string,
   scale: number = 40,
   measuresPerSection: number = 15,
-  font: string = 'Bravura'
+  font: string = 'Bravura',
+  overlapMeasures: number = 1  // Number of measures to overlap between sections
 ): UseSingleLineVerovioResult {
   const [sections, setSections] = useState<string[]>([]);
   const [sectionWidths, setSectionWidths] = useState<number[]>([]);
   const [sectionHeights, setSectionHeights] = useState<number[]>([]);
   const [sectionOffsets, setSectionOffsets] = useState<number[]>([]);
+  const [sectionOverlapWidths, setSectionOverlapWidths] = useState<number[]>([]);
   const [totalWidth, setTotalWidth] = useState<number>(0);
   const [maxHeight, setMaxHeight] = useState<number>(0);
   const [sectionCount, setSectionCount] = useState<number>(0);
@@ -61,6 +64,7 @@ export function useSingleLineVerovio(
       setSectionWidths([]);
       setSectionHeights([]);
       setSectionOffsets([]);
+      setSectionOverlapWidths([]);
       setTotalWidth(0);
       setMaxHeight(0);
       setSectionCount(0);
@@ -111,6 +115,7 @@ export function useSingleLineVerovio(
             setSectionWidths([]);
             setSectionHeights([]);
             setSectionOffsets([]);
+            setSectionOverlapWidths([]);
             setTotalWidth(0);
             setMaxHeight(0);
             setSectionCount(0);
@@ -135,6 +140,7 @@ export function useSingleLineVerovio(
             setSectionWidths([]);
             setSectionHeights([]);
             setSectionOffsets([]);
+            setSectionOverlapWidths([]);
             setTotalWidth(0);
             setMaxHeight(0);
             setSectionCount(0);
@@ -144,12 +150,25 @@ export function useSingleLineVerovio(
           return;
         }
 
-        // Section rendering loop
+        // Section rendering loop with overlap for seamless boundaries
         const renderedSections: string[] = [];
 
+        // First, compute nominal section start positions
+        const sectionStarts: number[] = [];
         for (let start = 1; start <= totalMeasures; start += measuresPerSection) {
-          const end = Math.min(start + measuresPerSection - 1, totalMeasures);
-          toolkit.select({ measureRange: `${start}-${end}` });
+          sectionStarts.push(start);
+        }
+
+        // Render each section with overlap (extending backward for continuation sections)
+        for (let sectionIdx = 0; sectionIdx < sectionStarts.length; sectionIdx++) {
+          const nominalStart = sectionStarts[sectionIdx];
+          const nominalEnd = Math.min(nominalStart + measuresPerSection - 1, totalMeasures);
+
+          // For sections after the first, extend backward by overlapMeasures
+          const renderStart = sectionIdx === 0 ? nominalStart : Math.max(1, nominalStart - overlapMeasures);
+          const renderEnd = nominalEnd;
+
+          toolkit.select({ measureRange: `${renderStart}-${renderEnd}` });
           toolkit.redoLayout();
           const svg = toolkit.renderToSVG(1); // Always page 1 after select
           renderedSections.push(svg);
@@ -165,19 +184,46 @@ export function useSingleLineVerovio(
         const heights = dimensions.map(d => d.height);
         const maxH = Math.max(...heights);
 
+        // Compute overlap widths (how much to clip from each section's left edge)
+        const overlapWidths: number[] = [];
+        for (let i = 0; i < renderedSections.length; i++) {
+          if (i === 0) {
+            // First section has no overlap
+            overlapWidths.push(0);
+          } else {
+            // Estimate overlap width from the section's width and number of measures rendered
+            // For section i: it renders (overlapMeasures + measuresPerSection) measures
+            // The overlap portion is (overlapMeasures / total rendered measures) * width
+            const nominalStart = sectionStarts[i];
+            const renderStart = Math.max(1, nominalStart - overlapMeasures);
+            const nominalEnd = Math.min(nominalStart + measuresPerSection - 1, totalMeasures);
+            const totalRendered = nominalEnd - renderStart + 1;
+            const overlapRatio = overlapMeasures / totalRendered;
+            overlapWidths.push(widths[i] * overlapRatio);
+          }
+        }
+
+        // Compute offsets accounting for overlap clipping
+        // Visual width of each section is full width minus the overlap that gets clipped
         const offsets: number[] = [];
         let cumulative = 0;
-        for (const w of widths) {
+        for (let i = 0; i < widths.length; i++) {
           offsets.push(cumulative);
-          cumulative += w;
+          // Visual width is full width minus the overlap that gets clipped
+          const visualWidth = widths[i] - overlapWidths[i];
+          cumulative += visualWidth;
         }
+
+        // Total visual width (accounting for clipped overlaps)
+        const totalVisualWidth = cumulative;
 
         if (!cancelled) {
           setSections(renderedSections);
           setSectionWidths(widths);
           setSectionHeights(heights);
           setSectionOffsets(offsets);
-          setTotalWidth(cumulative);
+          setSectionOverlapWidths(overlapWidths);
+          setTotalWidth(totalVisualWidth);
           setMaxHeight(maxH);
           setSectionCount(renderedSections.length);
           setMeasureCount(totalMeasures);
@@ -191,6 +237,7 @@ export function useSingleLineVerovio(
           setSectionWidths([]);
           setSectionHeights([]);
           setSectionOffsets([]);
+          setSectionOverlapWidths([]);
           setTotalWidth(0);
           setMaxHeight(0);
           setSectionCount(0);
@@ -205,13 +252,14 @@ export function useSingleLineVerovio(
     return () => {
       cancelled = true;
     };
-  }, [xml, scale, measuresPerSection, font]);
+  }, [xml, scale, measuresPerSection, font, overlapMeasures]);
 
   return {
     sections,
     sectionWidths,
     sectionHeights,
     sectionOffsets,
+    sectionOverlapWidths,
     totalWidth,
     maxHeight,
     sectionCount,
