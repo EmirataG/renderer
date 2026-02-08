@@ -93,7 +93,7 @@ export default function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
-  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, sectionCount, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
+  const { sections, sectionWidths, sectionHeights, sectionOffsets, sectionOverlapWidths, totalWidth, maxHeight, sectionCount, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
 
   // Detect render mode early (needed for virtualization decision)
   const isRenderMode =
@@ -898,6 +898,8 @@ export default function SingleLineRenderer({
               >
                 {sections.map((svg, i) => {
                   const isVisible = visibleSectionIndices.has(i);
+                  const overlapWidth = sectionOverlapWidths[i] || 0;
+                  const hasOverlap = i > 0 && overlapWidth > 0;
 
                   if (isVisible) {
                     return (
@@ -911,19 +913,24 @@ export default function SingleLineRenderer({
                           height: maxHeight,
                           display: 'flex',
                           alignItems: 'flex-start',
+                          // Clip the overlap from the left edge of continuation sections
+                          clipPath: hasOverlap ? `inset(0 0 0 ${overlapWidth}px)` : undefined,
+                          // Shift left to close the gap created by clipping
+                          marginLeft: hasOverlap ? -overlapWidth : 0,
                         }}
                         dangerouslySetInnerHTML={{ __html: svg }}
                       />
                     );
                   } else {
                     // Placeholder div maintains layout spacing
+                    // Visual width is full width minus clipped overlap
                     return (
                       <div
                         key={i}
                         ref={(el) => { sectionContainerRefs.current[i] = el; }}
                         style={{
                           flexShrink: 0,
-                          width: sectionWidths[i],
+                          width: sectionWidths[i] - (hasOverlap ? overlapWidth : 0),
                           height: maxHeight,
                         }}
                       />
