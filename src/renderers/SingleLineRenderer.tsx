@@ -327,10 +327,9 @@ export default function SingleLineRenderer({
         setEventsInStore(eventsWithX, sections);
       }
     });
-
-    // Camera starts at left
-    currentXRef.current = 0;
-    applyCamera(0);
+    // NOTE: Camera position is NOT reset here. Initial position is 0 from state.
+    // During playback, camera is controlled by animateSync. Resetting here
+    // would interrupt playback when React re-renders (e.g., section changes).
   }, [sections, svgPagesRef, toolkit, sectionOffsets, setEventsInStore]);
 
   /* ---------------- score color and styling ---------------- */
@@ -574,8 +573,10 @@ export default function SingleLineRenderer({
     stop();
 
     eventIndexRef.current = -1; // -1 so first event triggers animation on next play
-    currentXRef.current = events[0]?.globalX ?? 0;
+    currentXRef.current = eventsRef.current[0]?.globalX ?? 0;
     applyCamera(currentXRef.current);
+    lastSectionRef.current = 0;
+    setCurrentSectionIndex(0);
 
     // Reset audio to beginning
     if (audioRef.current) {
