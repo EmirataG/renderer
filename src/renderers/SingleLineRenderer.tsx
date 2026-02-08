@@ -135,6 +135,53 @@ export default function SingleLineRenderer({
     return Math.max(0, sectionOffsets.length - 1);
   }, [sectionOffsets, sectionWidths]);
 
+  // Store section geometry in refs for use in animation loop
+  const sectionOffsetsRef = useRef(sectionOffsets);
+  const sectionWidthsRef = useRef(sectionWidths);
+  const sectionCountRef = useRef(sectionCount);
+
+  useEffect(() => {
+    sectionOffsetsRef.current = sectionOffsets;
+    sectionWidthsRef.current = sectionWidths;
+    sectionCountRef.current = sectionCount;
+  }, [sectionOffsets, sectionWidths, sectionCount]);
+
+  // Compute visible section indices from camera position (for use in animation loop)
+  // This avoids relying on React state which may lag behind
+  const computeVisibleSections = useCallback((camX: number): Set<number> => {
+    const count = sectionCountRef.current;
+    const offsets = sectionOffsetsRef.current;
+    const widths = sectionWidthsRef.current;
+
+    // Short scores: all sections visible
+    if (count <= 3) {
+      return new Set(Array.from({ length: count }, (_, i) => i));
+    }
+
+    // Render mode: all sections visible
+    if (isRenderMode) {
+      return new Set(Array.from({ length: count }, (_, i) => i));
+    }
+
+    // Find current section
+    let currentSection = 0;
+    for (let i = 0; i < offsets.length; i++) {
+      const sectionEnd = offsets[i] + widths[i];
+      if (camX < sectionEnd) {
+        currentSection = i;
+        break;
+      }
+      currentSection = i;
+    }
+
+    // Window: current +/- 1
+    const visible = new Set<number>();
+    for (let i = Math.max(0, currentSection - 1); i <= Math.min(count - 1, currentSection + 1); i++) {
+      visible.add(i);
+    }
+    return visible;
+  }, [isRenderMode]);
+
   // Refs for values accessed during animation loop (avoids stale closure issues)
   const visibleSectionIndicesRef = useRef(visibleSectionIndices);
   const eventsRef = useRef(events);
@@ -461,7 +508,9 @@ export default function SingleLineRenderer({
     // Get current refs to avoid stale closures
     const currentEvents = eventsRef.current;
     const currentInterpolatedEvents = interpolatedEventsRef.current;
-    const currentVisibleIndices = visibleSectionIndicesRef.current;
+
+    // Compute visible sections from current camera position (more accurate than React state)
+    const currentVisibleIndices = computeVisibleSections(currentXRef.current);
 
     // Check if we moved to a new event - animate ALL skipped events
     if (index !== eventIndexRef.current) {
@@ -714,7 +763,9 @@ export default function SingleLineRenderer({
         // Skip events whose sections are not mounted (shouldn't happen in render mode but defensive)
         const cachedEvent = eventsRef.current.find(e => e.id === event.id);
         const eventSectionIndex = cachedEvent?.sectionIndex;
-        if (eventSectionIndex !== undefined && !visibleSectionIndicesRef.current.has(eventSectionIndex)) {
+        // In render mode all sections mounted; otherwise compute from camera position
+        const visibleNow = computeVisibleSections(currentXRef.current);
+        if (eventSectionIndex !== undefined && !visibleNow.has(eventSectionIndex)) {
           continue;
         }
 
