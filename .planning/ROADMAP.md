@@ -109,7 +109,7 @@ Plans:
   5. Style changes apply to both SingleLineRenderer and RegularRenderer
 **Plans:** 3 plans
 Plans:
-- [ ] 13.1-01-PLAN.md — Store + Inspector UI controls
+- [x] 13.1-01-PLAN.md — Store + Inspector UI controls
 - [ ] 13.1-02-PLAN.md — Core styling logic + SingleLineRenderer integration
 - [ ] 13.1-03-PLAN.md — RegularRenderer integration + visual verification
 
@@ -179,4 +179,4 @@ Phases execute in order: 10 -> 11 -> 12 -> 13 -> 13.1
 | 11. Single-Line Event Extraction | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
 | 13. Section Virtualization | v1.2 | -- | Complete | 2026-02-07 |
-| 13.1. Unplayed Score Styling | v1.2 | 0/3 | Pending | -- |
+| 13.1. Unplayed Score Styling | v1.2 | 1/3 | In Progress | -- |
