@@ -93,7 +93,46 @@ export default function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
-  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
+  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, sectionCount, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
+
+  // Detect render mode early (needed for virtualization decision)
+  const isRenderMode =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("render") === "true";
+
+  // Track camera X position for visibility calculation
+  const [cameraX, setCameraX] = useState(0);
+
+  // Compute which sections should be mounted based on camera position
+  const visibleSectionIndices = useMemo(() => {
+    // Short scores: mount all sections
+    if (sectionCount <= 3) {
+      return new Set(Array.from({ length: sectionCount }, (_, i) => i));
+    }
+
+    // Render mode: mount all sections for Puppeteer capture
+    if (isRenderMode) {
+      return new Set(Array.from({ length: sectionCount }, (_, i) => i));
+    }
+
+    // Find which section the camera X position is in
+    let currentSection = 0;
+    for (let i = 0; i < sectionOffsets.length; i++) {
+      const sectionEnd = sectionOffsets[i] + sectionWidths[i];
+      if (cameraX < sectionEnd) {
+        currentSection = i;
+        break;
+      }
+      currentSection = i; // Handle case where cameraX is past all sections
+    }
+
+    // Window: current section +/- 1 (buffer for smooth transitions)
+    const visible = new Set<number>();
+    for (let i = Math.max(0, currentSection - 1); i <= Math.min(sectionCount - 1, currentSection + 1); i++) {
+      visible.add(i);
+    }
+    return visible;
+  }, [cameraX, sectionOffsets, sectionWidths, sectionCount, isRenderMode]);
 
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
@@ -159,12 +198,6 @@ export default function SingleLineRenderer({
       setInterpolatedEvents([]);
     }
   }, [events, syncAnchors]);
-
-  /* ---------------- detect render mode ---------------- */
-
-  const isRenderMode =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("render") === "true";
 
   /* ---------------- background / dimensions ---------------- */
 
@@ -335,14 +368,17 @@ export default function SingleLineRenderer({
 
     // Keep the target X position in the horizontal center of the viewport (50%)
     // Exception: at the beginning and end, don't scroll past the edges
-    let cameraX = targetX - viewportWidth / 2;
+    let camX = targetX - viewportWidth / 2;
 
     // Clamp to valid range: don't scroll left of 0 or right of the maximum scroll
-    cameraX = Math.max(0, cameraX);
-    cameraX = Math.min(cameraX, Math.max(0, scoreWidth - viewportWidth));
+    camX = Math.max(0, camX);
+    camX = Math.min(camX, Math.max(0, scoreWidth - viewportWidth));
+
+    // Update state for visibility calculation
+    setCameraX(camX);
 
     if (cameraRef.current) {
-      cameraRef.current.style.transform = `translateX(${-cameraX}px)`;
+      cameraRef.current.style.transform = `translateX(${-camX}px)`;
     }
   }
 
