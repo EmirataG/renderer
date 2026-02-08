@@ -160,7 +160,7 @@ export function preprocessSvgForTint(svgString: string): string {
  * @param font - The music font name
  * @returns A cache key string
  */
-function getCacheKey(svgString: string, scale: number, font: string): string {
+export function getCacheKey(svgString: string, scale: number, font: string): string {
   // Content fingerprint: length + first 100 chars + last 100 chars
   const fingerprint = `${svgString.length}_${svgString.slice(0, 100)}_${svgString.slice(-100)}`;
   return `${fingerprint}_${scale}_${font}`;
