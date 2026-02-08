@@ -71,7 +71,10 @@ Reduced memory usage and improved rendering performance for long scores through 
   3. Black (#000) elements in SVG appear as dark gray (#111) in the texture (enabling tint highlighting)
   4. Music fonts (Bravura, etc.) are fully loaded before any texture conversion begins
   5. Long sections exceeding GPU texture limits are detected and handled (error or split)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 14-01-PLAN.md - Create svgToTexture module with color preprocessing, caching, and font loading
+- [ ] 14-02-PLAN.md - Add texture size limits, tests, and manual verification
 
 ### Phase 15: Basic PixiJS Renderer
 **Goal**: Static score displays correctly in PixiJS with proper React integration and resource cleanup
@@ -210,7 +213,7 @@ Phases execute in order: 14 -> 15 -> 16 -> 17 -> 18 -> 19
 | 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
 | 13. Section Virtualization | v1.2 | 0/3 | Planned | -- |
 | 13.1. Unplayed Score Styling | v1.2 | 2/3 | In Progress | -- |
-| 14. SVG-to-Texture Pipeline | v1.3 | 0/TBD | Not started | -- |
+| 14. SVG-to-Texture Pipeline | v1.3 | 0/2 | Planned | -- |
 | 15. Basic PixiJS Renderer | v1.3 | 0/TBD | Not started | -- |
 | 16. Camera System | v1.3 | 0/TBD | Not started | -- |
 | 17. Note Highlighting | v1.3 | 0/TBD | Not started | -- |
