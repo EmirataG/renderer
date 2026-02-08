@@ -445,6 +445,12 @@ export default function SingleLineRenderer({
           // For single-line mode, query from the section container if available
           const cachedEvent = events.find(e => e.id === evt.id);
           const sectionIndex = cachedEvent?.sectionIndex;
+
+          // Guard: skip if section not mounted (prevents querying unmounted DOM)
+          if (sectionIndex !== undefined && !visibleSectionIndices.has(sectionIndex)) {
+            continue;
+          }
+
           const root = sectionIndex !== undefined && sectionContainerRefs.current[sectionIndex]
             ? sectionContainerRefs.current[sectionIndex]
             : scoreRef.current;
@@ -676,6 +682,13 @@ export default function SingleLineRenderer({
         const timeSinceEvent = seconds - eventTime;
 
         if (timeSinceEvent < 0 || !event.svgIds?.length) continue;
+
+        // Skip events whose sections are not mounted (shouldn't happen in render mode but defensive)
+        const cachedEvent = events.find(e => e.id === event.id);
+        const eventSectionIndex = cachedEvent?.sectionIndex;
+        if (eventSectionIndex !== undefined && !visibleSectionIndices.has(eventSectionIndex)) {
+          continue;
+        }
 
         let scale: number;
         let color: string | undefined;
