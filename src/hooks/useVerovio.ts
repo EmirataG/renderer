@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { VerovioToolkit } from 'verovio/esm';
 import { createToolkit } from '../lib/verovioService';
 
+// Pre-compiled regex patterns (module scope) - compiled once at module load
+const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)px"/;
+const VIEWBOX_HEIGHT_REGEX = /viewBox="0 0 [\d.]+ ([\d.]+)"/;
+
 export interface UseVerovioResult {
   svgPages: string[];
   pageHeights: number[];
@@ -14,10 +18,10 @@ export interface UseVerovioResult {
 }
 
 function extractPageHeight(svgString: string): number {
-  const match = svgString.match(/height="(\d+(?:\.\d+)?)px"/);
+  const match = svgString.match(HEIGHT_REGEX);
   if (match) return parseFloat(match[1]);
   // Fallback: parse viewBox
-  const vbMatch = svgString.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/);
+  const vbMatch = svgString.match(VIEWBOX_HEIGHT_REGEX);
   if (vbMatch) return parseFloat(vbMatch[1]);
   return 0;
 }

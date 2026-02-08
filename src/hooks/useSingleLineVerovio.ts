@@ -2,6 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { VerovioToolkit } from 'verovio/esm';
 import { createToolkit } from '../lib/verovioService';
 
+// Pre-compiled regex patterns (module scope) - compiled once at module load
+const WIDTH_REGEX = /width="(\d+(?:\.\d+)?)px"/;
+const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)px"/;
+const VIEWBOX_REGEX = /viewBox="0 0 ([\d.]+) ([\d.]+)"/;
+const MEASURE_REGEX = /<measure /g;
+
 export interface UseSingleLineVerovioResult {
   sections: string[];           // Array of SVG strings, one per section
   sectionWidths: number[];      // Width of each section in pixels
@@ -18,13 +24,13 @@ export interface UseSingleLineVerovioResult {
 
 function extractSectionDimensions(svgString: string): { width: number; height: number } {
   // Try explicit width/height attributes first
-  const widthMatch = svgString.match(/width="(\d+(?:\.\d+)?)px"/);
-  const heightMatch = svgString.match(/height="(\d+(?:\.\d+)?)px"/);
+  const widthMatch = svgString.match(WIDTH_REGEX);
+  const heightMatch = svgString.match(HEIGHT_REGEX);
   if (widthMatch && heightMatch) {
     return { width: parseFloat(widthMatch[1]), height: parseFloat(heightMatch[1]) };
   }
   // Fall back to viewBox
-  const vbMatch = svgString.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+  const vbMatch = svgString.match(VIEWBOX_REGEX);
   if (vbMatch) {
     return { width: parseFloat(vbMatch[1]), height: parseFloat(vbMatch[2]) };
   }
@@ -117,9 +123,10 @@ export function useSingleLineVerovio(
         // Must call renderToMIDI after loadData for timing queries to work
         toolkit.renderToMIDI();
 
-        // Get measure count from MEI
+        // Get measure count from MEI using pre-compiled regex
         const mei = toolkit.getMEI();
-        const measureMatches = mei.match(/<measure /g);
+        const measureMatches = mei.match(MEASURE_REGEX);
+        MEASURE_REGEX.lastIndex = 0; // Reset lastIndex for global regex reuse
         const totalMeasures = measureMatches ? measureMatches.length : 0;
 
         if (totalMeasures === 0) {
