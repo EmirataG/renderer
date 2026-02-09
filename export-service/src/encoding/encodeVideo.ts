@@ -13,7 +13,7 @@ export function startVideoEncode(
   fps: number,
   width: number,
   height: number,
-): { writeFrame: (buffer: Uint8Array) => Promise<void>; finish: () => Promise<void> } {
+): { writeFrame: (buffer: Uint8Array) => Promise<void>; finish: () => Promise<void>; kill: () => void } {
   const proc = spawn('ffmpeg', [
     '-y',
     '-f', 'image2pipe',
@@ -73,5 +73,14 @@ export function startVideoEncode(
     });
   };
 
-  return { writeFrame, finish };
+  /**
+   * Kill the FFmpeg process immediately. Used on cancellation to avoid
+   * waiting for stdin EOF and encoding to complete.
+   */
+  const kill = (): void => {
+    try { proc.stdin!.end(); } catch { /* ignore */ }
+    try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+  };
+
+  return { writeFrame, finish, kill };
 }

@@ -8,14 +8,17 @@ import type { Page } from 'puppeteer';
  * 2. Takes a screenshot yielding a PNG Uint8Array
  *
  * Consumers iterate this generator to receive frame buffers in order.
- * Phase 18 will pipe these directly to FFmpeg stdin.
+ * Accepts an optional AbortSignal to allow prompt cancellation between frames.
  */
 export async function* captureFrames(
   page: Page,
   totalFrames: number,
   fps: number,
+  signal?: AbortSignal,
 ): AsyncGenerator<{ buffer: Uint8Array; frame: number; totalFrames: number }> {
   for (let frame = 0; frame < totalFrames; frame++) {
+    if (signal?.aborted) break;
+
     await page.evaluate(
       (f: number, fpsVal: number) => {
         (window as any).animationController.setFrame(f, fpsVal);
@@ -23,6 +26,8 @@ export async function* captureFrames(
       frame,
       fps,
     );
+
+    if (signal?.aborted) break;
 
     const buffer = await page.screenshot({
       type: 'png',
