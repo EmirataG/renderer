@@ -766,15 +766,35 @@ export default function RegularRenderer({
                   fontSize: 0,
                 }}
               >
-                {svgPages.map((svg, i) => (
-                  <div
-                    key={i}
-                    ref={(el) => { pageContainerRefs.current[i] = el; }}
-                    className="preview-score"
-                    style={{ width: scoreRegion?.width ?? containerWidth }}
-                    dangerouslySetInnerHTML={{ __html: svg }}
-                  />
-                ))}
+                {svgPages.map((svg, i) => {
+                  // Before extraction is done, mount all pages for DOM measurement
+                  // After extraction, only mount visible pages
+                  const isMounted = !extractionDoneRef.current || visiblePages.has(i);
+
+                  if (!isMounted) {
+                    // Placeholder: maintain layout height, clear ref
+                    pageContainerRefs.current[i] = null;
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          width: scoreRegion?.width ?? containerWidth,
+                          height: pageHeights[i],
+                        }}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={i}
+                      ref={(el) => { pageContainerRefs.current[i] = el; }}
+                      className="preview-score"
+                      style={{ width: scoreRegion?.width ?? containerWidth }}
+                      dangerouslySetInnerHTML={{ __html: svg }}
+                    />
+                  );
+                })}
               </div>
             </div>
 
