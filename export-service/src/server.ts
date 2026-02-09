@@ -2,8 +2,11 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import websocket from '@fastify/websocket';
 import exportRoutes from './routes/export.js';
 import statusRoutes from './routes/status.js';
+import progressRoutes from './routes/progress.js';
+import downloadRoutes from './routes/download.js';
 import { config } from './shared/config.js';
 import { jobManager } from './jobs/jobManager.js';
 import { shutdownPool } from './browser/browserPool.js';
@@ -28,12 +31,17 @@ async function main() {
     decorateReply: false,
   });
 
+  // WebSocket support (must register before websocket routes)
+  await server.register(websocket);
+
   // Health check
   server.get('/health', async () => ({ status: 'ok' }));
 
   // API routes
   await server.register(exportRoutes, { prefix: '/api' });
   await server.register(statusRoutes, { prefix: '/api' });
+  await server.register(progressRoutes, { prefix: '/api' });
+  await server.register(downloadRoutes, { prefix: '/api' });
 
   // Periodic cleanup of stale jobs
   const cleanupTimer = setInterval(() => {
