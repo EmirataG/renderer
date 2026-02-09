@@ -72,32 +72,33 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRV-01 | — | Pending |
-| SRV-02 | — | Pending |
-| SRV-03 | — | Pending |
-| SRV-04 | — | Pending |
-| RND-01 | — | Pending |
-| RND-02 | — | Pending |
-| RND-03 | — | Pending |
-| RND-04 | — | Pending |
-| VID-01 | — | Pending |
-| VID-02 | — | Pending |
-| VID-03 | — | Pending |
-| PRG-01 | — | Pending |
-| PRG-02 | — | Pending |
-| PRG-03 | — | Pending |
-| PRG-04 | — | Pending |
-| CFG-01 | — | Pending |
-| CFG-02 | — | Pending |
-| DEP-01 | — | Pending |
-| DEP-02 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
+| SRV-01 | Phase 15 | Pending |
+| SRV-02 | Phase 15 | Pending |
+| SRV-03 | Phase 17 | Pending |
+| SRV-04 | Phase 15 | Pending |
+| RND-01 | Phase 17 | Pending |
+| RND-02 | Phase 16 | Pending |
+| RND-03 | Phase 16 | Pending |
+| RND-04 | Phase 16 | Pending |
+| VID-01 | Phase 18 | Pending |
+| VID-02 | Phase 18 | Pending |
+| VID-03 | Phase 18 | Pending |
+| PRG-01 | Phase 19 | Pending |
+| PRG-02 | Phase 19 | Pending |
+| PRG-03 | Phase 19 | Pending |
+| PRG-04 | Phase 19 | Pending |
+| CFG-01 | Phase 21 | Pending |
+| CFG-02 | Phase 21 | Pending |
+| DEP-01 | Phase 20 | Pending |
+| DEP-02 | Phase 20 | Pending |
+| UI-01 | Phase 21 | Pending |
+| UI-02 | Phase 21 | Pending |
 
 **Coverage:**
 - v1.4 requirements: 21 total
-- Mapped to phases: 0
-- Unmapped: 21
+- Mapped to phases: 21
+- Unmapped: 0
+- Coverage: 100%
 
 ---
 *Requirements defined: 2026-02-09*
