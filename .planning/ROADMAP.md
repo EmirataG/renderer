@@ -122,8 +122,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 17-01-PLAN.md -- Install Puppeteer/generic-pool, create browser pool, serve frontend via @fastify/static, wire pool shutdown
-- [ ] 17-02-PLAN.md -- Page setup (config injection, readiness wait), frame capture async generator, renderJob orchestrator, export route wiring
+- [x] 17-01-PLAN.md -- Install Puppeteer/generic-pool, create browser pool, serve frontend via @fastify/static, wire pool shutdown
+- [x] 17-02-PLAN.md -- Page setup (config injection, readiness wait), frame capture async generator, renderJob orchestrator, export route wiring
 
 **Success Criteria:**
 1. Backend launches headless Chrome with browser pool managing concurrent exports (max 2-3 concurrent)
@@ -195,7 +195,7 @@ Plans:
 |-------|--------|-------|-------|------------|
 | 15 - Backend Foundation & Settings Transfer | ✓ Complete | 3/3 | 6/6 | 100% |
 | 16 - Frontend Render Mode | ✓ Complete | 1/1 | 2/2 | 100% |
-| 17 - Puppeteer Integration & Frame Capture | Planned | 0/2 | 0/4 | 0% |
+| 17 - Puppeteer Integration & Frame Capture | ✓ Complete | 2/2 | 4/4 | 100% |
 | 18 - FFmpeg Encoding & Audio Mux | Pending | 0/? | 0/? | 0% |
 | 19 - Progress Streaming & Download | Pending | 0/? | 0/? | 0% |
 | 20 - Docker Image & Fly.io Deployment | Pending | 0/? | 0/? | 0% |
