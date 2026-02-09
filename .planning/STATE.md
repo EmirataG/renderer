@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 15 - Backend Foundation & Settings Transfer
-Plan: —
-Status: Ready for planning
-Last activity: 2026-02-09 — Milestone v1.4 roadmap created
+Plan: 1 of 3
+Status: Executing
+Last activity: 2026-02-09 — Completed 15-01 (project scaffold + schemas)
 
-Progress: [----------] 0%
+Progress: [###-------] 1/3 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 2.4 min
-- Total execution time: 46 min
+- Total execution time: 48 min
 
 **By Phase:**
 
@@ -40,6 +40,7 @@ Progress: [----------] 0%
 | 12 - SingleLineRenderer Core      | 1/2   | 4 min | 4 min    |
 | 13 - Section Virtualization       | 2/3   | 6 min | 3 min    |
 | 14 - Page Virtualization          | 2/2   | 5 min | 2.5 min  |
+| 15 - Backend Foundation           | 1/3   | 2 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -48,6 +49,9 @@ _Updated after each plan completion_
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
+
+- 15-01: Placed export-service/ inside renderer repo (git root is renderer/, not Manuscript/)
+- 15-01: Used TypeBox for single-source schema + type derivation (eliminates drift)
 
 ### Roadmap Evolution
 
@@ -65,9 +69,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: v1.4 roadmap created
+Stopped at: Completed 15-01-PLAN.md
 Resume file: None
-Next: `/gsd:plan-phase 15`
+Next: `/gsd:execute-phase 15` (plan 02)
 
 ### Quick Tasks Completed
 
