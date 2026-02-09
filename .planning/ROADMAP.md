@@ -5,7 +5,7 @@
 - **v1.0 Migration** - Phases 1-5 (shipped 2015-02-04)
 - **v1.1 Efficiency** - Phases 6-9 (shipped 2015-02-05)
 - **v1.2 SingleLineRenderer** - Phases 10-13 (paused)
-- **v1.3 Performance & Polish** - Phases 14-15 (in progress)
+- **v1.3 Performance & Polish** - Phase 14 (shipped 2026-02-09)
 
 ## Phases
 
@@ -40,104 +40,19 @@ Reduced memory usage and improved rendering performance for long scores through 
 
 **Milestone Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance. Music scrolls beneath a fixed center point while notehead animations highlight active notes.
 
-- [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio ✓
-- [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments ✓
-- [x] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling ✓
+- [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio
+- [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments
+- [x] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling
 - [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions (paused)
 - [ ] **Phase 13.1: Unplayed Score Styling** - Visual differentiation of played vs unplayed score regions (paused)
 
 </details>
 
-### v1.3 Performance & Polish (IN PROGRESS)
+<details>
+<summary>v1.3 Performance & Polish (Phase 14) - SHIPPED 2026-02-09</summary>
 
-**Milestone Goal:** Finalize RegularRenderer with page virtualization (only visible pages in DOM), seamless page transitions, and a moving playhead cursor that follows playback.
+Page virtualization for RegularRenderer: only visible pages + buffer mounted in DOM, placeholder divs for unmounted pages, seamless page stacking via adjustPageHeight + viewBox trimming. Removed isRenderMode flag.
 
-- [x] **Phase 14: Page Virtualization** - Only mount visible pages + buffer, placeholder divs for unmounted, fix page gaps ✓
+- [x] **Phase 14: Page Virtualization** - Camera-driven visible page range, conditional rendering, placeholder divs, seamless page stacking (2 plans)
 
-## Phase Details
-
-### Phase 10: Single-Line Verovio Hook
-**Goal**: Verovio renders score as horizontal sections using `breaks: 'none'` configuration and measure-range selection
-**Depends on**: v1.1 complete
-**Requirements**: HOR-01, HOR-02, SEC-01, SEC-02
-**Success Criteria** (what must be TRUE):
-  1. A MusicXML file renders as a single horizontal system with no line breaks (one continuous staff line)
-  2. Long scores are divided into 10-20 measure sections, each rendered as a separate SVG via `select({ measureRange })`
-  3. Section SVGs can be laid out horizontally with correct widths from viewBox dimensions
-  4. Changing the score produces new sections with correct measure assignments
-**Plans:** 1 plan
-Plans:
-- [x] 10-01-PLAN.md — Type augments + useSingleLineVerovio hook
-
-### Phase 11: Single-Line Event Extraction
-**Goal**: Musical events are extracted with X coordinates and section assignments for horizontal positioning
-**Depends on**: Phase 10
-**Requirements**: ANI-03
-**Success Criteria** (what must be TRUE):
-  1. Each event has a `globalX` coordinate representing its horizontal position across all sections
-  2. Each event has a `sectionIndex` identifying which section SVG contains it
-  3. X coordinates are computed from section offsets plus local element positions (analogous to vertical page offsets)
-**Plans:** 1 plan
-Plans:
-- [x] 11-01-PLAN.md — Extend CachedEvent type + computeSectionPositions function
-
-### Phase 12: SingleLineRenderer Core
-**Goal**: Users can play back a score in horizontal single-line mode with smooth camera tracking and notehead animation
-**Depends on**: Phase 10, Phase 11
-**Requirements**: CAM-01, CAM-02, CAM-03, CAM-04, CAM-05, ANI-01, ANI-02
-**Success Criteria** (what must be TRUE):
-  1. During playback, the active note stays near the center of the score region (not drifting to edges)
-  2. Camera movement uses CSS `translateX()` with smooth easing transitions (no jumps or jitter)
-  3. Notehead animation (scale, color, entry/hold/exit) works identically to RegularRenderer on the horizontal layout
-  4. Score region bounds control the animation viewport (same as RegularRenderer)
-  5. Transport controls (play, stop, reset) work correctly with horizontal layout
-**Plans:** 2 plans
-Plans:
-- [x] 12-01-PLAN.md — Create SingleLineRenderer component with horizontal camera and animation
-- [x] 12-02-PLAN.md — Visual verification checkpoint
-
-### Phase 13: Section Virtualization
-**Goal**: Only visible sections are mounted in DOM, with seamless transitions that hide section boundaries
-**Depends on**: Phase 12
-**Requirements**: SEC-03, SEC-04, HOR-03
-**Success Criteria** (what must be TRUE):
-  1. During playback, inspecting the DOM shows only 3 sections mounted at any time (current + buffer), with placeholder divs for unmounted sections
-  2. Section boundaries are invisible to users (staff lines appear continuous, no gaps or visual seams)
-  3. Tied notes and slurs that cross section boundaries render correctly (overlap strategy working)
-  4. Switching sections during playback causes no animation glitches or missing noteheads
-**Plans:** 3 plans
-Plans:
-- [ ] 13-01-PLAN.md — Basic virtualization (cameraX tracking, visibleSectionIndices, conditional rendering)
-- [ ] 13-02-PLAN.md — Overlap rendering + clip-path for seamless boundaries
-- [ ] 13-03-PLAN.md — Visual verification checkpoint
-
-### Phase 13.1: Unplayed Score Styling (PAUSED)
-**Goal**: Inspector option to visually differentiate played vs unplayed score regions using clip-path for complex elements and direct styling for noteheads/stems/accidentals/dots
-**Depends on**: Phase 13
-**Requirements**: STY-01, STY-02, STY-03
-**Success Criteria** (what must be TRUE):
-  1. Inspector has a dropdown/toggle to enable "unplayed styling" with options (e.g., dimmed, invisible, different color)
-  2. Noteheads, stems, accidentals, and dots change style directly when transitioning from unplayed to played
-  3. Staff lines, barlines, beams, and other complex elements use clip-path to reveal played portions progressively
-  4. The clip-path boundary follows the current playback position (X coordinate in SingleLineRenderer)
-  5. Style changes apply to both SingleLineRenderer and RegularRenderer
-**Plans:** 3 plans
-Plans:
-- [x] 13.1-01-PLAN.md — Store + Inspector UI controls
-- [x] 13.1-02-PLAN.md — Core styling logic + SingleLineRenderer integration
-- [ ] 13.1-03-PLAN.md — RegularRenderer integration + visual verification
-
-### Phase 14: Page Virtualization
-**Goal**: RegularRenderer only mounts visible pages + buffer in DOM, with seamless page transitions (no gaps)
-**Depends on**: v1.1 complete
-**Requirements**: VIRT-01, VIRT-02, VIRT-03, VIRT-04, VIRT-05, GAP-01, GAP-02
-**Success Criteria** (what must be TRUE):
-  1. During playback, inspecting the DOM shows only 3 pages mounted at any time (current + 1 above + 1 below), with placeholder divs for unmounted pages
-  2. Pages far from viewport are unmounted to free memory
-  3. No visible gaps between adjacent pages - staff lines appear continuous
-  4. Fast initial load - only first 1-2 pages rendered on mount
-  5. No visible flash or jank when pages mount/unmount during scroll
-**Plans:** 2 plans
-Plans:
-- [x] 14-01-PLAN.md — Core virtualization (camera-driven visible page range, conditional rendering, placeholder divs) + isRenderMode removal
-- [x] 14-02-PLAN.md — Seamless page stacking (adjustPageHeight, viewBox trimming) + visual verification
+</details>

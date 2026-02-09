@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A browser-based MusicXML score renderer with animated playback, used to generate scrolling score videos. Powered by Verovio (WASM) for high-quality music engraving. The app renders scores with vertical camera scrolling, notehead animations, audio sync, and Puppeteer-based frame capture for video export.
+A browser-based MusicXML score renderer with animated playback, used to generate scrolling score videos. Powered by Verovio (WASM) for high-quality music engraving. The app renders scores with vertical camera scrolling, notehead animations, audio sync, and Puppeteer-based frame capture for video export. RegularRenderer uses page virtualization for memory-efficient rendering of long scores.
 
 ## Core Value
 
@@ -43,15 +43,17 @@ Capabilities shipped and confirmed working:
 - ✓ EFF-02: Cache event positions after extraction (avoid repeated DOM queries) — v1.1
 - ✓ EFF-03: Virtual scrolling (only mount SVG pages near current camera position) — v1.1
 - ✓ CLN-01: Remove OSMD dependency entirely (package.json, dead imports, old code) — v1.1
+- ✓ VIRT-01: Page virtualization - only visible pages + buffer mounted in DOM — v1.3
+- ✓ VIRT-02: Placeholder divs maintain layout for unmounted pages — v1.3
+- ✓ VIRT-03: Pages unmount when scrolled out of view + buffer distance — v1.3
+- ✓ GAP-01: Seamless page transitions with no visible gaps — v1.3
+- ✓ GAP-02: Staff lines appear continuous across page boundaries — v1.3
+- ✓ VIRT-04: Fast initial load - only first 1-2 pages rendered on mount — v1.3
+- ✓ VIRT-05: No visible flash or jank during page mount/unmount — v1.3
 
 ### Active
 
-- VIRT-01: Page virtualization - only visible pages mounted in DOM
-- VIRT-02: Placeholder divs maintain layout for unmounted pages
-- VIRT-03: Pages unmount when scrolled out of view
-- GAP-01: Seamless page transitions with no visible gaps
-- CUR-01: Moving cursor follows active event during playback
-- PERF-01: Research SVGO for SVG optimization potential
+(No active milestone — use `/gsd:new-milestone` to start next)
 
 ### Out of Scope
 
@@ -62,29 +64,19 @@ Capabilities shipped and confirmed working:
 - Mobile support — not in scope
 - Canvas rendering — investigated, poor cost-benefit vs paginated SVG
 - Web Worker rendering — defer until profiling shows need
-
-## Current Milestone: v1.3 Performance & Polish
-
-**Goal:** Finalize RegularRenderer with virtualization, visual polish, and a moving playback cursor.
-
-**Target features:**
-- Page virtualization (only visible pages in DOM, placeholders for rest)
-- Seamless page transitions (no gaps between pages)
-- Moving cursor that follows active event during playback
-- SVGO optimization research for SVG performance
-- Unmount pages when scrolled out of view
+- SVGO optimization — research showed limited benefit for music notation SVGs
 
 ## Context
 
-**Current architecture (post-v1.1):** React SPA with Verovio (WASM) rendering MusicXML to paginated SVGs. Events are extracted once via Verovio's timemap API and cached with page assignments. Virtual scrolling mounts only 3-4 pages near the camera position. Camera uses CSS `transform: translateY()` with system-boundary snapping.
+**Current architecture (post-v1.3):** React SPA with Verovio (WASM) rendering MusicXML to paginated SVGs. Events are extracted once via Verovio's timemap API and cached with page assignments. Page virtualization mounts only visible pages + 1-page buffer using camera-driven visibility. Camera uses CSS `transform: translateY()` with system-boundary snapping. Pages stack seamlessly via `adjustPageHeight: true` and viewBox trimming on pages 2+.
 
-**RegularRenderer:** Vertical paginated layout with smooth camera scrolling. Uses page-based virtual scrolling for memory efficiency. This is the existing renderer and should remain available.
+**RegularRenderer:** Vertical paginated layout with smooth camera scrolling. Uses camera-driven page virtualization — only 3 pages in DOM at any time (current + 1 above + 1 below). Two-phase mount lifecycle: all pages mount for event extraction, then virtualize. Short scores (<=3 pages) skip virtualization.
 
-**SingleLineRenderer (new):** Horizontal single-line layout. Camera moves horizontally to keep active note centered. Needs section-based rendering for performance (long horizontal lines would have same memory issues as pre-v1.1 vertical layout).
+**SingleLineRenderer (paused v1.2):** Horizontal single-line layout. Camera moves horizontally to keep active note centered. Section-based rendering with virtualization. Not actively developed.
 
 **Verovio rendering modes:**
-- Current: `pageHeight: 2970` (A4) produces vertical pages
-- Single-line: Need to research Verovio options for horizontal/single-system output, or measure-range rendering
+- RegularRenderer: `pageHeight: 2970` (A4), `adjustPageHeight: true` for content-fit heights
+- SingleLineRenderer: `breaks: 'none'`, `pageWidth: 100000` for single horizontal system
 
 **Verovio SVG structure:**
 - Systems: `<g class="system">` — one per staff system line
@@ -98,7 +90,6 @@ Capabilities shipped and confirmed working:
 - **RegularRenderer preserved**: Existing vertical renderer must remain functional
 - **SVG compatibility**: Must maintain DOM queryability for animation and event extraction
 - **Score region**: Animation viewport controlled by existing score region editor
-- **Skip Puppeteer**: SingleLineRenderer does not need Puppeteer support for v1.2
 
 ## Key Decisions
 
@@ -112,6 +103,12 @@ Capabilities shipped and confirmed working:
 | No Canvas migration | SVG DOM APIs too deeply integrated, paginated SVG is better path | ✓ Good |
 | Paginated rendering over Web Workers | Addresses root cause (DOM size) not symptom (render speed) | ✓ Good |
 | Virtual scrolling with CSS transform camera | Custom visibility manager, not scroll-based libraries | ✓ Good |
+| isRenderMode removed from RegularRenderer | Puppeteer moving to backend; simplifies renderer | ✓ Good |
+| Two-phase mount lifecycle for virtualization | All pages mount for event extraction, then virtualize after | ✓ Good |
+| adjustPageHeight re-enabled (reverses v1.1 decision) | Now compatible with page virtualization approach | ✓ Good |
+| ViewBox trimming on pages 2+ only | First page keeps natural top margin; seamless stacking | ✓ Good |
+| Short scores skip virtualization | <=3 pages mount all without overhead | ✓ Good |
+| Symmetric 1-page buffer | Equal above/below for smooth scrolling | ✓ Good |
 
 ---
-*Last updated: 2026-02-05 after v1.2 milestone start*
+*Last updated: 2026-02-09 after v1.3 milestone*
