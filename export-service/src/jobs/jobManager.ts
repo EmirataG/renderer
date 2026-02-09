@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { unlink } from 'node:fs/promises';
 import type { Browser, BrowserContext, Page } from 'puppeteer';
 import type { ExportJob, JobStatus } from './types.js';
 import type { ExportSettings } from '../shared/exportSettings.js';
@@ -6,6 +8,8 @@ import { browserPool } from '../browser/browserPool.js';
 import { buildExportConfig, setupPage } from '../browser/pageSetup.js';
 import { captureFrames } from '../browser/captureFrames.js';
 import { config } from '../shared/config.js';
+import { startVideoEncode } from '../encoding/encodeVideo.js';
+import { muxAudio, findAudioFile } from '../encoding/muxAudio.js';
 
 /**
  * In-memory job store for tracking export jobs.
@@ -121,17 +125,30 @@ class JobManager {
       context = result.context;
       page = result.page;
 
-      // Capture frames via async generator
-      // For now, collect buffers in memory. Phase 18 will pipe directly to FFmpeg stdin.
-      const frameBuffers: Uint8Array[] = [];
+      // Step 1: Start FFmpeg encode process
+      const silentVideoPath = join(job.tempDir, 'video-silent.mp4');
+      const encoder = startVideoEncode(silentVideoPath, exportConfig.fps, viewport.width, viewport.height);
+
+      // Pipe captured frames directly to FFmpeg stdin (bounded memory)
+      let frameCount = 0;
       for await (const { buffer } of captureFrames(page, result.totalFrames, exportConfig.fps)) {
-        frameBuffers.push(buffer);
+        await encoder.writeFrame(buffer);
+        frameCount++;
       }
 
-      // Store frame count on job for status reporting
-      // Using (job as any) intentionally -- Phase 18 will redesign the buffer flow
-      (job as any).frameCount = frameBuffers.length;
-      (job as any).frameBuffers = frameBuffers;
+      // Signal end of frames, wait for FFmpeg to finish encoding
+      await encoder.finish();
+
+      // Step 2: Mux audio into the silent video
+      const audioPath = await findAudioFile(job.tempDir);
+      const outputPath = join(job.tempDir, 'output.mp4');
+      await muxAudio(silentVideoPath, audioPath, outputPath);
+
+      // Clean up intermediate silent video file
+      try { await unlink(silentVideoPath); } catch { /* ignore if already gone */ }
+
+      // Store output path on job for download endpoint (Phase 19)
+      job.outputPath = outputPath;
 
       this.updateStatus(jobId, 'complete');
     } catch (err) {

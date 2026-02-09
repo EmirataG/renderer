@@ -17,4 +17,5 @@ export interface ExportJob {
   error: string | undefined;
   settings: ExportSettings;
   syncAnchors: Record<string, number>;
+  outputPath?: string;
 }
