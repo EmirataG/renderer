@@ -103,7 +103,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 16-01-PLAN.md -- RenderApp component, renderMode prop, config injection, virtualization bypass, readiness signal
+- [x] 16-01-PLAN.md -- RenderApp component, renderMode prop, config injection, virtualization bypass, readiness signal
 
 **Success Criteria:**
 1. Frontend reads `window.__EXPORT_CONFIG__` and injects all settings (score region, colors, fonts, animation params, sync anchors) into application state
@@ -188,7 +188,7 @@ Plans:
 | Phase | Status | Plans | Tasks | Completion |
 |-------|--------|-------|-------|------------|
 | 15 - Backend Foundation & Settings Transfer | ✓ Complete | 3/3 | 6/6 | 100% |
-| 16 - Frontend Render Mode | Planned | 0/1 | 0/2 | 0% |
+| 16 - Frontend Render Mode | ✓ Complete | 1/1 | 2/2 | 100% |
 | 17 - Puppeteer Integration & Frame Capture | Pending | 0/? | 0/? | 0% |
 | 18 - FFmpeg Encoding & Audio Mux | Pending | 0/? | 0/? | 0% |
 | 19 - Progress Streaming & Download | Pending | 0/? | 0/? | 0% |

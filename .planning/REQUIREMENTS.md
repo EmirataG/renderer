@@ -15,9 +15,9 @@
 ### Render Mode
 
 - [ ] **RND-01**: Headless Chrome reproduces exact preview animation frame-for-frame
-- [ ] **RND-02**: All settings transfer to render mode (score region, colors, fonts, animation params, sync anchors)
-- [ ] **RND-03**: Page virtualization disabled in render mode (all pages mounted)
-- [ ] **RND-04**: CSS transitions disabled in render mode for frame-accurate capture
+- [x] **RND-02**: All settings transfer to render mode (score region, colors, fonts, animation params, sync anchors)
+- [x] **RND-03**: Page virtualization disabled in render mode (all pages mounted)
+- [x] **RND-04**: CSS transitions disabled in render mode for frame-accurate capture
 
 ### Video Encoding
 
@@ -77,9 +77,9 @@
 | SRV-03 | Phase 17 | Pending |
 | SRV-04 | Phase 15 | ✓ Done |
 | RND-01 | Phase 17 | Pending |
-| RND-02 | Phase 16 | Pending |
-| RND-03 | Phase 16 | Pending |
-| RND-04 | Phase 16 | Pending |
+| RND-02 | Phase 16 | ✓ Done |
+| RND-03 | Phase 16 | ✓ Done |
+| RND-04 | Phase 16 | ✓ Done |
 | VID-01 | Phase 18 | Pending |
 | VID-02 | Phase 18 | Pending |
 | VID-03 | Phase 18 | Pending |
