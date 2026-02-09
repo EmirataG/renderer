@@ -90,7 +90,6 @@ export default function RegularRenderer({
   const verovioScale = Math.round(40 * scoreScale);
   const scoreWidth = scoreRegion?.width ?? containerWidth;
   const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
-  const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
 
@@ -99,6 +98,10 @@ export default function RegularRenderer({
 
   const eventIndexRef = useRef(-1); // -1 so first event (index 0) triggers animation
   const currentYRef = useRef(0);
+  const cameraYRef = useRef(0);
+  const extractionDoneRef = useRef(false);
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0, 1]));
+  const visiblePagesRef = useRef<Set<number>>(new Set([0, 1]));
 
   function setDims(w: number, h: number) {
     const f = WIDTH / w;
@@ -155,78 +158,26 @@ export default function RegularRenderer({
     }
   }, [events, syncAnchors]);
 
-  /* ---------------- detect render mode ---------------- */
-
-  const isRenderMode =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("render") === "true";
-
   /* ---------------- background / dimensions ---------------- */
 
   useEffect(() => {
-    if (isRenderMode) {
-      // In render mode: render at preview size, then scale to fill viewport
-      // This preserves the score-to-background ratio across all resolutions
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      // Calculate base dimensions same as preview mode
-      let baseWidth: number;
-      let baseHeight: number;
-
-      if (bgUrl) {
-        // Load background image to get its aspect ratio
-        const img = new Image();
-        img.src = bgUrl;
-        img.onload = () => {
-          const f = WIDTH / img.naturalWidth;
-          baseWidth = Math.floor(img.naturalWidth * f);
-          baseHeight = Math.floor(img.naturalHeight * f);
-
-          // Calculate scale to fill viewport
-          const scale = Math.min(
-            viewportWidth / baseWidth,
-            viewportHeight / baseHeight,
-          );
-
-          setContainerWidth(baseWidth);
-          setContainerHeight(baseHeight);
-          setRenderScale(scale);
-        };
-      } else {
-        // Default 16:9 dimensions
-        const f = WIDTH / 1920;
-        baseWidth = Math.floor(1920 * f);
-        baseHeight = Math.floor(1080 * f);
-
-        // Calculate scale to fill viewport
-        const scale = Math.min(
-          viewportWidth / baseWidth,
-          viewportHeight / baseHeight,
-        );
-
-        setContainerWidth(baseWidth);
-        setContainerHeight(baseHeight);
-        setRenderScale(scale);
-      }
-    } else if (bgUrl) {
-      // Preview mode with background image
+    if (bgUrl) {
       const img = new Image();
       img.src = bgUrl;
       img.onload = () => setDims(img.naturalWidth, img.naturalHeight);
-      setRenderScale(1);
     } else {
-      // Preview mode default dimensions
       setDims(1920, 1080);
-      setRenderScale(1);
     }
-  }, [bgUrl, isRenderMode]);
+  }, [bgUrl]);
 
   /* ---------------- Verovio SVG rendering ---------------- */
 
   // When Verovio renders SVG pages, update DOM and reset noteheads
   useEffect(() => {
     if (svgPages.length === 0 || !scoreRef.current) return;
+
+    // Reset extraction state for new score — all pages mount for extraction
+    extractionDoneRef.current = false;
 
     // dangerouslySetInnerHTML updates the DOM synchronously during React's
     // commit phase, but this useEffect fires AFTER the commit. However,
@@ -254,6 +205,12 @@ export default function RegularRenderer({
         const containers = pageContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
         const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, pageOffsets);
         setEventsInStore(cachedEvents, svgPages);
+
+        // Extraction complete — activate virtualization
+        extractionDoneRef.current = true;
+        const initialVisible = getVisiblePageRange();
+        visiblePagesRef.current = initialVisible;
+        setVisiblePages(initialVisible);
       }
     });
 
@@ -302,6 +259,46 @@ export default function RegularRenderer({
     }
   `, [scoreColor]);
 
+  /* ---------------- page virtualization helpers ---------------- */
+
+  function setsEqual(a: Set<number>, b: Set<number>): boolean {
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+  }
+
+  function getVisiblePageRange(): Set<number> {
+    if (pageCount === 0) return new Set([0]);
+    // Short scores: mount all pages
+    if (pageCount <= 3) {
+      return new Set(Array.from({ length: pageCount }, (_, i) => i));
+    }
+
+    const viewportHeight = scoreRegion?.height ?? containerHeight;
+    const viewTop = cameraYRef.current;
+    const viewBottom = viewTop + viewportHeight;
+
+    const visible = new Set<number>();
+    for (let i = 0; i < pageCount; i++) {
+      const pageTop = pageOffsets[i];
+      const pageBottom = pageTop + pageHeights[i];
+      if (pageBottom > viewTop && pageTop < viewBottom) {
+        visible.add(i);
+      }
+    }
+
+    // Add symmetric buffer: 1 page above + 1 below
+    const indices = [...visible];
+    if (indices.length > 0) {
+      const minIdx = Math.min(...indices);
+      const maxIdx = Math.max(...indices);
+      if (minIdx > 0) visible.add(minIdx - 1);
+      if (maxIdx < pageCount - 1) visible.add(maxIdx + 1);
+    }
+
+    return visible;
+  }
+
   /* ---------------- camera (vertical) ---------------- */
 
   function applyCamera(targetY: number) {
@@ -316,8 +313,19 @@ export default function RegularRenderer({
     cameraY = Math.max(0, cameraY);
     cameraY = Math.min(cameraY, Math.max(0, scoreHeight - viewportHeight));
 
+    cameraYRef.current = cameraY;
+
     if (cameraRef.current) {
       cameraRef.current.style.transform = `translateY(${-cameraY}px)`;
+    }
+
+    // Update visible pages (only if extraction is done and pages exist)
+    if (extractionDoneRef.current && pageCount > 0) {
+      const newVisible = getVisiblePageRange();
+      if (!setsEqual(visiblePagesRef.current, newVisible)) {
+        visiblePagesRef.current = newVisible;
+        setVisiblePages(newVisible);
+      }
     }
   }
 
@@ -517,9 +525,7 @@ export default function RegularRenderer({
   // Expose setTimestamp for frame-by-frame rendering
   const setTimestamp = useCallback(
     (seconds: number) => {
-      // In render mode, allow even without interpolated events
-      // For normal mode, require interpolated events
-      if (!isRenderMode && interpolatedEvents.length === 0) return;
+      if (interpolatedEvents.length === 0) return;
 
       // Capture array reference to ensure consistent usage throughout
       const events = interpolatedEvents;
@@ -650,7 +656,6 @@ export default function RegularRenderer({
       void scoreRef.current.offsetHeight;
     },
     [
-      isRenderMode,
       interpolatedEvents,
       activeNoteheadScale,
       activeNoteheadColor,
@@ -664,13 +669,10 @@ export default function RegularRenderer({
 
   // Expose animation controller on window for Puppeteer
   useEffect(() => {
-    // In render mode, expose controller as soon as Verovio is ready
-    // In normal mode, require sync timing to be active
     const shouldExpose = toolkit && svgPages.length > 0 && interpolatedEvents.length > 0;
 
     if (!shouldExpose) {
       console.log("[RegularRenderer] Not exposing controller yet:", {
-        isRenderMode,
         hasToolkit: !!toolkit,
         hasSvg: svgPages.length > 0,
         eventsCount: interpolatedEvents.length,
@@ -705,7 +707,6 @@ export default function RegularRenderer({
       destroyAnimationController();
     };
   }, [
-    isRenderMode,
     toolkit,
     svgPages,
     interpolatedEvents,
@@ -721,7 +722,6 @@ export default function RegularRenderer({
     <div>
       {/* React-managed score color styles — survives dangerouslySetInnerHTML updates */}
       <style dangerouslySetInnerHTML={{ __html: scoreColorCss }} />
-      {/* Renderer - in render mode, scale to fill viewport while preserving aspect ratio */}
       <div
         className="select-none pointer-events-none cursor-default"
         style={{
@@ -729,8 +729,6 @@ export default function RegularRenderer({
           width: containerWidth,
           height: containerHeight,
           overflow: "hidden",
-          transform: renderScale !== 1 ? `scale(${renderScale})` : undefined,
-          transformOrigin: "top left",
         }}
       >
         <div
@@ -836,36 +834,34 @@ export default function RegularRenderer({
         </div>
       </div>
 
-      {/* Transport bar - hidden in render mode */}
-      {!isRenderMode && (
-        <div className="mt-3 px-3 py-2">
-          <div className="flex items-center justify-center gap-2">
-            <button
-              onClick={play}
-              disabled={!canPlay || isPlaying}
-              className="grunge-btn grunge-btn-sm flex-1"
-            >
-              Play
-            </button>
-            <button
-              onClick={stop}
-              disabled={!isPlaying}
-              className="grunge-btn grunge-btn-sm flex-1"
-            >
-              Pause
-            </button>
-            <button
-              onClick={reset}
-              className="grunge-btn grunge-btn-sm flex-1"
-            >
-              Reset
-            </button>
-          </div>
-          {transportMessage && (
-            <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
-          )}
+      {/* Transport bar */}
+      <div className="mt-3 px-3 py-2">
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={play}
+            disabled={!canPlay || isPlaying}
+            className="grunge-btn grunge-btn-sm flex-1"
+          >
+            Play
+          </button>
+          <button
+            onClick={stop}
+            disabled={!isPlaying}
+            className="grunge-btn grunge-btn-sm flex-1"
+          >
+            Pause
+          </button>
+          <button
+            onClick={reset}
+            className="grunge-btn grunge-btn-sm flex-1"
+          >
+            Reset
+          </button>
         </div>
-      )}
+        {transportMessage && (
+          <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
+        )}
+      </div>
     </div>
   );
 }
