@@ -1,21 +1,13 @@
 /**
  * PixiJS-based single line score renderer.
  *
- * Renders score sections as GPU-accelerated WebGL sprites positioned horizontally.
- * This replaces SVG DOM rendering for smooth 60fps scrolling.
- *
- * Features:
- * - WebGL rendering via PixiJS v8
- * - Texture caching with automatic cleanup
- * - WebGL context loss/restore handling
- * - Horizontal sprite layout matching useSingleLineVerovio output
- *
- * @module PixiSingleLineRenderer
+ * Renders score sections as GPU-accelerated sprites positioned horizontally.
+ * Uses higher resolution textures to maintain quality when scaled.
  */
 
 import { Application, extend, useApplication, useTick } from '@pixi/react';
 import { Container, Sprite, Ticker } from 'pixi.js';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSingleLineVerovio } from '../hooks/useSingleLineVerovio';
 import {
@@ -25,10 +17,12 @@ import {
 } from '../lib/svgToTexture';
 import { useEventStore } from '../stores/eventStore';
 import { interpolateTimestamps } from '../lib/interpolation';
+import type { ScoreRegion } from '../types/score';
 
 // Register PixiJS components at module level for tree-shaking
-// Must be called before using pixiContainer/pixiSprite in JSX
 extend({ Container, Sprite });
+
+const WIDTH = 980;
 
 // =============================================================================
 // Props
@@ -36,10 +30,10 @@ extend({ Container, Sprite });
 
 interface Props {
   xml: string;
-  scoreScale?: number; // Default 1
-  musicFont?: string; // Default 'Bravura'
-  // Playback integration
-  scoreRegion?: { x: number; y: number; width: number; height: number } | null;
+  bgUrl?: string;
+  scoreScale?: number;
+  musicFont?: string;
+  scoreRegion?: ScoreRegion | null;
   syncAnchors?: Map<string, number>;
   audioUrl?: string;
 }
@@ -48,14 +42,6 @@ interface Props {
 // ContextLossHandler
 // =============================================================================
 
-/**
- * Child component to handle WebGL context loss/restore events.
- *
- * Must be a child of Application because useApplication() hook only works
- * in components rendered inside the Application tree.
- *
- * Renders nothing - just registers event listeners on app.canvas.
- */
 function ContextLossHandler(): null {
   const { app } = useApplication();
 
@@ -87,14 +73,6 @@ function ContextLossHandler(): null {
 // CameraController
 // =============================================================================
 
-/**
- * Child component for GPU-accelerated camera animation.
- *
- * Uses useTick hook to update camera position every frame with exponential
- * smoothing for smooth, frame-rate-independent animation.
- *
- * Must be a child of Application because useTick uses PixiJS Ticker.
- */
 interface CameraControllerProps {
   containerRef: React.RefObject<Container | null>;
   targetX: number;
@@ -112,26 +90,22 @@ function CameraController({
 }: CameraControllerProps): null {
   const currentXRef = useRef(targetX);
 
-  // CRITICAL: Memoize callback to prevent ticker re-registration
   const animate = useCallback(
     (ticker: Ticker) => {
       if (!containerRef.current) return;
 
       const dt = ticker.deltaMS / 1000;
-      const speed = 10; // Smoothing factor (higher = snappier)
+      const speed = 10;
 
-      // Frame-rate-independent exponential smoothing
       currentXRef.current +=
         (targetX - currentXRef.current) * (1 - Math.exp(-speed * dt));
 
-      // Calculate bounded camera position
       let cameraX = currentXRef.current - viewportWidth / 2;
       cameraX = Math.max(
         0,
         Math.min(cameraX, Math.max(0, scoreWidth - viewportWidth))
       );
 
-      // Apply to container (negative X scrolls content left)
       containerRef.current.position.x = -cameraX;
     },
     [containerRef, targetX, viewportWidth, scoreWidth]
@@ -146,14 +120,6 @@ function CameraController({
 // EventTracker
 // =============================================================================
 
-/**
- * Child component for tracking playback position and updating camera target.
- *
- * Uses binary search to find current event and interpolates X position
- * between events for smooth camera targeting.
- *
- * Must be a child of Application because useTick uses PixiJS Ticker.
- */
 interface InterpolatedEvent {
   id: string;
   computedTimestamp: number;
@@ -177,7 +143,7 @@ function EventTracker({
   isPlaying,
 }: EventTrackerProps): null {
   const animate = useCallback(
-    (ticker: Ticker) => {
+    () => {
       if (!audioRef.current || interpolatedEvents.length === 0) return;
 
       const currentTime = audioRef.current.currentTime;
@@ -199,7 +165,6 @@ function EventTracker({
       if (result < 0) return;
       activeEventIndexRef.current = result;
 
-      // Interpolate X between current and next event for smooth camera
       const currentEvent = interpolatedEvents[result];
       const nextEvent = interpolatedEvents[result + 1];
 
@@ -231,38 +196,33 @@ function EventTracker({
 // PixiSingleLineRenderer
 // =============================================================================
 
-/**
- * Main PixiJS renderer component for single-line score display.
- *
- * Converts Verovio SVG sections to GPU textures and displays them
- * as horizontally positioned sprites in a WebGL canvas.
- *
- * @param props.xml - MusicXML string to render
- * @param props.scoreScale - Scale factor (default 1, maps to verovioScale 40)
- * @param props.musicFont - Music font name (default 'Bravura')
- */
 export default function PixiSingleLineRenderer({
   xml,
+  bgUrl,
   scoreScale = 1,
   musicFont = 'Bravura',
   scoreRegion,
   syncAnchors,
   audioUrl,
 }: Props) {
-  // Convert scoreScale to Verovio scale (1 -> 40, 2 -> 80, etc.)
-  const verovioScale = Math.round(40 * scoreScale);
+  // Render at higher resolution (100 instead of 40) for quality when scaled
+  // The base scale of 100 gives us good resolution for scaling
+  const verovioScale = Math.round(100 * scoreScale);
 
-  // Get sections and layout info from Verovio
   const { sections, sectionOffsets, totalWidth, maxHeight, isLoading } =
     useSingleLineVerovio(xml, verovioScale, 15, musicFont);
 
-  // Event cache from Zustand store
   const { events } = useEventStore(
     useShallow((state) => ({ events: state.events }))
   );
 
-  // Camera refs for GPU-accelerated transforms
+  // Container dimensions (based on background image or defaults)
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+
+  // Camera refs
   const cameraContainerRef = useRef<Container>(null);
+  const staticCameraXRef = useRef(0);
 
   // Audio and playback state
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -270,13 +230,31 @@ export default function PixiSingleLineRenderer({
   const activeEventIndexRef = useRef(-1);
   const targetXRef = useRef(0);
 
-  // Interpolated events with computed timestamps
+  // Interpolated events
   const [interpolatedEvents, setInterpolatedEvents] = useState<
     InterpolatedEvent[]
   >([]);
 
-  // Texture state for rendered sections
+  // Textures
   const [textures, setTextures] = useState<TextureResult[]>([]);
+
+  // Calculate container dimensions from background or defaults
+  useEffect(() => {
+    if (bgUrl) {
+      const img = new Image();
+      img.onload = () => {
+        const f = WIDTH / img.width;
+        setContainerWidth(Math.floor(img.width * f));
+        setContainerHeight(Math.floor(img.height * f));
+      };
+      img.src = bgUrl;
+    } else {
+      // Default 16:9 aspect ratio
+      const f = WIDTH / 1920;
+      setContainerWidth(Math.floor(1920 * f));
+      setContainerHeight(Math.floor(1080 * f));
+    }
+  }, [bgUrl]);
 
   // Audio element setup
   useEffect(() => {
@@ -292,7 +270,7 @@ export default function PixiSingleLineRenderer({
     };
   }, [audioUrl]);
 
-  // Calculate interpolated events when events or syncAnchors change
+  // Calculate interpolated events
   useEffect(() => {
     if (events.length === 0 || !syncAnchors || syncAnchors.size === 0) {
       setInterpolatedEvents([]);
@@ -309,7 +287,7 @@ export default function PixiSingleLineRenderer({
     setInterpolatedEvents(merged);
   }, [events, syncAnchors]);
 
-  // Convert sections to textures when they change
+  // Convert sections to textures
   useEffect(() => {
     if (sections.length === 0) return;
 
@@ -326,59 +304,169 @@ export default function PixiSingleLineRenderer({
     };
   }, [sections, verovioScale, musicFont]);
 
-  // Cleanup textures on unmount to free GPU memory
+  // Cleanup textures on unmount
   useEffect(() => {
     return () => {
       clearTextureCache();
     };
   }, []);
 
+  // Viewport dimensions for camera
+  const viewportWidth = scoreRegion?.width ?? containerWidth;
+  const viewportHeight = scoreRegion?.height ?? containerHeight;
+
+  // Calculate scale to fit score within viewport height
+  // Leave some padding (85% of viewport height)
+  const fitScale = useMemo(() => {
+    if (maxHeight <= 0 || viewportHeight <= 0) return 1;
+    const targetHeight = viewportHeight * 0.85;
+    return Math.min(targetHeight / maxHeight, 2); // Cap at 2x to prevent over-scaling
+  }, [maxHeight, viewportHeight]);
+
+  // Calculate vertical offset to center score within viewport
+  const scaledHeight = maxHeight * fitScale;
+  const yOffset = Math.max(0, (viewportHeight - scaledHeight) / 2);
+
+  // Scaled total width for camera bounds
+  const scaledTotalWidth = totalWidth * fitScale;
+
+  // Calculate and apply static camera position when not playing
+  // This centers the score horizontally within the viewport
+  useEffect(() => {
+    if (isPlaying) return; // Don't adjust during playback
+
+    // Calculate centered position
+    let newStaticX = 0;
+    if (scaledTotalWidth < viewportWidth) {
+      // Score is narrower than viewport - center it
+      newStaticX = (viewportWidth - scaledTotalWidth) / 2;
+    } else {
+      // Score is wider than viewport - start at left edge
+      newStaticX = 0;
+    }
+
+    staticCameraXRef.current = newStaticX;
+
+    // Apply to container immediately
+    if (cameraContainerRef.current) {
+      cameraContainerRef.current.position.x = newStaticX;
+    }
+  }, [viewportWidth, scaledTotalWidth, isPlaying]);
+
+  // Reset camera position when playback stops
+  useEffect(() => {
+    if (!isPlaying && cameraContainerRef.current) {
+      cameraContainerRef.current.position.x = staticCameraXRef.current;
+    }
+  }, [isPlaying]);
+
+  // Debug logging - check these values in console!
+  console.log('[PixiSingleLineRenderer] DEBUG:', {
+    viewportWidth,
+    viewportHeight,
+    maxHeight,
+    fitScale,
+    scaledHeight,
+    yOffset,
+    totalWidth,
+    scaledTotalWidth,
+    staticCameraX: staticCameraXRef.current,
+    isPlaying,
+    textureCount: textures.length,
+    firstTextureSize: textures[0] ? { w: textures[0].width, h: textures[0].height } : null,
+    sectionOffsets: sectionOffsets.slice(0, 3),
+  });
+
   // Loading state
+  if (!containerWidth || !containerHeight) {
+    return <div className="text-neutral-400">Loading...</div>;
+  }
+
   if (isLoading || textures.length === 0) {
-    return <div>Loading score...</div>;
+    return <div className="text-neutral-400">Loading score...</div>;
   }
 
   return (
     <div>
-      <Application
-        width={totalWidth}
-        height={maxHeight}
-        backgroundColor={0xffffff}
-        backgroundAlpha={0}
+      {/* Renderer container - matches SingleLineRenderer structure */}
+      <div
+        className="select-none pointer-events-none cursor-default"
+        style={{
+          position: 'relative',
+          width: containerWidth,
+          height: containerHeight,
+          overflow: 'hidden',
+        }}
       >
-        <ContextLossHandler />
-        <CameraController
-          containerRef={cameraContainerRef}
-          targetX={targetXRef.current}
-          viewportWidth={scoreRegion?.width ?? totalWidth}
-          scoreWidth={totalWidth}
-          isPlaying={isPlaying}
-        />
-        <EventTracker
-          audioRef={audioRef}
-          interpolatedEvents={interpolatedEvents}
-          targetXRef={targetXRef}
-          activeEventIndexRef={activeEventIndexRef}
-          isPlaying={isPlaying}
-        />
-        <pixiContainer
-          ref={cameraContainerRef}
-          isRenderGroup={true}
-          x={0}
-          y={0}
+        {/* Background */}
+        <div
+          style={{
+            width: containerWidth,
+            height: containerHeight,
+            display: 'flex',
+            alignItems: 'center',
+            backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
+            backgroundSize: 'cover',
+          }}
         >
-          {textures.map((result, index) => (
-            <pixiSprite
-              key={index}
-              texture={result.texture}
-              x={sectionOffsets[index]}
-              y={0}
-            />
-          ))}
-        </pixiContainer>
-      </Application>
+          {/* Score region container */}
+          <div
+            style={{
+              position: 'absolute',
+              left: scoreRegion?.x ?? 0,
+              top: scoreRegion?.y ?? 0,
+              width: viewportWidth,
+              height: viewportHeight,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {/* PixiJS canvas */}
+            <Application
+              width={viewportWidth}
+              height={viewportHeight}
+              backgroundColor={0xffffff}
+              backgroundAlpha={0}
+            >
+              <ContextLossHandler />
+              <CameraController
+                containerRef={cameraContainerRef}
+                targetX={targetXRef.current * fitScale}
+                viewportWidth={viewportWidth}
+                scoreWidth={scaledTotalWidth}
+                isPlaying={isPlaying}
+              />
+              <EventTracker
+                audioRef={audioRef}
+                interpolatedEvents={interpolatedEvents}
+                targetXRef={targetXRef}
+                activeEventIndexRef={activeEventIndexRef}
+                isPlaying={isPlaying}
+              />
+              <pixiContainer
+                ref={cameraContainerRef}
+                isRenderGroup={true}
+                x={staticCameraXRef.current}
+                y={yOffset}
+              >
+                {textures.map((result, index) => (
+                  <pixiSprite
+                    key={index}
+                    texture={result.texture}
+                    x={sectionOffsets[index] * fitScale}
+                    y={0}
+                    width={result.width * fitScale}
+                    height={result.height * fitScale}
+                  />
+                ))}
+              </pixiContainer>
+            </Application>
+          </div>
+        </div>
+      </div>
 
-      {/* Transport controls */}
+      {/* Transport controls - outside the renderer, in normal document flow */}
       <div className="mt-3 px-3 py-2">
         <div className="flex items-center justify-center gap-2">
           <button
@@ -411,6 +499,10 @@ export default function PixiSingleLineRenderer({
               }
               activeEventIndexRef.current = -1;
               targetXRef.current = events[0]?.globalX ?? 0;
+              // Reset camera to centered position
+              if (cameraContainerRef.current) {
+                cameraContainerRef.current.position.x = staticCameraXRef.current;
+              }
             }}
             className="grunge-btn grunge-btn-sm flex-1"
           >
