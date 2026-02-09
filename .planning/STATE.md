@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 19 - Progress Streaming & Download
-Plan: 1 of 2
-Status: In Progress
-Last activity: 2026-02-09 — Completed 19-01 (progress events, cancellation, signal-aware capture/encode)
+Plan: 2 of 2
+Status: Complete
+Last activity: 2026-02-09 — Completed 19-02 (WebSocket progress route, download endpoint, server wiring)
 
-Progress: [#####-----] 1/2 plans
+Progress: [##########] 2/2 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 27
+- Total plans completed: 28
 - Average duration: 2.3 min
-- Total execution time: 63 min
+- Total execution time: 65 min
 
 **By Phase:**
 
@@ -44,7 +44,7 @@ Progress: [#####-----] 1/2 plans
 | 16 - Frontend Render Mode         | 1/1   | 3 min | 3 min    |
 | 17 - Puppeteer Integration        | 2/2   | 4 min | 2 min    |
 | 18 - FFmpeg Encoding & Audio Mux  | 1/1   | 2 min | 2 min    |
-| 19 - Progress Streaming & DL      | 1/2   | 2 min | 2 min    |
+| 19 - Progress Streaming & DL      | 2/2   | 4 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -77,6 +77,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 19-01: 250ms throttle interval (4 events/sec max) to prevent WebSocket flood
 - 19-01: Progress state stored on ExportJob for reconnection sync (not just emitted)
 - 19-01: Double abort check in captureFrames (before evaluate AND before screenshot)
+- 19-02: Side-effect import '@fastify/websocket' for type augmentation in route files
+- 19-02: Params cast on websocket route (generic type param breaks overload matching)
+- 19-02: createReadStream + manual headers for download (decorateReply: false prevents sendFile)
 
 ### Roadmap Evolution
 
@@ -94,9 +97,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 19-01-PLAN.md
+Stopped at: Completed 19-02-PLAN.md (Phase 19 complete)
 Resume file: None
-Next: 19-02-PLAN.md (WebSocket route, download endpoint, cleanup)
+Next: Phase 20 or UAT for Phase 19
 
 ### Quick Tasks Completed
 
