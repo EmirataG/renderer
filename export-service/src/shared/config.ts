@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 export const config = {
   /** HTTP server port */
-  port: 3001,
+  port: parseInt(process.env.PORT ?? '3001', 10),
 
   /** HTTP server host (0.0.0.0 = all interfaces) */
   host: '0.0.0.0',

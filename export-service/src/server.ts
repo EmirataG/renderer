@@ -58,6 +58,14 @@ async function main() {
 
   // Start server
   await server.listen({ port: config.port, host: config.host });
+
+  // Graceful shutdown for Fly.io auto-stop (SIGTERM) and local dev (SIGINT)
+  const shutdown = async () => {
+    await server.close(); // Triggers onClose hooks (cleanup timer, browser pool)
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 main().catch((err) => {
