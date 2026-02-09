@@ -288,10 +288,14 @@ export default function PixiSingleLineRenderer({
   }, [events, syncAnchors]);
 
   // Convert sections to textures
+  // Clear cache when xml changes to avoid stale textures from previous scores
   useEffect(() => {
     if (sections.length === 0) return;
 
     let cancelled = false;
+
+    // Clear cache before creating new textures for this score
+    clearTextureCache();
 
     sectionsToTextures(sections, verovioScale, musicFont).then((results) => {
       if (!cancelled) {
@@ -377,12 +381,12 @@ export default function PixiSingleLineRenderer({
     sectionOffsets: sectionOffsets.slice(0, 3),
   });
 
-  // Loading state
+  // Loading state - also check for valid dimensions to avoid rendering tiny score
   if (!containerWidth || !containerHeight) {
     return <div className="text-neutral-400">Loading...</div>;
   }
 
-  if (isLoading || textures.length === 0) {
+  if (isLoading || textures.length === 0 || maxHeight <= 0 || totalWidth <= 0) {
     return <div className="text-neutral-400">Loading score...</div>;
   }
 
