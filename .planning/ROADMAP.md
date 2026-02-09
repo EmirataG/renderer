@@ -4,7 +4,8 @@
 
 - **v1.0 Migration** - Phases 1-5 (shipped 2026-02-04)
 - **v1.1 Efficiency** - Phases 6-9 (shipped 2026-02-05)
-- **v1.2 SingleLineRenderer** - Phases 10-13 (in progress)
+- **v1.2 SingleLineRenderer** - Phases 10-13 (paused)
+- **v1.3 Performance & Polish** - Phases 14-15 (in progress)
 
 ## Phases
 
@@ -34,15 +35,25 @@ Reduced memory usage and improved rendering performance for long scores through 
 
 </details>
 
-### v1.2 SingleLineRenderer (IN PROGRESS)
+<details>
+<summary>v1.2 SingleLineRenderer (Phases 10-13) - PAUSED</summary>
 
 **Milestone Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance. Music scrolls beneath a fixed center point while notehead animations highlight active notes.
 
 - [x] **Phase 10: Single-Line Verovio Hook** - Section-based horizontal rendering with Verovio ✓
 - [x] **Phase 11: Single-Line Event Extraction** - Extract events with X coordinates and section assignments ✓
 - [x] **Phase 12: SingleLineRenderer Core** - Horizontal camera, animation, and smooth scrolling ✓
-- [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions
-- [ ] **Phase 13.1: Unplayed Score Styling** - Visual differentiation of played vs unplayed score regions (INSERTED)
+- [ ] **Phase 13: Section Virtualization** - Lazy section loading with seamless transitions (paused)
+- [ ] **Phase 13.1: Unplayed Score Styling** - Visual differentiation of played vs unplayed score regions (paused)
+
+</details>
+
+### v1.3 Performance & Polish (IN PROGRESS)
+
+**Milestone Goal:** Finalize RegularRenderer with page virtualization (only visible pages in DOM), seamless page transitions, and a moving playhead cursor that follows playback.
+
+- [ ] **Phase 14: Page Virtualization** - Only mount visible pages + buffer, placeholder divs for unmounted, fix page gaps
+- [ ] **Phase 15: Playhead Cursor** - Vertical line cursor synchronized with audio playback
 
 ## Phase Details
 
@@ -101,7 +112,7 @@ Plans:
 - [ ] 13-02-PLAN.md — Overlap rendering + clip-path for seamless boundaries
 - [ ] 13-03-PLAN.md — Visual verification checkpoint
 
-### Phase 13.1: Unplayed Score Styling (INSERTED)
+### Phase 13.1: Unplayed Score Styling (PAUSED)
 **Goal**: Inspector option to visually differentiate played vs unplayed score regions using clip-path for complex elements and direct styling for noteheads/stems/accidentals/dots
 **Depends on**: Phase 13
 **Requirements**: STY-01, STY-02, STY-03
@@ -117,9 +128,62 @@ Plans:
 - [x] 13.1-02-PLAN.md — Core styling logic + SingleLineRenderer integration
 - [ ] 13.1-03-PLAN.md — RegularRenderer integration + visual verification
 
+### Phase 14: Page Virtualization
+**Goal**: RegularRenderer only mounts visible pages + buffer in DOM, with seamless page transitions (no gaps)
+**Depends on**: v1.1 complete
+**Requirements**: VIRT-01, VIRT-02, VIRT-03, VIRT-04, VIRT-05, GAP-01, GAP-02
+**Success Criteria** (what must be TRUE):
+  1. During playback, inspecting the DOM shows only 3 pages mounted at any time (current + 1 above + 1 below), with placeholder divs for unmounted pages
+  2. Pages far from viewport are unmounted to free memory
+  3. No visible gaps between adjacent pages - staff lines appear continuous
+  4. Fast initial load - only first 1-2 pages rendered on mount
+  5. No visible flash or jank when pages mount/unmount during scroll
+**Plans:** 2 plans
+Plans:
+- [ ] 14-01-PLAN.md — Core virtualization (camera-driven visible page range, conditional rendering, placeholder divs) + isRenderMode removal
+- [ ] 14-02-PLAN.md — Seamless page stacking (adjustPageHeight, viewBox trimming) + visual verification
+
+### Phase 15: Playhead Cursor
+**Goal**: Vertical line cursor follows active event during playback, synchronized with audio
+**Depends on**: Phase 14
+**Requirements**: CUR-01, CUR-02, CUR-03, CUR-04, CUR-05, POL-01, POL-02
+**Success Criteria** (what must be TRUE):
+  1. During playback, a vertical line cursor is positioned at the active event's X coordinate
+  2. Cursor spans the height of the current system (not full page)
+  3. Cursor position updates in sync with audio.currentTime (no drift or lag)
+  4. Cursor movement is smooth (CSS transition between positions)
+  5. Cursor is hidden when not playing or no audio loaded
+  6. Cursor color is configurable (default: red)
+**Plans:** 2 plans
+Plans:
+- [ ] 15-01-PLAN.md — Core cursor rendering and positioning
+- [ ] 15-02-PLAN.md — Cursor styling and configuration
+
 ## Requirement Coverage
 
-### v1.2 Requirements
+### v1.3 Requirements
+
+| ID | Requirement | Phase |
+|----|-------------|-------|
+| VIRT-01 | Only visible pages + buffer mounted in DOM | Phase 14 |
+| VIRT-02 | Placeholder divs maintain layout for unmounted pages | Phase 14 |
+| VIRT-03 | Pages unmount when scrolled out of view + buffer | Phase 14 |
+| VIRT-04 | Fast initial load - only first 1-2 pages rendered | Phase 14 |
+| VIRT-05 | No visible flash or jank during mount/unmount | Phase 14 |
+| GAP-01 | No visible gaps between adjacent pages | Phase 14 |
+| GAP-02 | Staff lines appear continuous across page boundaries | Phase 14 |
+| CUR-01 | Vertical line cursor at active event X coordinate | Phase 15 |
+| CUR-02 | Cursor spans height of current system | Phase 15 |
+| CUR-03 | Cursor synchronized with audio timestamp | Phase 15 |
+| CUR-04 | Smooth cursor movement (CSS transition) | Phase 15 |
+| CUR-05 | Cursor hidden when not playing | Phase 15 |
+| POL-01 | Camera follows cursor during playback | Phase 15 |
+| POL-02 | Configurable cursor color | Phase 15 |
+
+**Coverage: 14/14 v1.3 requirements mapped**
+
+<details>
+<summary>v1.2 Requirements (paused)</summary>
 
 | ID | Requirement | Phase |
 |----|-------------|-------|
@@ -142,9 +206,20 @@ Plans:
 | STY-02 | Noteheads/stems/accidentals/dots use direct style changes | Phase 13.1 |
 | STY-03 | Staff lines/barlines/beams use clip-path for progressive reveal | Phase 13.1 |
 
-**Coverage: 18/18 requirements mapped**
+</details>
 
 ### Dependency Chain
+
+**v1.3 (current):**
+```
+Phase 14: Page Virtualization
+    |
+    v
+Phase 15: Playhead Cursor  (requires working virtualization from Phase 14)
+```
+
+<details>
+<summary>v1.2 dependency chain (paused)</summary>
 
 ```
 Phase 10: Single-Line Verovio Hook
@@ -162,10 +237,12 @@ Phase 13: Section Virtualization  (requires working renderer from Phase 12)
 Phase 13.1: Unplayed Score Styling  (requires virtualization for clip-path boundaries)
 ```
 
+</details>
+
 ## Progress
 
 **Execution Order:**
-Phases execute in order: 10 -> 11 -> 12 -> 13 -> 13.1
+v1.3: 14 -> 15
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -182,5 +259,7 @@ Phases execute in order: 10 -> 11 -> 12 -> 13 -> 13.1
 | 10. Single-Line Verovio Hook | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 11. Single-Line Event Extraction | v1.2 | 1/1 | Complete | 2026-02-05 |
 | 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
-| 13. Section Virtualization | v1.2 | 0/3 | Planned | -- |
-| 13.1. Unplayed Score Styling | v1.2 | 2/3 | In Progress | -- |
+| 13. Section Virtualization | v1.2 | 0/3 | Paused | -- |
+| 13.1. Unplayed Score Styling | v1.2 | 2/3 | Paused | -- |
+| 14. Page Virtualization | v1.3 | 0/2 | Planned | -- |
+| 15. Playhead Cursor | v1.3 | 0/2 | Planned | -- |
