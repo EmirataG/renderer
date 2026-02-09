@@ -1,0 +1,22 @@
+{
+  "name": "manuscript-export-service",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "fastify": "^5.7.4",
+    "@fastify/multipart": "^9.4.0",
+    "@fastify/cors": "^11.2.0",
+    "@sinclair/typebox": "^0.34.0",
+    "@fastify/type-provider-typebox": "^6.1.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0"
+  }
+}
