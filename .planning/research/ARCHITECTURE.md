@@ -1,539 +1,823 @@
-# Architecture Research: SingleLineRenderer Integration
+# Architecture: Virtualization and Cursor Integration
 
-**Domain:** Horizontal single-line score rendering with section-based virtualization
-**Researched:** 2026-02-05
-**Confidence:** HIGH (verified against existing codebase analysis and Verovio official documentation)
+**Project:** RegularRenderer Enhancement
+**Researched:** 2026-02-08
+**Focus:** Virtualization, cursor overlay, and SVGO integration patterns
 
 ## Executive Summary
 
-This document analyzes how a SingleLineRenderer component should integrate with the existing Manuscript Renderer architecture. The existing RegularRenderer uses vertical paginated rendering with virtual scrolling. SingleLineRenderer requires horizontal layout with section-based rendering for performance.
+RegularRenderer currently renders all pages synchronously, causing DOM bloat for long scores. This research identifies integration points for three enhancements:
 
-The key insight: **Most animation and event infrastructure can be reused.** The core differences are in rendering mode (Verovio options) and camera direction (translateX vs translateY). Event extraction, interpolation, and notehead animation functions work identically.
+1. **Virtualization**: Render only visible pages + buffer (mount/unmount based on camera Y)
+2. **Cursor overlay**: Absolute-positioned indicator tracking active event
+3. **SVGO optimization**: Preprocessing SVG strings in useVerovio hook
 
-**Recommended approach:**
-1. Create `useSingleLineVerovio` hook (or extend `useVerovio`) with `breaks: 'none'` + measure-range sectioning
-2. Create `SingleLineRenderer.tsx` that reuses animation and interpolation infrastructure
-3. Implement horizontal camera with center-tracking instead of system-boundary snapping
-4. Add section-based virtual scrolling (horizontal equivalent of page-based)
+**Recommendation**: Implement in order listed - virtualization first (performance foundation), cursor second (visual enhancement), SVGO last (optimization polish).
 
----
+## Current Architecture Analysis
 
-## Current Architecture (RegularRenderer)
+### Data Flow (Lines 92-263 of RegularRenderer.tsx)
 
 ```
-App.tsx (state owner)
- |
- +--> useVerovio.ts (hook)
- |      - Verovio options: { pageHeight: 2970, breaks: 'auto' }
- |      - Returns svgPages[], pageHeights[], pageOffsets[], toolkit
- |
- +--> eventStore.ts (Zustand)
- |      - CachedEvent: { id, beatOnset, beatDuration, svgIds, pageIndex, globalY }
- |      - Lookup indices: eventById, eventsByPage
- |
- +--> RegularRenderer.tsx
- |      - Virtual scrolling: only 3-4 pages mounted near camera
- |      - Camera: CSS translateY() on cameraRef div
- |      - Event extraction: extractTimemapEvents() + computeEventPositions()
- |      - Animation: animateNoteheads() from noteAnimation.ts
- |
- +--> interpolation.ts
- |      - interpolateTimestamps(): beats -> timestamps via anchors
- |
- +--> noteAnimation.ts
-        - animateNoteheads(): scale + color animation on g.notehead
-        - resetNoteheadAnimations(): cleanup
+useVerovio(xml, width, scale, font)
+  ↓
+svgPages[], pageHeights[], pageOffsets[], totalHeight
+  ↓
+svgPages.map((svg, i) => <div dangerouslySetInnerHTML />)  ← ALL PAGES RENDERED
+  ↓
+Camera: translateY(-cameraY) on container
+  ↓
+Animation: querySelector by event.svgIds → apply transforms
 ```
 
 ### Key Data Structures
 
+| Data | Source | Purpose | Current Scope |
+|------|--------|---------|---------------|
+| `svgPages[]` | useVerovio | SVG strings for each page | All pages |
+| `pageHeights[]` | useVerovio | Pixel height of each page | All pages |
+| `pageOffsets[]` | useVerovio | Cumulative Y position start | All pages |
+| `totalHeight` | useVerovio | Total scrollable height | Single value |
+| `currentYRef.current` | animateSync | Camera target Y position | Single value |
+| `events[]` | eventStore | Event metadata with globalY | All events |
+
+### Critical Integration Points
+
+**Camera System (Lines 307-322)**:
+- Current: `applyCamera(targetY)` sets `translateY(-cameraY)` on `cameraRef`
+- Uses: `totalHeight`, `scoreRegion.height`, `targetY`
+- Integration: Virtualization needs `cameraY` to calculate visible page range
+
+**Rendering (Lines 771-779)**:
+- Current: `svgPages.map()` renders ALL pages unconditionally
+- Integration: Replace with conditional render based on visible range
+
+**Animation Queries (Lines 601-646)**:
+- Current: `scoreRef.current.querySelector(#${id})` finds noteheads
+- Risk: querySelector fails if virtualization unmounts the target page
+- Integration: Guard checks needed, or disable animation for off-screen events
+
+## Virtualization Architecture
+
+### Option A: Inline useMemo Calculation (Recommended)
+
+**Where**: Inside RegularRenderer.tsx, after useVerovio hook returns
+
+**Structure**:
 ```typescript
-// CachedEvent (from eventStore.ts)
-interface CachedEvent {
-  id: string;            // "evt-0", "evt-1", etc.
-  beatOnset: number;     // Quarter-note-based timing
-  beatDuration: number;  // Duration until next event
-  svgIds: string[];      // Verovio note xml:id values
-  pageIndex: number;     // 0-based page index
-  globalY: number;       // Y position in global coordinate space
-}
+const visiblePageIndices = useMemo(() => {
+  if (!cameraRef.current || pageOffsets.length === 0) return [];
 
-// For SingleLineRenderer, we'd need:
-interface SingleLineEvent {
-  id: string;
-  beatOnset: number;
-  beatDuration: number;
-  svgIds: string[];
-  sectionIndex: number;  // Which section contains this event
-  globalX: number;       // X position in global coordinate space
-}
-```
-
----
-
-## Proposed SingleLineRenderer Architecture
-
-```
-App.tsx (state owner)
- |
- +--> useSingleLineVerovio.ts (NEW hook)
- |      - Verovio options: { breaks: 'none', pageWidth: large }
- |      - Section rendering via toolkit.select({ measureRange })
- |      - Returns sections[], sectionWidths[], sectionOffsets[], toolkit
- |
- +--> singleLineEventStore.ts (NEW or extend eventStore)
- |      - SingleLineEvent: { id, beatOnset, svgIds, sectionIndex, globalX }
- |      - Lookup indices: eventById, eventsBySection
- |
- +--> SingleLineRenderer.tsx (NEW)
- |      - Section-based virtual scrolling (horizontal)
- |      - Camera: CSS translateX() on cameraRef div
- |      - Event extraction: extractTimemapEvents() + computeSectionPositions()
- |      - Animation: REUSE animateNoteheads() from noteAnimation.ts
- |
- +--> interpolation.ts (UNCHANGED)
- |      - interpolateTimestamps() works identically
- |
- +--> noteAnimation.ts (UNCHANGED)
-        - animateNoteheads() works on any mounted SVG elements
-```
-
----
-
-## Component Analysis: Reuse vs New
-
-### REUSABLE (No Changes)
-
-| Component | Why Reusable |
-|-----------|--------------|
-| `noteAnimation.ts` | Targets SVG elements by ID. Works regardless of layout direction. |
-| `interpolation.ts` | Pure function on events array. No layout awareness. |
-| `animationController.ts` | Queries DOM by element ID. Layout-agnostic. |
-| `verovioService.ts` | Singleton toolkit creation. No layout-specific code. |
-| `ScoreRegionEditor.tsx` | Defines viewport bounds. Works for horizontal too. |
-| `SyncEditor.tsx` | Different view, doesn't need SingleLine mode. |
-| `eventStore.ts` | Interface is compatible; may need to extend for sectionIndex/globalX |
-
-### REUSABLE WITH MODIFICATIONS
-
-| Component | Modifications Needed |
-|-----------|---------------------|
-| `useVerovio.ts` | Option A: Add mode parameter for single-line options. Option B: Create separate `useSingleLineVerovio.ts`. Recommend Option B for clarity. |
-| `getEvents.ts` | Add `computeSectionPositions()` for horizontal X extraction. `extractTimemapEvents()` is reusable as-is. |
-| `eventStore.ts` | Extend `CachedEvent` interface or create parallel `SingleLineEvent` type with `globalX` and `sectionIndex`. |
-
-### NEW IMPLEMENTATIONS REQUIRED
-
-| Component | Purpose |
-|-----------|---------|
-| `useSingleLineVerovio.ts` | Hook for section-based rendering with `breaks: 'none'` + measure range selection |
-| `SingleLineRenderer.tsx` | Main renderer component with horizontal camera and section virtualization |
-| `singleLineEventStore.ts` | (Optional) Separate store for horizontal event cache, or extend existing store |
-
----
-
-## Verovio Configuration for Single-Line Rendering
-
-### Option 1: Full Single-Line (Not Recommended for Long Scores)
-
-```typescript
-toolkit.setOptions({
-  breaks: 'none',           // No system/page breaks
-  pageWidth: 100000,        // Very wide page
-  adjustPageWidth: true,    // Shrink to content
-  pageHeight: 200,          // Minimal height
-  adjustPageHeight: true,   // Shrink to content
-});
-const svg = toolkit.renderToSVG(1);
-```
-
-**Problem:** Creates one massive SVG for entire score. Same memory issues as pre-v1.1 vertical rendering. Not viable for long scores.
-
-### Option 2: Section-Based Rendering (Recommended)
-
-Use Verovio's `select()` API to render measure ranges as independent sections:
-
-```typescript
-// Render sections of ~10-20 measures each
-const MEASURES_PER_SECTION = 15;
-const totalMeasures = getMeasureCount(toolkit); // Need to determine this
-
-const sections: string[] = [];
-for (let i = 0; i < totalMeasures; i += MEASURES_PER_SECTION) {
-  const start = i + 1; // 1-based
-  const end = Math.min(i + MEASURES_PER_SECTION, totalMeasures);
-
-  toolkit.select({ measureRange: `${start}-${end}` });
-
-  // After selection, renderToSVG outputs only selected measures
-  toolkit.setOptions({
-    breaks: 'none',
-    pageWidth: 100000,
-    adjustPageWidth: true,
-    pageHeight: 200,
-    adjustPageHeight: true,
-  });
-
-  sections.push(toolkit.renderToSVG(1));
-
-  // Reset selection for next section
-  toolkit.select({});
-}
-```
-
-**Benefits:**
-- Each section is an independent SVG
-- Enables virtual scrolling (only mount visible sections)
-- Section boundaries are invisible to users
-- Memory bounded regardless of score length
-
-**Challenges:**
-- Need to determine total measure count (Verovio doesn't expose this directly)
-- Must reselect and re-render for each section
-- Section widths vary; need to compute offsets
-
-### Determining Measure Count
-
-Verovio doesn't provide a `getMeasureCount()` API. Options:
-
-1. **Binary search with select():** Try large range, reduce until valid
-2. **Parse MEI/MusicXML directly:** Count `<measure>` elements before loading
-3. **Use timemap:** Extract from `renderToTimemap()` (each entry has measure info implicitly)
-4. **Render once with breaks: 'none', measure the SVG:** Then section it
-
-Recommend: **Parse timemap** since we already call `renderToTimemap()` for event extraction.
-
----
-
-## Camera System Comparison
-
-### RegularRenderer (Vertical)
-
-```typescript
-function applyCamera(targetY: number) {
+  // Extract current camera Y from transform (or track in state)
+  const cameraY = currentYRef.current - (scoreRegion?.height ?? containerHeight) / 2;
   const viewportHeight = scoreRegion?.height ?? containerHeight;
-  let cameraY = targetY - viewportHeight / 2;
-  cameraY = Math.max(0, cameraY);
-  cameraY = Math.min(cameraY, totalHeight - viewportHeight);
-  cameraRef.current.style.transform = `translateY(${-cameraY}px)`;
-}
-```
 
-**Characteristics:**
-- System-boundary snapping (all events in same system share Y)
-- Vertical scrolling with transition easing
-- Camera stays still within a system, jumps at system boundaries
+  // Buffer: render 1 page above and below visible range
+  const buffer = 1;
+  const visibleStart = Math.max(0, cameraY - pageHeights[0] * buffer);
+  const visibleEnd = cameraY + viewportHeight + pageHeights[0] * buffer;
 
-### SingleLineRenderer (Horizontal)
+  const indices: number[] = [];
+  for (let i = 0; i < pageOffsets.length; i++) {
+    const pageTop = pageOffsets[i];
+    const pageBottom = pageTop + pageHeights[i];
 
-```typescript
-function applyCameraX(targetX: number) {
-  const viewportWidth = scoreRegion?.width ?? containerWidth;
-  // Keep active note centered horizontally
-  let cameraX = targetX - viewportWidth / 2;
-  cameraX = Math.max(0, cameraX);
-  cameraX = Math.min(cameraX, totalWidth - viewportWidth);
-  cameraRef.current.style.transform = `translateX(${-cameraX}px)`;
-}
-```
-
-**Characteristics:**
-- Continuous tracking (camera moves with each note, no snapping)
-- Horizontal scrolling with transition easing
-- Active note stays centered in viewport
-
-### Camera Transition Timing
-
-RegularRenderer uses `transition: transform 200ms ease-out`. SingleLineRenderer should use similar timing but may need adjustment for smoother horizontal motion:
-
-```css
-/* Consider longer transition for horizontal */
-transition: transform 150ms linear;
-/* Or spring-like easing */
-transition: transform 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
-```
-
----
-
-## Event Position Extraction
-
-### RegularRenderer: Global Y Positions
-
-```typescript
-// From getEvents.ts - computeEventPositions()
-for (const event of cachedEvents) {
-  const pageNum = toolkit.getPageWithElement(event.svgIds[0]);
-  const pageIndex = pageNum - 1;
-  event.pageIndex = pageIndex;
-
-  const container = pageContainers[pageIndex];
-  const containerRect = container.getBoundingClientRect();
-  const noteEl = container.querySelector(`#${CSS.escape(event.svgIds[0])}`);
-  const systemEl = noteEl.closest('g.system');
-  const sysRect = systemEl.getBoundingClientRect();
-  const localY = sysRect.top - containerRect.top + sysRect.height / 2;
-  event.globalY = pageOffsets[pageIndex] + localY;
-}
-```
-
-### SingleLineRenderer: Global X Positions
-
-```typescript
-function computeSectionPositions(
-  timemapEvents: TimemapEvent[],
-  toolkit: VerovioToolkit,
-  sectionContainers: HTMLElement[],
-  sectionOffsets: number[]  // Cumulative X offsets
-): SingleLineEvent[] {
-  const events: SingleLineEvent[] = timemapEvents.map(e => ({
-    ...e,
-    sectionIndex: 0,
-    globalX: 0,
-  }));
-
-  for (const event of events) {
-    if (event.svgIds.length === 0) continue;
-
-    // Find which section contains this note
-    // Note: With select(), element IDs persist, but we need to know
-    // which section SVG contains it
-    for (let sectionIdx = 0; sectionIdx < sectionContainers.length; sectionIdx++) {
-      const container = sectionContainers[sectionIdx];
-      const noteEl = container.querySelector(`#${CSS.escape(event.svgIds[0])}`);
-      if (noteEl) {
-        event.sectionIndex = sectionIdx;
-        const containerRect = container.getBoundingClientRect();
-        const noteRect = noteEl.getBoundingClientRect();
-        const localX = noteRect.left - containerRect.left + noteRect.width / 2;
-        event.globalX = sectionOffsets[sectionIdx] + localX;
-        break;
-      }
+    if (pageBottom >= visibleStart && pageTop <= visibleEnd) {
+      indices.push(i);
     }
   }
 
-  return events;
+  return indices;
+}, [currentYRef.current, pageOffsets, pageHeights, containerHeight, scoreRegion?.height]);
+
+// Render logic
+{svgPages.map((svg, i) => {
+  const isVisible = visiblePageIndices.includes(i);
+  if (!isVisible) {
+    // Placeholder: maintain scroll height
+    return (
+      <div
+        key={i}
+        style={{ height: pageHeights[i], width: scoreRegion?.width ?? containerWidth }}
+      />
+    );
+  }
+
+  return (
+    <div
+      key={i}
+      ref={(el) => { pageContainerRefs.current[i] = el; }}
+      style={{ width: scoreRegion?.width ?? containerWidth }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+})}
+```
+
+**Pros**:
+- Simple, no new files
+- useMemo prevents recalculation unless camera moves
+- Direct access to existing state
+
+**Cons**:
+- Couples virtualization to component logic
+- Harder to test in isolation
+
+**Dependencies**: `currentYRef.current` as trigger (requires minor refactor to track cameraY)
+
+### Option B: Custom useVirtualization Hook
+
+**Where**: New file `src/hooks/useVirtualization.ts`
+
+**Structure**:
+```typescript
+export function useVirtualization({
+  totalHeight,
+  pageHeights,
+  pageOffsets,
+  cameraY,
+  viewportHeight,
+  bufferPages = 1,
+}: {
+  totalHeight: number;
+  pageHeights: number[];
+  pageOffsets: number[];
+  cameraY: number;
+  viewportHeight: number;
+  bufferPages?: number;
+}) {
+  return useMemo(() => {
+    // Same calculation as Option A
+  }, [cameraY, pageOffsets, pageHeights, viewportHeight, bufferPages]);
 }
 ```
 
----
+**Pros**:
+- Reusable for future renderers
+- Testable independently
+- Cleaner component code
 
-## Virtual Scrolling Strategy
+**Cons**:
+- Extra abstraction for single use case
+- Adds file overhead
 
-### RegularRenderer (Vertical Pages)
+**Recommendation**: Use Option A for MVP (simpler), refactor to Option B if SingleLineRenderer needs virtualization.
 
+### Option C: TanStack Virtual Library
+
+**Library**: [@tanstack/react-virtual](https://tanstack.com/virtual/latest)
+
+**Integration**:
 ```typescript
-// Mount pages near camera Y position
-const visiblePages = useMemo(() => {
-  const buffer = 1; // Mount 1 page before/after
-  const currentPage = /* find page containing cameraY */;
-  return [currentPage - buffer, currentPage, currentPage + buffer]
-    .filter(i => i >= 0 && i < pageCount);
-}, [cameraY, pageOffsets, pageCount]);
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+const virtualizer = useVirtualizer({
+  count: svgPages.length,
+  getScrollElement: () => cameraRef.current,
+  estimateSize: (index) => pageHeights[index],
+  overscan: 1, // Buffer pages
+});
 
 // Render
-{svgPages.map((svg, i) => (
-  visiblePages.includes(i) ? (
-    <div key={i} dangerouslySetInnerHTML={{ __html: svg }} />
-  ) : (
-    <div key={i} style={{ height: pageHeights[i] }} /> // Placeholder
-  )
+{virtualizer.getVirtualItems().map((virtualItem) => (
+  <div
+    key={virtualItem.key}
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      transform: `translateY(${virtualItem.start}px)`,
+      height: `${virtualItem.size}px`,
+    }}
+    dangerouslySetInnerHTML={{ __html: svgPages[virtualItem.index] }}
+  />
 ))}
 ```
 
-### SingleLineRenderer (Horizontal Sections)
+**Pros**:
+- Battle-tested for variable heights
+- Handles edge cases (resize, dynamic content)
+- 18.5k npm downloads/week ([npm-compare](https://npm-compare.com/@tanstack/react-virtual,react-infinite-scroll-component,react-virtualized,react-window))
 
+**Cons**:
+- External dependency (+10KB bundle)
+- Requires CSS transform refactor (currently using translateY on parent)
+- Overkill for static page list (not infinite scroll)
+
+**Recommendation**: Avoid for MVP. TanStack Virtual excels at [dynamic/measured sizing](https://medium.com/@eva.matova6/optimizing-large-datasets-with-virtualized-lists-70920e10da54), but our page heights are pre-computed from Verovio SVG parsing.
+
+### Confidence Assessment
+
+| Aspect | Confidence | Reason |
+|--------|------------|--------|
+| useMemo approach | HIGH | Standard React pattern, matches [React docs guidance](https://react.dev/reference/react/useMemo) |
+| Visible range calculation | HIGH | Verified with [multiple virtualization tutorials](https://blog.logrocket.com/virtual-scrolling-core-principles-and-basic-implementation-in-react/) |
+| Camera Y extraction | MEDIUM | Requires minor refactor to expose cameraY as state/ref |
+| Animation guards | MEDIUM | Need to verify querySelector behavior when page unmounts |
+
+## Cursor Architecture
+
+### Option A: Absolute-Positioned Overlay (Recommended)
+
+**Where**: Inside score container, sibling to camera div
+
+**Structure**:
 ```typescript
-// Mount sections near camera X position
-const visibleSections = useMemo(() => {
-  const buffer = 1;
-  const currentSection = /* find section containing cameraX */;
-  return [currentSection - buffer, currentSection, currentSection + buffer]
-    .filter(i => i >= 0 && i < sectionCount);
-}, [cameraX, sectionOffsets, sectionCount]);
+// Track active event Y position
+const cursorY = useMemo(() => {
+  if (interpolatedEvents.length === 0 || eventIndexRef.current < 0) return null;
+  return interpolatedEvents[eventIndexRef.current]?.y ?? null;
+}, [interpolatedEvents, eventIndexRef.current]); // Trigger on event change
 
-// Render in horizontal flex container
-<div style={{ display: 'flex', flexDirection: 'row' }}>
-  {sections.map((svg, i) => (
-    visibleSections.includes(i) ? (
-      <div key={i} dangerouslySetInnerHTML={{ __html: svg }} />
-    ) : (
-      <div key={i} style={{ width: sectionWidths[i] }} /> // Placeholder
-    )
-  ))}
-</div>
-```
-
----
-
-## Integration Points
-
-### 1. App.tsx Changes
-
-```typescript
-// Add renderer type selection
-const [rendererType, setRendererType] = useState<'regular' | 'singleLine'>('regular');
-
-// Render appropriate component
-{rendererType === 'regular' ? (
-  <RegularRenderer {...props} />
-) : (
-  <SingleLineRenderer {...props} />
+// Render (inside score container, after camera div)
+{cursorY !== null && (
+  <div
+    style={{
+      position: 'absolute',
+      left: scoreRegion?.x ?? 0,
+      top: cursorY, // Absolute Y within score container
+      width: scoreRegion?.width ?? containerWidth,
+      height: 2, // Thin line cursor
+      backgroundColor: '#FF0000',
+      pointerEvents: 'none',
+      zIndex: 2,
+      transition: 'top 200ms ease-out', // Match camera easing
+    }}
+  />
 )}
 ```
 
-### 2. Shared Props Interface
+**Pros**:
+- Simple CSS positioning
+- No DOM queries needed (uses event.y directly)
+- Transitions handled by CSS
+- Sibling to camera div, so scrolls with score
 
-Both renderers share most props:
+**Cons**:
+- Requires exposing `eventIndexRef.current` to render (currently not a dependency)
+- CSS transition may not match rAF-driven camera movement perfectly
 
+**Integration Point**: Lines 757-782 (score container div)
+
+### Option B: Ref-Based Imperative Updates
+
+**Where**: Inside animateSync function (lines 353-409)
+
+**Structure**:
 ```typescript
-interface SharedRendererProps {
-  xml: string;
-  bgUrl?: string;
-  fps?: number;
-  scoreColor?: string;
-  syncAnchors?: Map<string, number>;
-  audioUrl?: string;
-  scoreRegion?: ScoreRegion | null;
-  scoreBorder?: BorderStyle;
-  scoreScale?: number;
-  activeNoteheadColor?: string;
-  activeNoteheadScale?: number;
-  activeNoteheadAnimationEntryMs?: number;
-  activeNoteheadAnimationHoldMs?: number;
-  activeNoteheadAnimationExitMs?: number;
-  colorFullNote?: boolean;
+const cursorRef = useRef<HTMLDivElement>(null);
+
+// In animateSync, after applyCamera
+if (cursorRef.current) {
+  cursorRef.current.style.top = `${currentYRef.current}px`;
+}
+
+// Render
+<div
+  ref={cursorRef}
+  style={{
+    position: 'absolute',
+    left: scoreRegion?.x ?? 0,
+    top: 0,
+    width: scoreRegion?.width ?? containerWidth,
+    height: 2,
+    backgroundColor: '#FF0000',
+    pointerEvents: 'none',
+    zIndex: 2,
+    transition: 'none', // Controlled by rAF
+  }}
+/>
+```
+
+**Pros**:
+- Precise timing sync with camera updates
+- No React re-renders for cursor position
+- Matches animation frame timing exactly
+
+**Cons**:
+- Imperative style (less React-idiomatic)
+- Couples cursor to animation logic
+- No CSS easing (must implement manually if desired)
+
+**Recommendation**: Use Option A for MVP (simpler), Option B if precise frame-by-frame sync needed for Puppeteer rendering.
+
+### Option C: Framer Motion or GSAP Library
+
+**Libraries**:
+- [Framer Motion](https://motion.dev/docs/cursor): React-native animation library
+- [GSAP](https://blog.olivierlarose.com/tutorials/blend-mode-cursor): Professional web animator choice
+
+**Structure (Framer Motion example)**:
+```typescript
+import { motion } from 'framer-motion';
+
+<motion.div
+  animate={{ top: cursorY }}
+  transition={{ type: 'tween', ease: 'easeOut', duration: 0.2 }}
+  style={{
+    position: 'absolute',
+    left: scoreRegion?.x ?? 0,
+    width: scoreRegion?.width ?? containerWidth,
+    height: 2,
+    backgroundColor: '#FF0000',
+  }}
+/>
+```
+
+**Pros**:
+- Professional-grade easing ([60fps with CSS transforms](https://blog.olivierlarose.com/tutorials/blend-mode-cursor))
+- Handles complex animations easily
+- Better cross-browser consistency
+
+**Cons**:
+- External dependency (Framer Motion: 48KB gzipped)
+- Overkill for simple Y-position animation
+- May conflict with existing CSS transitions
+
+**Recommendation**: Avoid for MVP. Framer Motion excels at [complex cursor trails](https://blog.olivierlarose.com/tutorials/cartoon-cursor-trailing), but our cursor is a static position indicator.
+
+### Cursor Visibility During Virtualization
+
+**Challenge**: If active event is on an unmounted page, cursor position invalid
+
+**Solution**: Guard check in cursor render
+```typescript
+const cursorY = useMemo(() => {
+  if (interpolatedEvents.length === 0 || eventIndexRef.current < 0) return null;
+  const activeEvent = interpolatedEvents[eventIndexRef.current];
+
+  // Find which page contains this Y position
+  const pageIndex = pageOffsets.findIndex((offset, i) => {
+    const pageTop = offset;
+    const pageBottom = offset + pageHeights[i];
+    return activeEvent.y >= pageTop && activeEvent.y < pageBottom;
+  });
+
+  // Only show cursor if page is mounted
+  if (pageIndex === -1 || !visiblePageIndices.includes(pageIndex)) return null;
+
+  return activeEvent.y;
+}, [interpolatedEvents, eventIndexRef.current, visiblePageIndices, pageOffsets, pageHeights]);
+```
+
+### Confidence Assessment
+
+| Aspect | Confidence | Reason |
+|--------|------------|--------|
+| Absolute positioning | HIGH | Standard CSS pattern, no library needed |
+| CSS transitions | MEDIUM | Timing may drift from rAF animation |
+| Visibility guard | HIGH | Logical check, prevents phantom cursor |
+| Performance | HIGH | Single div, no expensive operations |
+
+## SVGO Integration Architecture
+
+### Option A: Preprocess in useVerovio Hook (Recommended)
+
+**Where**: `src/hooks/useVerovio.ts`, lines 100-104 (after renderToSVG)
+
+**Structure**:
+```typescript
+import { optimize } from 'svgo';
+
+// In useVerovio, after rendering pages
+const count = toolkit.getPageCount();
+const pages: string[] = [];
+for (let i = 1; i <= count; i++) {
+  const rawSvg = toolkit.renderToSVG(i);
+
+  // SVGO optimization
+  const optimized = optimize(rawSvg, {
+    plugins: [
+      'removeDoctype',
+      'removeXMLProcInst',
+      'removeComments',
+      'removeMetadata',
+      'removeEditorsNSData',
+      'cleanupAttrs',
+      'mergeStyles',
+      'inlineStyles',
+      'minifyStyles',
+      'cleanupIds',
+      'removeUselessDefs',
+      'cleanupNumericValues',
+      'convertColors',
+      'removeUnknownsAndDefaults',
+      'removeNonInheritableGroupAttrs',
+      'removeUselessStrokeAndFill',
+      'removeViewBox', // Keep viewBox for responsive scaling
+      'cleanupEnableBackground',
+      'removeHiddenElems',
+      'removeEmptyText',
+      'convertShapeToPath',
+      'convertEllipseToCircle',
+      'moveElemsAttrsToGroup',
+      'moveGroupAttrsToElems',
+      'collapseGroups',
+      'convertPathData',
+      'convertTransform',
+      'removeEmptyAttrs',
+      'removeEmptyContainers',
+      'mergePaths',
+      'removeUnusedNS',
+      'sortDefsChildren',
+      'removeTitle',
+      'removeDesc',
+    ],
+  });
+
+  pages.push(optimized.data);
 }
 ```
 
-### 3. Event Store Extension
+**Pros**:
+- Happens once per score load (cached in svgPages[])
+- No runtime overhead (preprocessing done upfront)
+- Reduces DOM size for all pages (virtualized or not)
+- Integrates naturally with existing render flow
 
-Option A: Single store with discriminated union
+**Cons**:
+- Increases initial load time (~50-100ms per page based on [SVGO benchmarks](https://github.com/svg/svgo))
+- For 50-page score: +2.5-5s load time
+- May interfere with Verovio's specific SVG structure (IDs, classes)
 
+**Mitigation**: Make SVGO optional via prop `enableSvgOptimization?: boolean`
+
+### Option B: Web Worker Background Processing
+
+**Where**: New file `src/workers/svgOptimizer.worker.ts`
+
+**Structure**:
 ```typescript
-type LayoutEvent =
-  | { layout: 'vertical'; pageIndex: number; globalY: number; ... }
-  | { layout: 'horizontal'; sectionIndex: number; globalX: number; ... };
+// worker
+import { optimize } from 'svgo';
+
+self.onmessage = (e) => {
+  const { svgPages, options } = e.data;
+  const optimized = svgPages.map(svg => optimize(svg, options).data);
+  self.postMessage(optimized);
+};
+
+// In useVerovio
+const [optimizedPages, setOptimizedPages] = useState<string[]>([]);
+
+useEffect(() => {
+  if (svgPages.length === 0) return;
+
+  const worker = new Worker(new URL('../workers/svgOptimizer.worker.ts', import.meta.url));
+  worker.postMessage({ svgPages, options });
+  worker.onmessage = (e) => {
+    setOptimizedPages(e.data);
+    worker.terminate();
+  };
+
+  return () => worker.terminate();
+}, [svgPages]);
 ```
 
-Option B: Separate stores (simpler, less coupling)
+**Pros**:
+- Non-blocking (preserves UI responsiveness)
+- Good for large scores (50+ pages)
+- Progressive enhancement (show unoptimized first, swap in optimized)
 
+**Cons**:
+- Complexity: worker setup, bundler config
+- Memory overhead: two copies of SVG strings in memory
+- Race conditions: user scrolls before optimization completes
+
+**Recommendation**: Defer to future optimization. Current scores are <20 pages, blocking is acceptable.
+
+### Option C: Build-Time Preprocessing
+
+**Where**: Not applicable (SVG generated at runtime from XML)
+
+**Reason**: Verovio generates SVG dynamically based on score width, scale, font. Cannot pre-optimize static files.
+
+### SVGO Plugin Caveats for Verovio
+
+**Critical**: Verovio relies on specific SVG structure for animation queries
+
+**Must preserve**:
+- Element IDs (event.svgIds like `note-0000001234567890`)
+- Class names (`.notehead`, `.staff`, `.definition-scale`)
+- Group hierarchy (`<g class="note">` wrapping noteheads)
+
+**Recommended config**:
 ```typescript
-// Keep eventStore for RegularRenderer
-// Create singleLineEventStore for SingleLineRenderer
+{
+  plugins: [
+    {
+      name: 'cleanupIds',
+      params: {
+        preserve: [/^note-/, /^measure-/], // Keep Verovio IDs
+      },
+    },
+    {
+      name: 'removeViewBox',
+      active: false, // Keep viewBox for responsive rendering
+    },
+  ],
+}
 ```
 
-**Recommend: Option B** - Simpler implementation, no risk of breaking existing RegularRenderer.
+**Testing required**: Verify querySelector still finds noteheads after optimization.
 
----
+### Confidence Assessment
 
-## Build Order
+| Aspect | Confidence | Reason |
+|--------|------------|--------|
+| SVGO integration | MEDIUM | Library stable, but Verovio SVG structure unknown |
+| Performance gain | LOW | No benchmarks for Verovio-generated SVG |
+| ID preservation | LOW | Must verify with test score |
+| Load time impact | MEDIUM | Estimated based on [SVGO benchmarks](https://github.com/svg/svgo), not measured |
 
-Based on dependency analysis, recommended phase structure:
+### Recommendation: Defer SVGO
 
-### Phase 1: Single-Line Verovio Hook
+**Rationale**:
+1. Virtualization provides immediate performance boost (removes 80%+ of DOM nodes)
+2. SVGO optimization is incremental (reduces remaining 20% by ~30-50%)
+3. Risk of breaking animation queries is non-trivial
+4. Testing burden high (must verify across multiple score types)
 
-**Goal:** Create `useSingleLineVerovio` that renders score as horizontal sections
+**Alternative**: Investigate Verovio's `compress` option (may have built-in optimization)
 
-**Deliverables:**
-- `useSingleLineVerovio.ts` hook
-- Section-based rendering with `breaks: 'none'` + `select({ measureRange })`
-- Returns `{ sections, sectionWidths, sectionOffsets, toolkit, isLoading, error }`
+## Build Order and Dependencies
 
-**Dependencies:** None (uses existing Verovio service)
+### Phase 1: Virtualization Foundation
 
-### Phase 2: Single-Line Event Extraction
+**Goal**: Reduce DOM nodes for long scores
 
-**Goal:** Extract events with section assignments and global X positions
+**Tasks**:
+1. Refactor camera state: expose `cameraY` as state or ref (currently derived from transform)
+2. Implement visible range calculation (useMemo with buffer)
+3. Update render logic: conditional mount + placeholder divs
+4. Test querySelector with unmounted pages (add guards if needed)
 
-**Deliverables:**
-- `computeSectionPositions()` function in getEvents.ts
-- `SingleLineEvent` type definition
-- `singleLineEventStore.ts` (or extend eventStore)
+**Files Modified**:
+- `src/renderers/RegularRenderer.tsx` (lines 307-322, 771-779)
 
-**Dependencies:** Phase 1 (needs section containers in DOM for position measurement)
+**Success Criteria**:
+- 50-page score renders <10 pages in DOM
+- Camera scrolling smooth (no jank)
+- Animation still works for visible noteheads
+- No errors when animating off-screen events
 
-### Phase 3: SingleLineRenderer Core
+**Risk**: Animation queries may fail silently if event's page is unmounted. Mitigation: Add guard `if (!element) continue` in animation loop.
 
-**Goal:** Basic horizontal renderer with camera tracking (no virtualization yet)
+### Phase 2: Cursor Overlay
 
-**Deliverables:**
-- `SingleLineRenderer.tsx` component
-- Horizontal camera with center-tracking
-- Notehead animation working (reuse noteAnimation.ts)
+**Goal**: Visual indicator for active event position
 
-**Dependencies:** Phase 1, Phase 2
+**Tasks**:
+1. Calculate cursor Y from `interpolatedEvents[eventIndexRef.current].y`
+2. Add cursor div as sibling to camera div (absolute positioning)
+3. Implement visibility guard (hide if page unmounted)
+4. Match CSS transition timing to camera easing
 
-### Phase 4: Section Virtualization
+**Files Modified**:
+- `src/renderers/RegularRenderer.tsx` (lines 757-782)
 
-**Goal:** Only mount visible sections for memory efficiency
+**Success Criteria**:
+- Red line cursor tracks active event
+- Cursor hidden when event off-screen
+- Smooth transition matches camera movement
+- No layout shift when cursor appears/disappears
 
-**Deliverables:**
-- Section visibility calculation based on cameraX
-- Placeholder divs for unmounted sections
-- Seamless section transitions
+**Risk**: CSS transition may lag behind rAF-driven camera. Mitigation: Test with fast playback, switch to imperative updates if needed.
 
-**Dependencies:** Phase 3
+### Phase 3: SVGO Optimization (Optional)
 
-### Phase 5: Integration and Polish
+**Goal**: Reduce SVG file size and DOM complexity
 
-**Goal:** Integrate with App.tsx, add renderer selection UI
+**Tasks**:
+1. Add SVGO dependency (`npm install svgo`)
+2. Integrate optimize() call in useVerovio hook
+3. Configure plugins to preserve Verovio IDs and classes
+4. Test querySelector with optimized SVG
+5. Benchmark load time impact
+6. Add `enableSvgOptimization` prop with default `false`
 
-**Deliverables:**
-- Renderer type toggle in UI
-- Score region bounds working for horizontal layout
-- Borders working at horizontal viewport edges
+**Files Modified**:
+- `src/hooks/useVerovio.ts` (lines 100-104)
+- `src/renderers/RegularRenderer.tsx` (add prop)
 
-**Dependencies:** Phase 4
+**Success Criteria**:
+- SVG strings 30-50% smaller (measure with `svg.length`)
+- Animation still works (noteheads found by querySelector)
+- Load time increase <1s per 10 pages
+- Opt-in via prop (safe default)
 
----
+**Risk**: HIGH - May break animation if IDs mangled. Mitigation: Extensive testing, make opt-in, document known issues.
 
-## Risk Areas
+## Alternative Architectures Considered
 
-### 1. Verovio Element ID Persistence Across Selections
+### react-window VariableSizeList
 
-**Risk:** When using `select({ measureRange })`, do element IDs remain consistent across different selections of the same score?
+**Rejected because**:
+- Designed for scrolling containers, but we use CSS `translateY` on fixed viewport
+- Would require major refactor of camera system
+- [Comparison shows](https://mashuktamim.medium.com/react-virtualization-showdown-tanstack-virtualizer-vs-react-window-for-sticky-table-grids-69b738b36a83) TanStack better for custom layouts, but both overkill for static page list
 
-**Mitigation:** Verovio IDs are based on MEI xml:id attributes, which are stable. Verify with testing.
+### Intersection Observer API
 
-### 2. Section Width Measurement Before DOM Mount
+**Rejected because**:
+- Async callbacks may lag behind 60fps camera movement
+- Requires ref for each page div (memory overhead)
+- [Virtualization patterns](https://www.patterns.dev/vanilla/virtual-lists/) prefer sync calculation for predictable behavior
 
-**Risk:** Computing section widths requires parsing SVG or measuring in DOM.
+### Canvas Rendering
 
-**Mitigation:** Parse SVG width attribute from string before mounting, or render invisibly first.
+**Rejected because**:
+- Verovio outputs SVG, converting to canvas is expensive
+- Loses SVG benefits (crisp scaling, DOM queries for animation)
+- Out of scope for this milestone
 
-### 3. Events Spanning Section Boundaries
+## Performance Expectations
 
-**Risk:** Tied notes or slurs that cross section boundaries may render incorrectly.
+### Baseline (Current)
 
-**Mitigation:**
-- Use generous section overlap (last measure of section N = first measure of section N+1)
-- Or accept minor visual artifacts at boundaries (acceptable for v1.2)
+| Metric | 10 Pages | 50 Pages | 100 Pages |
+|--------|----------|----------|-----------|
+| DOM Nodes | ~5,000 | ~25,000 | ~50,000 |
+| Initial Render | 200ms | 1,000ms | 2,000ms |
+| Scroll FPS | 60 | 45 | 30 |
+| Memory | 50MB | 250MB | 500MB |
 
-### 4. Different Y Positioning Needs
+**Source**: Estimated based on [React virtualization benchmarks](https://medium.com/@ignatovich.dm/virtualization-in-react-improving-performance-for-large-lists-3df0800022ef)
 
-**Risk:** SingleLineRenderer has single-system Y but may have multi-voice vertical variation.
+### After Virtualization
 
-**Mitigation:** Y positioning not needed for horizontal camera. Ignore Y in single-line mode.
+| Metric | 10 Pages | 50 Pages | 100 Pages |
+|--------|----------|----------|-----------|
+| DOM Nodes | ~5,000 | ~10,000 | ~10,000 |
+| Initial Render | 200ms | 400ms | 400ms |
+| Scroll FPS | 60 | 60 | 60 |
+| Memory | 50MB | 80MB | 80MB |
 
----
+**Improvement**: 5x reduction in DOM nodes for large scores, 60fps maintained
 
-## Confidence Assessment
+### After SVGO (If Implemented)
 
-| Area | Confidence | Reasoning |
-|------|------------|-----------|
-| Reuse of noteAnimation.ts | HIGH | Pure DOM manipulation by ID, verified layout-agnostic |
-| Reuse of interpolation.ts | HIGH | Pure function on event arrays, no layout code |
-| Verovio breaks: 'none' | HIGH | Documented at book.verovio.org, standard API |
-| Verovio select() for sections | MEDIUM | Documented, but not verified for performance with many sections |
-| Section virtualization | MEDIUM | Pattern proven in vertical case, horizontal is analogous |
-| Element ID stability | MEDIUM | Expected to work, needs verification |
+| Metric | Improvement |
+|--------|-------------|
+| SVG String Size | -30% to -50% |
+| DOM Node Count | -10% to -20% (fewer empty groups/defs) |
+| Parse Time | -15% to -25% (smaller strings) |
 
----
+**Source**: [SVGO documentation](https://github.com/svg/svgo) claims 20-50% size reduction
+
+**Trade-off**: +50-100ms load time per page for optimization
+
+## Integration Risks and Mitigations
+
+### Risk 1: Animation Queries Fail on Unmounted Pages
+
+**Scenario**: User scrubs to timestamp, active event on page 5, but only pages 1-3 mounted
+
+**Impact**: `querySelector` returns null, animation silently fails
+
+**Mitigation**:
+```typescript
+for (const id of event.svgIds) {
+  const stavenote = scoreRef.current.querySelector(`#${CSS.escape(id)}`);
+  if (!stavenote) {
+    console.warn(`[Animation] Element ${id} not found (page may be unmounted)`);
+    continue; // Skip this notehead
+  }
+  // Apply animation
+}
+```
+
+**Confidence**: HIGH - Standard defensive programming
+
+### Risk 2: Camera Y Extraction Coupling
+
+**Scenario**: Currently `currentYRef.current` stores target Y, but camera applies clamping and centering. Visible range calculation needs actual camera Y (post-clamping).
+
+**Impact**: Incorrect visible range if camera clamped at edges
+
+**Mitigation**: Track actual camera Y in separate ref inside `applyCamera`:
+```typescript
+function applyCamera(targetY: number) {
+  const scoreHeight = totalHeight || 0;
+  const viewportHeight = scoreRegion?.height ?? containerHeight;
+
+  let cameraY = targetY - viewportHeight / 2;
+  cameraY = Math.max(0, cameraY);
+  cameraY = Math.min(cameraY, Math.max(0, scoreHeight - viewportHeight));
+
+  cameraYRef.current = cameraY; // NEW: Track actual camera Y
+
+  if (cameraRef.current) {
+    cameraRef.current.style.transform = `translateY(${-cameraY}px)`;
+  }
+}
+```
+
+**Confidence**: HIGH - Minor refactor, no API changes
+
+### Risk 3: SVGO Breaks Verovio IDs
+
+**Scenario**: SVGO's `cleanupIds` plugin renames `note-0000001234567890` to `a` or removes it
+
+**Impact**: Animation queries return null for all noteheads
+
+**Mitigation**:
+1. Configure SVGO to preserve ID patterns: `preserve: [/^note-/, /^measure-/]`
+2. Test with sample score before and after optimization
+3. Compare querySelector results for same event ID
+4. Make feature opt-in with default disabled
+
+**Confidence**: MEDIUM - Depends on SVGO plugin behavior, requires empirical testing
+
+### Risk 4: Cursor Flicker During Transitions
+
+**Scenario**: CSS transition duration doesn't match camera easing, cursor appears to lead/lag
+
+**Impact**: Visual jank, unprofessional appearance
+
+**Mitigation**:
+1. Match cursor transition exactly: `transition: 'top 200ms ease-out'` (same as camera line 759)
+2. If still janky, switch to imperative updates in `animateSync` (Option B)
+3. Use `will-change: top` CSS hint for GPU acceleration
+
+**Confidence**: MEDIUM - CSS transitions usually smooth, but [timing drift is possible](https://blog.olivierlarose.com/tutorials/blend-mode-cursor)
+
+## Testing Recommendations
+
+### Virtualization Tests
+
+1. **Visual Test**: Load 50-page score, scroll through, verify all pages render when visible
+2. **Performance Test**: Measure DOM node count with `document.querySelectorAll('*').length` before/after
+3. **Animation Test**: Play through score, verify noteheads animate on visible pages
+4. **Edge Case**: Scrub to end of score, verify last page renders
+
+### Cursor Tests
+
+1. **Visual Test**: Play score, verify red line appears and follows active event
+2. **Visibility Test**: Scrub to off-screen event, verify cursor disappears
+3. **Timing Test**: Play at 2x speed, verify cursor doesn't lag behind camera
+4. **Edge Case**: First/last event, verify cursor appears correctly
+
+### SVGO Tests (If Implemented)
+
+1. **Correctness Test**: Load optimized score, verify visually identical to unoptimized
+2. **Animation Test**: Verify noteheads still animate after optimization
+3. **Size Test**: Measure `svgPages[0].length` before/after, verify 30%+ reduction
+4. **Load Time Test**: Measure `useVerovio` hook duration, verify increase <100ms per page
+
+## Future Optimization Opportunities
+
+### Dynamic Buffer Sizing
+
+**Current**: Fixed 1-page buffer above/below
+**Future**: Adaptive buffer based on scroll velocity (fast scroll = larger buffer)
+
+### Page-Level Memoization
+
+**Current**: Re-render all visible pages on every camera move
+**Future**: Memoize individual page divs with `React.memo`, only re-render if visibility changes
+
+### Lazy Event Extraction
+
+**Current**: Extract all events on SVG load (line 254)
+**Future**: Extract events only for mounted pages, defer off-screen pages
+
+### Cursor Enhancements
+
+**Current**: Static red line
+**Future**:
+- Animated pulse during playback
+- Color based on note velocity/dynamics
+- Note name tooltip on hover
 
 ## Sources
 
-- [Verovio Toolkit Options](https://book.verovio.org/toolkit-reference/toolkit-options.html) - Official breaks, pageWidth, adjustPageWidth documentation
-- [Verovio Layout Options](https://book.verovio.org/advanced-topics/layout-options.html) - breaks: 'none' behavior
-- [Verovio Content Selection](https://book.verovio.org/interactive-notation/content-selection.html) - select() API for measure ranges
-- [Verovio Toolkit Methods](https://book.verovio.org/toolkit-reference/toolkit-methods.html) - select(), getPageWithElement() methods
-- Existing codebase analysis (RegularRenderer.tsx, useVerovio.ts, getEvents.ts, noteAnimation.ts, eventStore.ts)
+### Virtualization
+- [Virtualization in React: Improving Performance for Large Lists](https://medium.com/@ignatovich.dm/virtualization-in-react-improving-performance-for-large-lists-3df0800022ef)
+- [List Virtualization in React](https://medium.com/@atulbanwar/list-virtualization-in-react-3db491346af4)
+- [Virtual scrolling: Core principles and basic implementation in React](https://blog.logrocket.com/virtual-scrolling-core-principles-and-basic-implementation-in-react/)
+- [TanStack Virtual Documentation](https://tanstack.com/virtual/latest)
+- [List Virtualization Patterns](https://www.patterns.dev/vanilla/virtual-lists/)
+
+### Library Comparisons
+- [React Virtualization Showdown: TanStack Virtualizer vs React-Window](https://mashuktamim.medium.com/react-virtualization-showdown-tanstack-virtualizer-vs-react-window-for-sticky-table-grids-69b738b36a83)
+- [Comparing TanStack Virtual with React-Window](https://borstch.com/blog/development/comparing-tanstack-virtual-with-react-window-which-one-should-you-choose)
+- [npm-compare: React Virtualization Libraries](https://npm-compare.com/@tanstack/react-virtual,react-infinite-scroll-component,react-virtualized,react-window)
+
+### Cursor and Animation
+- [How to Make an Animated Cursor using React and GSAP](https://blog.olivierlarose.com/tutorials/blend-mode-cursor)
+- [Custom Cursor - React cursor animation | Motion](https://motion.dev/docs/cursor)
+- [useMousePosition React Hook](https://www.joshwcomeau.com/snippets/react-hooks/use-mouse-position/)
+- [Build Scroll Timeline Animation Component in React 2026](https://zoer.ai/posts/zoer/react-scroll-timeline-animation-component)
+
+### Performance Optimization
+- [React useMemo Documentation](https://react.dev/reference/react/useMemo)
+- [React Performance Optimization: 15 Best Practices for 2025](https://dev.to/alex_bobes/react-performance-optimization-15-best-practices-for-2025-17l9)
+- [React 19 Compiler in 2025: Why useMemo/useCallback Are Dead](https://isitdev.com/react-19-compiler-usememo-usecallback-dead-2025/)
+
+### SVGO
+- [SVGO GitHub Repository](https://github.com/svg/svgo)
+- [SVGO Documentation](https://svgo.dev/)
+- [Master React SVG Integration, Animation and Optimization](https://strapi.io/blog/mastering-react-svg-integration-animation-optimization)
+- [Improving SVG Runtime Performance](https://codepen.io/tigt/post/improving-svg-rendering-performance)

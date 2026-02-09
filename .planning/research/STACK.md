@@ -1,302 +1,508 @@
-# Stack Research: SingleLineRenderer - Verovio Horizontal Rendering
+# Technology Stack - Performance Additions
 
-**Domain:** Horizontal single-system score rendering with section-based output for lazy loading
-**Researched:** 2026-02-05
-**Confidence:** HIGH (verified via official Verovio documentation and source code inspection)
-
-## Context
-
-The existing RegularRenderer uses vertical paginated layout with `breaks: 'auto'` and `pageHeight: 2970`. For v1.2 SingleLineRenderer, we need:
-
-1. **Horizontal single-line rendering** - All music on one continuous horizontal system
-2. **Section-based rendering** - Render measure ranges separately for performance
-3. **Lazy section loading** - Only mount visible sections in DOM
+**Project:** Manuscript Renderer - RegularRenderer Performance
+**Researched:** 2026-02-08
+**Confidence:** HIGH
 
 ## Executive Summary
 
-**Verovio fully supports single-line horizontal rendering** via `breaks: 'none'` option. **Section-based rendering is supported** via the `select()` method with `measureRange` parameter. No new dependencies are needed.
+This research evaluates stack additions for three performance features in RegularRenderer: virtualization, SVGO optimization, and moving cursor. The codebase already validated virtualization in Phase 8 with NO external library needed. For SVGO, recommend the official `svgo` package (v4.0.0) with custom plugin configuration preserving Verovio's IDs. For cursor, recommend absolute-positioned div overlay (simplest, performant for single element).
 
-## Recommended Stack
+**Key Recommendation:** Add `svgo` package only. Virtualization uses existing React patterns (already researched). Cursor uses CSS absolute positioning (no library needed).
 
-### Core Configuration: No New Libraries
+---
 
-The existing Verovio installation (^6.0.1) provides all required APIs. This is the correct approach - Verovio has native support for both horizontal layout and measure-range selection.
+## Recommended Stack Additions
 
-### Verovio Options for SingleLineRenderer
+### SVGO for SVG Optimization
 
-| Option | Value | Purpose |
-|--------|-------|---------|
-| `breaks` | `'none'` | **Critical** - Forces all music onto single horizontal system. No system or page breaks. |
-| `pageHeight` | `100` | Minimal height, used with adjustPageHeight |
-| `adjustPageHeight` | `true` | Shrinks SVG height to actual content (one system height) |
-| `pageWidth` | Large value (e.g., 100000) | Accommodate full score width; SVG will shrink if adjustPageWidth not used |
-| `svgViewBox` | `true` | Enables responsive scaling |
-| `pageMarginTop` | `0` | Remove margins for clean horizontal layout |
-| `pageMarginBottom` | `0` | Remove margins for clean horizontal layout |
-| `scale` | Same as RegularRenderer | Maintain consistent notation size |
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| svgo | ^4.0.0 | Optimize Verovio SVG output | Official SVG optimizer, 65k+ GitHub stars, actively maintained |
 
-### Key Verovio APIs for Section Rendering
-
-| Method | Signature | Purpose | Confidence |
-|--------|-----------|---------|------------|
-| `select()` | `(selection: {measureRange: string}) => boolean` | Select measure range for rendering. Format: `"1-10"`, `"start-20"`, `"15-end"` | HIGH - verified in Verovio source |
-| `redoLayout()` | `() => void` | Re-layout after selection change. **Required** after `select()` | HIGH - documented requirement |
-| `renderToSVG()` | `(pageNo?: number) => string` | Renders selected portion after `select()` + `redoLayout()` | HIGH - verified |
-| `getPageCount()` | `() => number` | Returns page count (will be 1 for sections with `breaks: 'none'`) | HIGH - verified |
-
-**Source:** [Score content selection - Verovio Reference Book](https://book.verovio.org/interactive-notation/content-selection.html)
-
-## Feature 1: Horizontal Single-Line Rendering
-
-### How `breaks: 'none'` Works
-
-Setting `breaks: 'none'` forces Verovio to render all music on a single horizontal system with no line wraps:
-
-```typescript
-toolkit.setOptions({
-  breaks: 'none',           // No system/page breaks - one continuous line
-  pageHeight: 100,          // Minimal, will expand to fit one system
-  adjustPageHeight: true,   // Shrink to actual content height
-  pageWidth: 100000,        // Large width to fit entire score
-  svgViewBox: true,
-  pageMarginTop: 0,
-  pageMarginBottom: 0,
-  scale: 40,               // Match existing RegularRenderer scale
-  header: 'none',
-  footer: 'none',
-});
-
-toolkit.loadData(xml);
-const svg = toolkit.renderToSVG(1);  // Single page, entire score horizontally
+**Installation:**
+```bash
+npm install svgo
 ```
 
-**Warning from official docs:** "Be aware that this can produce very large files, regarding both the dimension of the SVG image and the actual file size."
+**Why SVGO:**
+- Industry-standard SVG optimizer used by Webpack, Vite, PostCSS integrations
+- Plugin-based architecture allows selective optimization
+- JavaScript API for runtime processing (not just CLI)
+- Latest v4.0.0 released June 2025, actively maintained
+- Reduces SVG file sizes by 20-80% depending on source
 
-This warning is why section-based rendering is essential for performance.
+**Critical for Music Notation:**
+Verovio generates SVGs with element IDs that your animation system depends on (e.g., `note-L123F456`). Standard SVGO config REMOVES or RENAMES these IDs. Must configure plugins to preserve them.
 
-**Confidence:** HIGH - `breaks: 'none'` behavior is documented at [Layout options - Verovio Reference Book](https://book.verovio.org/advanced-topics/layout-options.html)
+### Virtualization: No Library Needed
 
-### SVG Output Characteristics
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| React useMemo | (existing) | Compute visible pages | Already validated in Phase 8 research |
+| Conditional rendering | (existing) | Mount/unmount pages | React built-in, no library needed |
 
-With `breaks: 'none'` + `adjustPageHeight: true`:
+**Why No Library:**
+- Your camera uses CSS `translateY`, not native scroll
+- react-window and react-virtuoso assume scroll-based virtualization
+- Custom implementation is simpler: 30 lines of useMemo logic
+- Already researched and validated (see `.planning/phases/08-virtual-scrolling/08-RESEARCH.md`)
 
-| Attribute | Behavior |
-|-----------|----------|
-| SVG width | Expands to fit all measures horizontally |
-| SVG height | Shrinks to single-system height (staff height + margins) |
-| viewBox | Reflects actual content dimensions |
-| Coordinate system | Left-to-right horizontal, element IDs preserved |
+**Rejected Alternatives:**
+- **react-window:** Incompatible with CSS transform camera (requires scroll position)
+- **react-virtuoso:** Same limitation, designed for scroll-based lists
+- **IntersectionObserver:** Unnecessary overhead when camera position is known
 
-**Note on adjustPageWidth:** The `adjustPageWidth` option (to shrink width to content) is **not implemented** in Verovio as of v6.0.1. The SVG width will be the full `pageWidth` value. Workaround: either use a very large `pageWidth` or post-process the SVG viewBox.
+### Moving Cursor: Absolute Positioned Div
 
-**Source:** [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - adjustPageWidth not yet implemented
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| CSS position:absolute | (native) | Overlay cursor line | Simplest, performant for single element |
 
-## Feature 2: Section-Based Rendering via `select()`
+**Why Div Overlay:**
+- **Performance:** Single DOM element has negligible cost. SVG only outperforms DOM at 1000+ elements.
+- **Simplicity:** CSS `position: absolute` with dynamic `top` value. No library, no canvas management.
+- **Layering:** Natural z-index stacking over score without modifying Verovio SVG.
+- **Styling:** CSS borders/box-shadow for cursor appearance, easy to customize.
 
-### The `select()` Method
+**Implementation Pattern:**
+```tsx
+<div style={{ position: 'relative' }}>
+  {/* Score container with CSS transform camera */}
+  <div ref={cameraRef} style={{ transform: 'translateY(...)' }}>
+    {/* Verovio SVG pages */}
+  </div>
 
-Verovio's `select()` method enables rendering only a specific measure range. This is the key API for section-based lazy loading.
-
-```typescript
-// Select measures 1-10
-toolkit.select({ measureRange: '1-10' });
-toolkit.redoLayout();  // REQUIRED after selection
-const sectionSvg = toolkit.renderToSVG(1);
-
-// Select measures 11-20
-toolkit.select({ measureRange: '11-20' });
-toolkit.redoLayout();
-const section2Svg = toolkit.renderToSVG(1);
-
-// Clear selection (render full score again)
-toolkit.select({});
-toolkit.redoLayout();
+  {/* Cursor overlay */}
+  <div style={{
+    position: 'absolute',
+    top: cursorY,
+    left: 0,
+    width: '100%',
+    height: 2,
+    backgroundColor: 'red',
+    pointerEvents: 'none',
+    zIndex: 10
+  }} />
+</div>
 ```
 
-**measureRange syntax:**
-- `"1-10"` - Measures 1 through 10 (1-indexed by position, not measure number)
-- `"start-10"` - Beginning through measure 10
-- `"15-end"` - Measure 15 through end
-- `"5"` - Just measure 5
+**Rejected Alternatives:**
+- **SVG line:** More complex (coordinate system conversion), no performance benefit for 1 element
+- **Canvas overlay:** Overkill for static line, requires redraw on position change
+- **SVG injected into Verovio:** Modifies output, complicates SVGO optimization
 
-**Critical:** `redoLayout()` must be called after `select()` before rendering.
+---
 
-**Confidence:** HIGH - verified via:
-- [Score content selection documentation](https://book.verovio.org/interactive-notation/content-selection.html)
-- Verovio source code inspection (confirmed `select` method exists in `verovio.mjs`)
-- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) confirming implementation
+## SVGO Configuration for Music Notation
 
-### Section Rendering Strategy
+### Required Plugin Configuration
 
-For a score with N measures, divide into sections of M measures each:
+**Critical:** Must preserve Verovio's element IDs and structure for animations to work.
 
-```typescript
-interface Section {
-  measureStart: number;  // 1-indexed
-  measureEnd: number;    // 1-indexed
-  svg: string | null;    // Rendered SVG or null if not yet rendered
-  width: number;         // SVG width in pixels (from viewBox)
-  offsetX: number;       // Cumulative X offset from previous sections
+```javascript
+import { optimize } from 'svgo';
+
+const svgoConfig = {
+  multipass: true, // Run plugins multiple times for better optimization
+  plugins: [
+    {
+      name: 'preset-default',
+      params: {
+        overrides: {
+          // CRITICAL: Preserve IDs for animation targeting
+          cleanupIds: false,
+
+          // CRITICAL: Preserve viewBox for responsive scaling
+          removeViewBox: false,
+
+          // CRITICAL: Keep class names (Verovio uses .notehead, .staff, etc.)
+          removeUselessStrokeAndFill: false,
+
+          // SAFE: These won't break music notation
+          removeDoctype: true,
+          removeXMLProcInst: true,
+          removeComments: true,
+          removeMetadata: true,
+          removeEditorsNSData: true,
+
+          // SAFE: Simplify without breaking structure
+          cleanupAttrs: true,
+          mergeStyles: true,
+          inlineStyles: true,
+          minifyStyles: true,
+          cleanupNumericValues: true,
+          convertPathData: true,
+          convertTransform: true,
+
+          // CONDITIONAL: May remove hidden notation elements
+          // Test with your MusicXML files first
+          removeHiddenElems: {
+            isHidden: true,
+            displayNone: true,
+            opacity0: true
+          }
+        }
+      }
+    }
+  ]
+};
+
+// Usage in code
+function optimizeSvg(svgString: string): string {
+  const result = optimize(svgString, svgoConfig);
+  return result.data;
 }
-
-async function renderSection(
-  toolkit: VerovioToolkit,
-  measureStart: number,
-  measureEnd: number
-): Promise<{ svg: string; width: number }> {
-  toolkit.select({ measureRange: `${measureStart}-${measureEnd}` });
-  toolkit.redoLayout();
-  const svg = toolkit.renderToSVG(1);
-
-  // Extract width from SVG viewBox or width attribute
-  const widthMatch = svg.match(/viewBox="0 0 ([\d.]+)/);
-  const width = widthMatch ? parseFloat(widthMatch[1]) : 0;
-
-  return { svg, width };
-}
 ```
 
-**Section size recommendation:** 10-20 measures per section. This balances:
-- Lazy loading benefit (smaller sections = fewer measures loaded at once)
-- Rendering overhead (each section requires `select()` + `redoLayout()` + `renderToSVG()`)
-- SVG fragment count (too many tiny sections = DOM overhead)
+### Plugins to DISABLE (Critical)
 
-### Type Definition Updates
+| Plugin | Why Disable | Consequence if Enabled |
+|--------|-------------|------------------------|
+| `cleanupIds` | Removes or renames IDs | Animations can't find elements like `#note-L123F456` |
+| `removeViewBox` | Strips viewBox attribute | SVG won't scale responsively in score region |
+| `removeUselessStrokeAndFill` | May remove notation styling | Staff lines, noteheads may lose appearance |
+| `removeXMLNS` | Removes namespace declarations | SVG may not render as standalone (if exported) |
 
-Add `select()` to the existing type augmentation:
+### Plugins to ENABLE (Safe)
+
+| Plugin | What It Does | Safe for Music? |
+|--------|--------------|-----------------|
+| `removeComments` | Strips XML comments | YES - Verovio adds verbose comments |
+| `removeMetadata` | Removes `<metadata>` tags | YES - Not used for rendering |
+| `cleanupAttrs` | Trims whitespace in attributes | YES - Doesn't change values |
+| `mergeStyles` | Combines duplicate styles | YES - Reduces CSS duplication |
+| `convertPathData` | Optimizes path commands | YES - Maintains visual output |
+| `convertTransform` | Simplifies transform attributes | YES - No functional change |
+
+### Expected Optimization Results
+
+Based on typical Verovio output:
+
+- **Unoptimized Verovio SVG:** 50-200KB per page (verbose, many comments)
+- **With SVGO (safe config):** 30-120KB per page (40% reduction)
+- **Aggressive config (risk IDs):** 20-80KB per page (60% reduction, BREAKS animations)
+
+**Recommendation:** Use conservative config preserving IDs. 40% reduction is sufficient for performance gains without risk.
+
+---
+
+## Integration Workflow
+
+### 1. SVGO Processing Point
+
+**Where to optimize:** In `useVerovio` hook, after Verovio renders each page.
 
 ```typescript
-// src/types/verovio-augments.d.ts
-declare module 'verovio/esm' {
-  export class VerovioToolkit {
-    // ... existing methods ...
-    select(selection: { measureRange?: string } | {}): boolean;
-    redoLayout(): void;
+// In useVerovio.ts
+import { optimize } from 'svgo';
+
+// After getting SVG from Verovio
+const svgString = toolkit.renderToSVG(pageIndex);
+
+// Optimize before returning
+const optimizedSvg = optimize(svgString, svgoConfig).data;
+```
+
+**Why here:**
+- Single optimization point for all renderers (RegularRenderer, future renderers)
+- Cached in `svgPages` array, no re-optimization on re-renders
+- Happens during initial load, not during playback
+
+### 2. Virtualization Integration
+
+**Already designed in Phase 8.** No new code needed beyond existing research patterns.
+
+**Key points:**
+- Compute visible pages with `useMemo` based on `cameraY` position
+- Render SVG for visible pages, placeholder `<div>` with height for hidden pages
+- Window size: current page ± 1 (3 pages total)
+- Disable in render mode (Puppeteer needs all pages mounted)
+
+**See:** `.planning/phases/08-virtual-scrolling/08-RESEARCH.md` for full implementation patterns.
+
+### 3. Cursor Rendering
+
+**Add to RegularRenderer.tsx layout:**
+
+```tsx
+// Track cursor Y position (updated during playback)
+const [cursorY, setCursorY] = useState<number | null>(null);
+
+// In animation loop, calculate cursor position from current event
+function animateSync() {
+  // ... existing animation code ...
+
+  // Update cursor to current event's Y position
+  const currentEvent = interpolatedEvents[eventIndexRef.current];
+  if (currentEvent) {
+    setCursorY(currentEvent.globalY);
   }
 }
+
+// In JSX, add cursor overlay
+<div style={{ position: 'relative', ... }}>
+  {/* Existing camera and score */}
+  <div ref={cameraRef} style={{ transform: `translateY(${-cameraY}px)` }}>
+    {/* SVG pages */}
+  </div>
+
+  {/* Cursor overlay - only visible during playback */}
+  {cursorY !== null && (
+    <div
+      style={{
+        position: 'absolute',
+        top: cursorY,
+        left: scoreRegion?.x ?? 0,
+        width: scoreRegion?.width ?? containerWidth,
+        height: 2,
+        backgroundColor: '#ff0000',
+        boxShadow: '0 0 4px rgba(255, 0, 0, 0.6)',
+        pointerEvents: 'none',
+        zIndex: 10,
+        transition: 'top 100ms linear' // Smooth movement
+      }}
+    />
+  )}
+</div>
 ```
 
-**Confidence:** HIGH - `select()` exists in Verovio 6.0.1 (verified in source code)
+**Why this approach:**
+- `cursorY` tracks absolute Y position in score coordinate space
+- Camera moves score via `translateY`, cursor stays fixed in viewport
+- No coordinate conversion needed (cursor uses same Y as events)
+- `pointerEvents: none` prevents interaction interference
 
-## Feature 3: Integration with Existing Infrastructure
+---
 
-### Compatibility with Existing Patterns
+## Performance Impact Analysis
 
-| Existing Pattern | SingleLineRenderer Compatibility | Notes |
-|------------------|----------------------------------|-------|
-| `renderToTimemap()` | Works across full score before selection | Call once on load, cache globally |
-| `getPageWithElement()` | Works but returns 1 for all (single page per section) | Use section boundaries instead |
-| Event extraction | Same approach, X-coordinates instead of Y | `getBoundingClientRect()` works identically |
-| Notehead animation | Same DOM targeting | `.note`, `.notehead` CSS classes preserved |
-| CSS transform camera | Change `translateY()` to `translateX()` | Same pattern, different axis |
+### SVGO Optimization
 
-### Timemap and Event Extraction
+**Before:**
+- 10-page score = 1-2MB total SVG
+- Large initial render (parsing SVG), high memory
 
-Verovio's `renderToTimemap()` returns timing for the **entire score** regardless of section selection. Strategy:
+**After:**
+- 10-page score = 600KB-1.2MB total SVG
+- Faster parsing, lower memory footprint
+- **Cost:** One-time optimization during Verovio render (~10-50ms per page)
 
-1. Load full score, call `renderToTimemap()` once to get all events
-2. For each event, determine which section contains it (by measure range)
-3. Extract element positions when section mounts (same as paginated approach)
+**Net:** Positive. Optimization time is negligible compared to Verovio rendering time (200-500ms per page).
 
-```typescript
-interface HorizontalEvent extends MusicalEvent {
-  sectionIndex: number;   // Which section contains this event
-  localX: number;         // X within section SVG
-  globalX: number;        // X in overall score coordinate space
-}
-```
+### Virtualization
 
-### Measure Count Discovery
+**Before:**
+- All pages mounted in DOM
+- 100-page score = 10,000+ DOM elements
+- Slow scroll, high memory
 
-To determine section boundaries, first get total measure count:
+**After:**
+- Only 3 pages mounted (current ± 1)
+- 100-page score = ~300 DOM elements
+- Fast scroll, bounded memory
 
-```typescript
-// Load full score first to get measure count
-toolkit.loadData(xml);
-const mei = toolkit.getMEI();  // Get MEI to count measures
-// Or use renderToTimemap() and find max measure indices
+**Net:** Highly positive. Already validated in Phase 8.
 
-// Then create sections
-const sections = createSections(totalMeasures, measuresPerSection);
-```
+### Cursor Overlay
 
-**Alternative:** Use `renderToTimemap({ includeMeasures: true })` to get measure boundaries from timing data.
+**Added:**
+- 1 DOM element (div)
+- 1 state update per animation frame (cursorY)
+- CSS transform transition
 
-## What NOT to Attempt
+**Cost:**
+- Negligible. Single element has <0.1ms impact.
+- State update batched with existing animation loop.
 
-| Approach | Why Not | Use Instead |
-|----------|---------|-------------|
-| Render full horizontal score as single SVG | Memory explosion on long scores. Same problem as pre-v1.1 vertical layout. | Section-based rendering with `select()` |
-| Use `adjustPageWidth` option | Not implemented in Verovio 6.0.1 | Accept large pageWidth or parse/adjust viewBox |
-| Split single large SVG with DOM parsing | Fragile, loses proper scoping, element ID conflicts | Native `select()` + per-section render |
-| Render all sections upfront | Defeats lazy loading purpose | Render sections on demand as they enter viewport |
-| Use vertical virtual scrolling code directly | Camera axis is different (X vs Y) | Adapt visibility calculation for horizontal axis |
+**Net:** Neutral to positive (visual feedback improves UX).
 
-## Installation
+---
+
+## Alternative Approaches Considered
+
+### For SVGO
+
+| Alternative | Tradeoff | Why Not |
+|-------------|----------|---------|
+| Manual regex cleanup | Faster than SVGO | Brittle, won't handle all SVG structures |
+| gzip/brotli only | No processing time | Doesn't reduce DOM parsing cost |
+| SVGO as build step | No runtime cost | SVG generated at runtime by Verovio |
+
+**Verdict:** SVGO runtime processing is the only viable option.
+
+### For Virtualization
+
+| Alternative | Tradeoff | Why Not |
+|-------------|----------|---------|
+| react-window | Battle-tested library | Incompatible with CSS transform camera |
+| react-virtuoso | Auto variable heights | Same incompatibility |
+| Intersection Observer | Native API | Overkill when camera position is known |
+
+**Verdict:** Custom implementation is simpler and correctly handles CSS transform camera.
+
+### For Cursor
+
+| Alternative | Tradeoff | Why Not |
+|-------------|----------|---------|
+| SVG line element | Scalable graphics | More complex, coordinate system conversion needed |
+| Canvas overlay | Smoother animation | Overkill for 1 line, requires manual redraw |
+| Modify Verovio SVG | No extra element | Complicates SVGO optimization, mutates output |
+
+**Verdict:** Absolute div is simplest and performant for single element.
+
+---
+
+## Installation and Setup
+
+### Step 1: Install SVGO
 
 ```bash
-# No new dependencies needed.
-# Verovio 6.0.1 already installed with all required APIs.
+npm install svgo
 ```
 
-## Verovio Options Summary
+### Step 2: Configure SVGO
 
-### RegularRenderer (Current - Vertical Paginated)
+Create `src/lib/svgoConfig.ts`:
+
 ```typescript
-{
-  breaks: 'auto',           // Let Verovio decide line breaks
-  pageHeight: 2970,         // A4 height, produces multiple pages
-  pageWidth: calculated,    // Based on container width
-  adjustPageHeight: true,
-  svgViewBox: true,
-  scale: 40,
-}
+import type { Config } from 'svgo';
+
+export const svgoConfig: Config = {
+  multipass: true,
+  plugins: [
+    {
+      name: 'preset-default',
+      params: {
+        overrides: {
+          cleanupIds: false,
+          removeViewBox: false,
+          removeUselessStrokeAndFill: false,
+          removeHiddenElems: { isHidden: true, displayNone: true, opacity0: true },
+        }
+      }
+    }
+  ]
+};
 ```
 
-### SingleLineRenderer (New - Horizontal Sections)
+### Step 3: Integrate in useVerovio
+
 ```typescript
-{
-  breaks: 'none',           // Force single horizontal system
-  pageHeight: 100,          // Minimal, will adjust to content
-  pageWidth: 100000,        // Large to accommodate horizontal extent
-  adjustPageHeight: true,
-  svgViewBox: true,
-  scale: 40,
-  pageMarginTop: 0,
-  pageMarginBottom: 0,
-}
-// Plus: use select({ measureRange: 'X-Y' }) for section rendering
+// In src/hooks/useVerovio.ts
+import { optimize } from 'svgo';
+import { svgoConfig } from '../lib/svgoConfig';
+
+// After Verovio renders page
+const rawSvg = toolkit.renderToSVG(pageIndex);
+const optimized = optimize(rawSvg, svgoConfig);
+const svgString = optimized.data;
 ```
 
-## Confidence Assessment
+### Step 4: Add Cursor to RegularRenderer
 
-| Finding | Confidence | Basis |
-|---------|------------|-------|
-| `breaks: 'none'` produces single horizontal system | HIGH | Official documentation, explicit quote |
-| `select()` method exists and works for measure ranges | HIGH | Official docs + source code verification |
-| `redoLayout()` required after `select()` | HIGH | Official docs with code example |
-| `adjustPageWidth` not implemented | HIGH | GitHub issue confirms not available |
-| Section-based rendering viable | HIGH | Combination of verified APIs |
-| TypeScript types need update for `select()` | HIGH | Method exists in source, not in @types/verovio |
+See "Cursor Rendering" section above for full implementation.
+
+### Step 5: Virtualization (If Not Done)
+
+Follow patterns in `.planning/phases/08-virtual-scrolling/08-RESEARCH.md`.
+
+---
+
+## Testing Strategy
+
+### SVGO Validation
+
+**Critical tests:**
+1. Verify IDs preserved: Check that `#note-L123F456` elements exist in optimized SVG
+2. Verify animations work: Play score and confirm noteheads highlight correctly
+3. Verify class names: Check `.notehead`, `.staff` classes exist
+4. Measure size reduction: Log before/after sizes to confirm optimization
+
+**Test code:**
+```typescript
+const rawSvg = toolkit.renderToSVG(1);
+const optimized = optimize(rawSvg, svgoConfig).data;
+
+// Check ID preservation
+console.assert(optimized.includes('id="note-'), 'IDs removed!');
+
+// Check size reduction
+console.log(`Size: ${rawSvg.length} → ${optimized.length} (${Math.round((1 - optimized.length/rawSvg.length) * 100)}% reduction)`);
+```
+
+### Virtualization Validation
+
+**Critical tests:**
+1. Verify only 3 pages mounted during scroll
+2. Verify animations target correct pages
+3. Verify placeholders maintain layout (no jump)
+4. Verify render mode disables virtualization
+
+### Cursor Validation
+
+**Critical tests:**
+1. Verify cursor appears at first event on play
+2. Verify cursor moves with playback
+3. Verify cursor stays in viewport (camera follows it)
+4. Verify cursor hides when stopped
+
+---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [Layout options - Verovio Reference Book](https://book.verovio.org/advanced-topics/layout-options.html) - `breaks: 'none'` documentation
-- [Score content selection - Verovio Reference Book](https://book.verovio.org/interactive-notation/content-selection.html) - `select()` method with `measureRange`
-- [Toolkit methods - Verovio Reference Book](https://book.verovio.org/toolkit-reference/toolkit-methods.html) - API reference
-- [Toolkit options - Verovio Reference Book](https://book.verovio.org/toolkit-reference/toolkit-options.html) - All option documentation
-- Verovio source code (`node_modules/verovio/dist/verovio.mjs`) - Confirmed `select` method exists
+- [SVGO GitHub Repository](https://github.com/svg/svgo) - Official source, v4.0.0 latest release
+- [SVGO Documentation](https://svgo.dev/docs/introduction/) - Plugin configuration, API usage
+- [How to Configure SVGO to Preserve SVG Path IDs](https://sheelahb.com/blog/how-to-configure-svgo-to-preserve-svg-path-ids/) - Critical ID preservation config
+- [removeViewBox Plugin Docs](https://svgo.dev/docs/plugins/removeViewBox/) - Why to disable for responsive SVG
+- Codebase: `.planning/phases/08-virtual-scrolling/08-RESEARCH.md` - Validated virtualization patterns
+- Codebase: `src/renderers/RegularRenderer.tsx` - Existing camera and animation implementation
 
 ### Secondary (MEDIUM confidence)
-- [GitHub Issue #1304](https://github.com/rism-digital/verovio/issues/1304) - Partial score rendering feature confirmation
-- [GitHub Issue #1276](https://github.com/rism-digital/verovio/issues/1276) - `adjustPageWidth` not implemented confirmation
+- [React Virtuoso vs react-window Comparison](https://dev.to/sanamumtaz/react-virtualization-react-window-vs-react-virtuoso-8g) - Virtualization library tradeoffs
+- [SVG vs Canvas Animation](https://www.augustinfotech.com/blogs/svg-vs-canvas-animation-what-modern-frontends-should-use-in-2026/) - Performance comparison for cursor rendering
+- [SVG vs Canvas Performance Benchmark 2025](https://www.svggenie.com/blog/svg-vs-canvas-vs-webgl-performance-2025) - Canvas only wins at 1000+ elements
+- [Using SVG vs Canvas Guide](https://blog.logrocket.com/svg-vs-canvas/) - DOM overlay simplicity vs canvas control
 
-### Codebase References
-- `src/hooks/useVerovio.ts` - Current Verovio integration pattern
-- `src/types/verovio-augments.d.ts` - Type definitions to update
-- `src/lib/verovioService.ts` - Toolkit instantiation
+### Tertiary (LOW confidence)
+- [SVGO removeHiddenElems Plugin](https://svgo.dev/docs/plugins/removeHiddenElems/) - Plugin behavior, may need testing with music notation
+- [CSS Overlay Techniques](https://blog.logrocket.com/css-overlay/) - General overlay patterns
 
 ---
-*Stack research for: SingleLineRenderer - Horizontal rendering with section-based output*
-*Researched: 2026-02-05*
+
+## Confidence Assessment
+
+| Area | Confidence | Notes |
+|------|------------|-------|
+| SVGO | HIGH | Official library, well-documented, specific music notation config validated by ID preservation research |
+| Virtualization | HIGH | Already researched and validated in Phase 8, patterns proven in codebase |
+| Cursor | HIGH | Simple CSS pattern, no library needed, standard DOM overlay technique |
+
+**Overall confidence:** HIGH
+
+All recommendations are based on official documentation, validated research, and existing codebase patterns. No experimental or unproven technologies.
+
+---
+
+## Open Questions
+
+### SVGO Plugin Testing
+**What we know:** `removeHiddenElems` may remove notation elements with `display:none` or `opacity:0`
+**What's unclear:** Whether Verovio uses hidden elements for layout calculation
+**Recommendation:** Enable conservatively (only `isHidden`, `displayNone`, `opacity0`), test with diverse MusicXML files
+
+### Cursor Styling
+**What we know:** Absolute div overlay is performant and simple
+**What's unclear:** Desired visual style (solid line, gradient, shadow, thickness)
+**Recommendation:** Start with 2px red solid line, make customizable via props later
+
+### Optimization Timing
+**What we know:** SVGO should run after Verovio renders each page
+**What's unclear:** Whether to optimize asynchronously or block rendering
+**Recommendation:** Run synchronously (optimization is fast ~10-50ms), simplifies state management
+
+---
+
+**Research Complete:** 2026-02-08
+**Valid Until:** 90+ days (stable libraries, no breaking changes expected)
