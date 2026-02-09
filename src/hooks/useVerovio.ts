@@ -17,6 +17,9 @@ export interface UseVerovioResult {
   error: string | null;
 }
 
+// Regex for viewBox with arbitrary x/y/w/h values (for trimming)
+const VIEWBOX_REGEX = /viewBox="([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"/;
+
 function extractPageHeight(svgString: string): number {
   const match = svgString.match(HEIGHT_REGEX);
   if (match) return parseFloat(match[1]);
@@ -24,6 +27,42 @@ function extractPageHeight(svgString: string): number {
   const vbMatch = svgString.match(VIEWBOX_HEIGHT_REGEX);
   if (vbMatch) return parseFloat(vbMatch[1]);
   return 0;
+}
+
+/**
+ * Trim the top margin of a page SVG by adjusting the viewBox to start
+ * at the first system's Y position. This removes Verovio's internal
+ * "half staff space" padding above the first system on pages 2+,
+ * making pages stack flush with no visible seam.
+ *
+ * Only applied to pages 2+ (first page keeps its natural top margin).
+ */
+function trimPageTopMargin(svgString: string): string {
+  // Find the first <g class="system"> element's transform to detect top margin
+  // Verovio system elements have transform="translate(X, Y)" where Y is the top margin
+  const systemMatch = svgString.match(
+    /<g\s+class="system"[^>]*transform="translate\(([\d.]+),\s*([\d.]+)\)"/
+  );
+  if (!systemMatch) return svgString;
+
+  const systemY = parseFloat(systemMatch[2]);
+  if (systemY <= 0) return svgString;
+
+  // Adjust viewBox to start at systemY (removing top margin)
+  const vbMatch = svgString.match(VIEWBOX_REGEX);
+  if (!vbMatch) return svgString;
+
+  const vbX = parseFloat(vbMatch[1]);
+  const vbY = parseFloat(vbMatch[2]);
+  const vbW = parseFloat(vbMatch[3]);
+  const vbH = parseFloat(vbMatch[4]);
+
+  const newVbY = vbY + systemY;
+  const newVbH = vbH - systemY;
+
+  return svgString
+    .replace(VIEWBOX_REGEX, `viewBox="${vbX} ${newVbY} ${vbW} ${newVbH}"`)
+    .replace(HEIGHT_REGEX, `height="${newVbH}px"`);
 }
 
 export function useVerovio(
@@ -70,6 +109,7 @@ export function useVerovio(
           pageWidth: (containerWidth * 100) / scale,
           pageHeight: 2970,
           scale: scale,
+          adjustPageHeight: true,  // Shrink pages to actual content height (no fixed A4 gaps)
           pageMarginTop: 0,
           pageMarginBottom: 0,
           svgViewBox: true,
@@ -100,7 +140,14 @@ export function useVerovio(
         const count = toolkit.getPageCount();
         const pages: string[] = [];
         for (let i = 1; i <= count; i++) {
-          pages.push(toolkit.renderToSVG(i));
+          let svg = toolkit.renderToSVG(i);
+          // Trim top margin for pages 2+ (first page keeps its natural top margin)
+          // This removes Verovio's internal padding above the first system,
+          // creating seamless stacking between adjacent pages.
+          if (i > 1) {
+            svg = trimPageTopMargin(svg);
+          }
+          pages.push(svg);
         }
 
         const heights = pages.map(extractPageHeight);
