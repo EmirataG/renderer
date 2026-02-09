@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 15 - Backend Foundation & Settings Transfer
-Plan: 3 of 3
+Phase: 16 - Frontend Render Mode
+Plan: 1 of 1
 Status: Phase Complete
-Last activity: 2026-02-09 — Completed 15-03 (Frontend export client + E2E contract verification)
+Last activity: 2026-02-09 — Completed 16-01 (Frontend render mode for headless frame capture)
 
-Progress: [##########] 3/3 plans
+Progress: [##########] 1/1 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: 2.4 min
-- Total execution time: 52 min
+- Total execution time: 55 min
 
 **By Phase:**
 
@@ -41,6 +41,7 @@ Progress: [##########] 3/3 plans
 | 13 - Section Virtualization       | 2/3   | 6 min | 3 min    |
 | 14 - Page Virtualization          | 2/2   | 5 min | 2.5 min  |
 | 15 - Backend Foundation           | 3/3   | 6 min | 2 min    |
+| 16 - Frontend Render Mode         | 1/1   | 3 min | 3 min    |
 
 _Updated after each plan completion_
 
@@ -56,6 +57,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 15-02: Fastify multipart plugin rejects non-multipart at plugin level (406)
 - 15-03: ExportRequest accepts raw Map and serializes via Object.fromEntries() internally
 - 15-03: MusicXML sent as Blob file (not text field) to avoid 1MB field size limit
+- 16-01: propAudioDuration naming to avoid shadowing state variable audioDuration
+- 16-01: Virtualization bypass via extractionDoneRef staying false (reuses existing mount condition)
+- 16-01: Dynamic import() in main.tsx for code splitting (RenderApp and App in separate chunks)
 
 ### Roadmap Evolution
 
@@ -73,9 +77,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 15-03-PLAN.md (Phase 15 complete)
+Stopped at: Completed 16-01-PLAN.md (Phase 16 complete)
 Resume file: None
-Next: `/gsd:plan-phase 16`
+Next: `/gsd:plan-phase 17`
 
 ### Quick Tasks Completed
 
