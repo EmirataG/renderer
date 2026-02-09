@@ -6,7 +6,55 @@
 export {};
 
 declare global {
+  /**
+   * Export configuration injected by Puppeteer's evaluateOnNewDocument.
+   * Mirrors ExportSettings schema plus musicXml, syncAnchors, audioDuration, and bgUrl.
+   */
+  interface ExportConfig {
+    musicXml: string;
+    syncAnchors: Record<string, number>;
+    audioDuration: number;
+    fps: number;
+    scoreColor: string;
+    scoreShadowDistance: number;
+    hideUnplayedNotes: boolean;
+    smoothReveal: boolean;
+    scoreRegion: { x: number; y: number; width: number; height: number } | null;
+    scoreBorder: string;
+    scoreScale: number;
+    musicFont: string;
+    activeNoteheadColor: string | null;
+    activeNoteheadScale: number;
+    activeNoteheadEntryMs: number;
+    activeNoteheadHoldMs: number;
+    activeNoteheadExitMs: number;
+    colorFullNote: boolean;
+    bgUrl: string | null;
+  }
+
   interface Window {
+    /**
+     * Export config injected by Puppeteer's evaluateOnNewDocument before page load.
+     * When present, main.tsx routes to RenderApp instead of App.
+     */
+    __EXPORT_CONFIG__?: ExportConfig;
+
+    /**
+     * Readiness signal for backend polling.
+     * Set to true when animation controller is exposed with interpolated events.
+     */
+    rendererReady?: boolean;
+
+    /**
+     * Animation control API exposed by RegularRenderer for Puppeteer frame capture.
+     */
+    animationController?: {
+      setFrame: (frameNumber: number, fps?: number) => void;
+      setTimestamp: (seconds: number) => void;
+      getDuration: () => number;
+      getFps: () => number;
+    };
+
     /**
      * Set animation to specific frame number.
      * Puppeteer calls this via page.evaluate() to position the animation for screenshot.

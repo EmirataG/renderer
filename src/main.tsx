@@ -1,10 +1,19 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App'
 import './index.css'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const exportConfig = window.__EXPORT_CONFIG__;
+
+async function bootstrap() {
+  const RootComponent = exportConfig
+    ? (await import('./RenderApp')).default
+    : (await import('./App')).default;
+
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <RootComponent />
+    </StrictMode>,
+  );
+}
+
+bootstrap();
