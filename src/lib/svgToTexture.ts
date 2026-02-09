@@ -176,14 +176,13 @@ export function getCacheKey(svgString: string, scale: number, font: string): str
  * Pipeline:
  * 1. Extract dimensions and check against GPU limits
  * 2. Apply color preprocessing for tint compatibility
- * 3. Create data URI from SVG string (using encodeURIComponent, not btoa)
- * 4. Load via HTMLImageElement with decode() Promise
- * 5. Create PixiJS Texture from loaded image
+ * 3. Parse SVG and ensure explicit width/height attributes (fixes browser default sizing)
+ * 4. Create blob URL from processed SVG
+ * 5. Load via HTMLImageElement with decode() Promise
+ * 6. Create PixiJS Texture from loaded image
  *
  * @param svgString - The SVG string to convert
  * @returns Promise resolving to TextureResult with texture and metadata
- *
- * @see https://github.com/pixijs/pixijs/discussions/10953 for data URI + decode pattern
  */
 export async function svgToTexture(svgString: string): Promise<TextureResult> {
   // 1. Extract dimensions and check against GPU limits
@@ -194,17 +193,42 @@ export async function svgToTexture(svgString: string): Promise<TextureResult> {
   // 2. Preprocess colors for tint compatibility
   const processedSvg = preprocessSvgForTint(svgString);
 
-  // 3. Create data URI (encodeURIComponent handles Unicode correctly, unlike btoa)
-  const dataUri = `data:image/svg+xml,${encodeURIComponent(processedSvg)}`;
+  // 3. Parse SVG and ensure explicit dimensions
+  // Without explicit width/height in pixels, browsers render at default 300x150
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(processedSvg, 'image/svg+xml');
+  const svgEl = doc.documentElement;
 
-  // 4. Create Image element and wait for decode
+  // Ensure xmlns attribute for standalone SVG
+  if (!svgEl.getAttribute('xmlns')) {
+    svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  }
+
+  // Set explicit pixel dimensions (critical for correct rendering)
+  if (width > 0 && height > 0) {
+    svgEl.setAttribute('width', `${width}px`);
+    svgEl.setAttribute('height', `${height}px`);
+  }
+
+  // 4. Serialize and create blob URL
+  const serializer = new XMLSerializer();
+  const svgWithDimensions = serializer.serializeToString(svgEl);
+  const blob = new Blob([svgWithDimensions], { type: 'image/svg+xml' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  // 5. Create Image element and wait for decode
   const image = new Image();
-  image.src = dataUri;
+  image.src = blobUrl;
 
-  // decode() is Promise-based, more reliable than onload callback
-  await image.decode();
+  try {
+    // decode() is Promise-based, more reliable than onload callback
+    await image.decode();
+  } finally {
+    // Clean up blob URL after image is loaded
+    URL.revokeObjectURL(blobUrl);
+  }
 
-  // 5. Create PixiJS texture from loaded image
+  // 6. Create PixiJS texture from loaded image
   const texture = Texture.from(image);
 
   return { texture, width, height, exceedsLimit };
