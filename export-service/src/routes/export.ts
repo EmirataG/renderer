@@ -151,6 +151,12 @@ export default async function exportRoutes(
         syncAnchors as Record<string, number>,
       );
 
+      // Fire-and-forget: start rendering in background
+      // Do NOT await -- the route returns immediately with jobId
+      jobManager.renderJob(job.id).catch((err) => {
+        fastify.log.error(err, `Render job ${job.id} failed unexpectedly`);
+      });
+
       return reply.status(201).send({ jobId: job.id, status: job.status });
     } catch (err) {
       // Clean up temp dir on any error
