@@ -7,19 +7,19 @@
 
 ### SVG-to-Texture Pipeline
 
-- [ ] **TEX-01**: Verovio SVG sections convert to PixiJS Texture objects
-- [ ] **TEX-02**: SVG-to-texture conversion uses data URI + HTMLImageElement pipeline
-- [ ] **TEX-03**: Textures are cached (same section + settings = same texture, no duplicate conversion)
-- [ ] **TEX-04**: Black colors (#000) pre-processed to dark gray (#111) before conversion (enables tint highlighting)
-- [ ] **TEX-05**: Music fonts (Bravura, etc.) fully loaded before texture conversion begins
+- [x] **TEX-01**: Verovio SVG sections convert to PixiJS Texture objects
+- [x] **TEX-02**: SVG-to-texture conversion uses data URI + HTMLImageElement pipeline
+- [x] **TEX-03**: Textures are cached (same section + settings = same texture, no duplicate conversion)
+- [x] **TEX-04**: Black colors (#000) pre-processed to dark gray (#111) before conversion (enables tint highlighting)
+- [x] **TEX-05**: Music fonts (Bravura, etc.) fully loaded before texture conversion begins
 
 ### Renderer Structure
 
-- [ ] **REN-01**: PixiSingleLineRenderer component uses @pixi/react Application
-- [ ] **REN-02**: Section sprites positioned horizontally using sectionOffsets from Verovio hook
-- [ ] **REN-03**: Stage dimensions match score region bounds
-- [ ] **REN-04**: Proper useEffect cleanup destroys PixiJS application and textures on unmount
-- [ ] **REN-05**: WebGL context loss recovery handlers registered from initialization
+- [x] **REN-01**: PixiSingleLineRenderer component uses @pixi/react Application
+- [x] **REN-02**: Section sprites positioned horizontally using sectionOffsets from Verovio hook
+- [x] **REN-03**: Stage dimensions match score region bounds
+- [x] **REN-04**: Proper useEffect cleanup destroys PixiJS application and textures on unmount
+- [x] **REN-05**: WebGL context loss recovery handlers registered from initialization
 
 ### Camera System
 
@@ -73,16 +73,16 @@ Deferred to later milestones:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEX-01 | Phase 14 | Pending |
-| TEX-02 | Phase 14 | Pending |
-| TEX-03 | Phase 14 | Pending |
-| TEX-04 | Phase 14 | Pending |
-| TEX-05 | Phase 14 | Pending |
-| REN-01 | Phase 15 | Pending |
-| REN-02 | Phase 15 | Pending |
-| REN-03 | Phase 15 | Pending |
-| REN-04 | Phase 15 | Pending |
-| REN-05 | Phase 15 | Pending |
+| TEX-01 | Phase 14 | Complete |
+| TEX-02 | Phase 14 | Complete |
+| TEX-03 | Phase 14 | Complete |
+| TEX-04 | Phase 14 | Complete |
+| TEX-05 | Phase 14 | Complete |
+| REN-01 | Phase 15 | Complete |
+| REN-02 | Phase 15 | Complete |
+| REN-03 | Phase 15 | Complete |
+| REN-04 | Phase 15 | Complete |
+| REN-05 | Phase 15 | Complete |
 | CAM-01 | Phase 16 | Pending |
 | CAM-02 | Phase 16 | Pending |
 | CAM-03 | Phase 16 | Pending |

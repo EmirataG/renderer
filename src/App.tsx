@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import RegularRenderer from "./renderers/RegularRenderer";
 import SingleLineRenderer from "./renderers/SingleLineRenderer";
+import PixiSingleLineRenderer from "./renderers/PixiSingleLineRenderer";
 import { SyncEditor } from "./components/SyncEditor";
 import { ToastProvider } from "./components/Toast";
 import { UploadDropZone } from "./components/UploadDropZone";
@@ -528,23 +529,14 @@ export default function App() {
                   {/* Wrapper for RegularRenderer + overlay */}
                   <div className="relative">
                     {useSingleLineRenderer ? (
-                      <SingleLineRenderer
+                      <PixiSingleLineRenderer
                         xml={musicXMLFile.xml}
                         bgUrl={bgUrl || undefined}
-                        fps={fps}
-                        scoreColor={scoreColor}
-                        syncAnchors={anchors.size > 0 ? anchors : undefined}
-                        audioUrl={audioFile?.url}
-                        scoreRegion={debouncedScoreRegion}
-                        scoreBorder={scoreBorder}
                         scoreScale={debouncedScoreScale}
                         musicFont={musicFont}
-                        activeNoteheadColor={activeNoteheadColor ?? undefined}
-                        activeNoteheadScale={activeNoteheadScale}
-                        activeNoteheadAnimationEntryMs={activeNoteheadEntryMs}
-                        activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
-                        activeNoteheadAnimationExitMs={activeNoteheadExitMs}
-                        colorFullNote={colorFullNote}
+                        scoreRegion={debouncedScoreRegion}
+                        syncAnchors={anchors.size > 0 ? anchors : undefined}
+                        audioUrl={audioFile?.url}
                       />
                     ) : (
                       <RegularRenderer
