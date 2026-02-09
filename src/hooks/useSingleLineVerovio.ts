@@ -3,9 +3,11 @@ import { VerovioToolkit } from 'verovio/esm';
 import { createToolkit } from '../lib/verovioService';
 
 // Pre-compiled regex patterns (module scope) - compiled once at module load
-const WIDTH_REGEX = /width="(\d+(?:\.\d+)?)px"/;
-const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)px"/;
-const VIEWBOX_REGEX = /viewBox="0 0 ([\d.]+) ([\d.]+)"/;
+// Match width/height with or without "px" suffix
+const WIDTH_REGEX = /width="(\d+(?:\.\d+)?)(?:px)?"/;
+const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)(?:px)?"/;
+// Match viewBox with any minX/minY values (not just "0 0")
+const VIEWBOX_REGEX = /viewBox="[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)"/;
 const MEASURE_REGEX = /<measure /g;
 
 export interface UseSingleLineVerovioResult {

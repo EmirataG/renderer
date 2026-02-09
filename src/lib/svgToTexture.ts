@@ -90,8 +90,8 @@ export function extractSvgDimensions(svgString: string): { width: number; height
     return { width: parseFloat(widthMatch[1]), height: parseFloat(heightMatch[1]) };
   }
 
-  // Fall back to viewBox parsing
-  const vbMatch = svgString.match(/viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/);
+  // Fall back to viewBox parsing (handles negative minX/minY values)
+  const vbMatch = svgString.match(/viewBox="[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)"/);
   if (vbMatch) {
     return { width: parseFloat(vbMatch[1]), height: parseFloat(vbMatch[2]) };
   }
