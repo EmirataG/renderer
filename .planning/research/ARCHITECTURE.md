@@ -1,823 +1,736 @@
-# Architecture: Virtualization and Cursor Integration
+# Architecture: Backend Video Export Service
 
-**Project:** RegularRenderer Enhancement
-**Researched:** 2026-02-08
-**Focus:** Virtualization, cursor overlay, and SVGO integration patterns
+**Domain:** Headless Chrome frame capture + FFmpeg encoding service for MusicXML score animation
+**Researched:** 2026-02-09
+**Confidence:** HIGH
+
+---
 
 ## Executive Summary
 
-RegularRenderer currently renders all pages synchronously, causing DOM bloat for long scores. This research identifies integration points for three enhancements:
+The backend video export service captures the existing browser-based score renderer frame-by-frame in headless Chrome and encodes the frames into MP4 via FFmpeg. The architecture is a **monorepo sibling package** that builds and serves the frontend, opens it in Puppeteer, injects all user settings via `evaluateOnNewDocument`, then loops through `window.animationController.setFrame(n, fps)` piping each screenshot buffer to FFmpeg's stdin.
 
-1. **Virtualization**: Render only visible pages + buffer (mount/unmount based on camera Y)
-2. **Cursor overlay**: Absolute-positioned indicator tracking active event
-3. **SVGO optimization**: Preprocessing SVG strings in useVerovio hook
+The critical insight from codebase analysis: the frontend already has a synchronous, stateless `setTimestamp()` function in `RegularRenderer` (lines 526-668) that computes exact animation state mathematically -- no CSS transitions, no timeouts, forces reflow before returning. This means each Puppeteer screenshot captures a pixel-perfect frame with zero timing dependencies. The backend simply needs to call this function, screenshot, and pipe.
 
-**Recommendation**: Implement in order listed - virtualization first (performance foundation), cursor second (visual enhancement), SVGO last (optimization polish).
+---
 
-## Current Architecture Analysis
-
-### Data Flow (Lines 92-263 of RegularRenderer.tsx)
+## Recommended Architecture
 
 ```
-useVerovio(xml, width, scale, font)
-  ↓
-svgPages[], pageHeights[], pageOffsets[], totalHeight
-  ↓
-svgPages.map((svg, i) => <div dangerouslySetInnerHTML />)  ← ALL PAGES RENDERED
-  ↓
-Camera: translateY(-cameraY) on container
-  ↓
-Animation: querySelector by event.svgIds → apply transforms
+Manuscript/
+  renderer/              (existing frontend SPA)
+  export-service/        (NEW: Node.js backend)
+    src/
+      server.ts          Entry point: HTTP + WebSocket server
+      routes/
+        export.ts        POST /api/export -- initiates export job
+        status.ts        GET  /api/export/:jobId -- job status
+        download.ts      GET  /api/export/:jobId/download -- serve MP4
+      jobs/
+        jobManager.ts    Job queue, state machine, cleanup
+        renderJob.ts     Orchestrates Puppeteer + FFmpeg pipeline
+      pipeline/
+        browser.ts       Puppeteer lifecycle (launch, page, inject, close)
+        captureLoop.ts   Frame-by-frame capture loop
+        encoder.ts       FFmpeg child_process spawn + stdin pipe
+      ws/
+        progress.ts      WebSocket handler for real-time progress
+      shared/
+        types.ts         ExportRequest, ExportSettings, JobStatus
+        config.ts        Server configuration (ports, paths, limits)
 ```
 
-### Key Data Structures
+### Why Monorepo Sibling (Not Separate Repo, Not Same Package)
 
-| Data | Source | Purpose | Current Scope |
-|------|--------|---------|---------------|
-| `svgPages[]` | useVerovio | SVG strings for each page | All pages |
-| `pageHeights[]` | useVerovio | Pixel height of each page | All pages |
-| `pageOffsets[]` | useVerovio | Cumulative Y position start | All pages |
-| `totalHeight` | useVerovio | Total scrollable height | Single value |
-| `currentYRef.current` | animateSync | Camera target Y position | Single value |
-| `events[]` | eventStore | Event metadata with globalY | All events |
+1. **Shared types:** `ExportSettings` mirrors the frontend's props interface exactly. Keeping them in the same repo ensures they stay in sync. A separate repo would drift.
 
-### Critical Integration Points
+2. **Frontend build access:** The backend needs to `vite build` the frontend and serve the `dist/` output. A sibling package in the same repo makes this a workspace script.
 
-**Camera System (Lines 307-322)**:
-- Current: `applyCamera(targetY)` sets `translateY(-cameraY)` on `cameraRef`
-- Uses: `totalHeight`, `scoreRegion.height`, `targetY`
-- Integration: Virtualization needs `cameraY` to calculate visible page range
+3. **Independent deployment:** The backend has completely different dependencies (Puppeteer, FFmpeg) and runs on a server, not in the browser. It should NOT be in the frontend's `package.json`.
 
-**Rendering (Lines 771-779)**:
-- Current: `svgPages.map()` renders ALL pages unconditionally
-- Integration: Replace with conditional render based on visible range
+4. **Not pnpm workspaces (yet):** The existing project uses npm (`package-lock.json` exists, no `pnpm-workspace.yaml`). Adding a sibling directory with its own `package.json` is the simplest approach. Workspace tooling can be added later if needed.
 
-**Animation Queries (Lines 601-646)**:
-- Current: `scoreRef.current.querySelector(#${id})` finds noteheads
-- Risk: querySelector fails if virtualization unmounts the target page
-- Integration: Guard checks needed, or disable animation for off-screen events
+---
 
-## Virtualization Architecture
+## Component Boundaries
 
-### Option A: Inline useMemo Calculation (Recommended)
+| Component | Responsibility | Communicates With |
+|-----------|---------------|-------------------|
+| **HTTP Server** | Accept export requests, serve files, CORS | Routes, JobManager |
+| **WebSocket Server** | Stream progress events to client | JobManager events |
+| **JobManager** | Job queue, lifecycle, cleanup, concurrency | RenderJob, Progress |
+| **RenderJob** | Orchestrate single export job | Browser, CaptureLoop, Encoder |
+| **Browser** | Puppeteer lifecycle, page setup, state injection | Puppeteer API |
+| **CaptureLoop** | Frame iteration, screenshot capture | Browser (page), Encoder (stdin) |
+| **Encoder** | FFmpeg spawn, stdin pipe, output file | child_process, filesystem |
+| **Frontend (modified)** | Render mode: no UI, no virtualization, full viewport | window.animationController |
 
-**Where**: Inside RegularRenderer.tsx, after useVerovio hook returns
+---
 
-**Structure**:
+## Data Flow
+
+### 1. Export Request Flow
+
+```
+Browser (user clicks "Export Video")
+  |
+  | POST /api/export
+  | Body: { musicXml, audioFile, syncAnchors, settings, resolution, fps }
+  |
+  v
+HTTP Server
+  |
+  | Validate request, create jobId
+  | Store uploaded files to temp directory
+  |
+  v
+JobManager.enqueue(job)
+  |
+  | Queue job, enforce concurrency limit (1 active)
+  | Return jobId to client immediately
+  |
+  v
+Client opens WebSocket: ws://host/ws?jobId=xxx
+  |
+  | Receives: { type: 'progress', frame, totalFrames, percent }
+  | Receives: { type: 'complete', downloadUrl }
+  | Receives: { type: 'error', message }
+```
+
+### 2. Render Pipeline Flow (Inside RenderJob)
+
+```
+RenderJob.execute()
+  |
+  +-- 1. Browser.launch()
+  |     Puppeteer.launch({ headless: true, args: [...] })
+  |
+  +-- 2. Browser.setupPage(settings, resolution)
+  |     page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 })
+  |     page.evaluateOnNewDocument(injectSettings, settings)
+  |     page.goto(frontendUrl + '?render=true')
+  |
+  +-- 3. Browser.waitForReady()
+  |     page.waitForFunction('window.animationController !== undefined')
+  |     page.waitForFunction('window.animationController.getDuration() > 0')
+  |
+  +-- 4. Encoder.start(outputPath, fps, resolution)
+  |     spawn('ffmpeg', ['-f','image2pipe','-framerate',fps,'-i','-',
+  |       '-c:v','libx264','-pix_fmt','yuv420p','-crf','18',
+  |       '-preset','medium', outputPath])
+  |
+  +-- 5. CaptureLoop.run(page, ffmpegStdin, totalFrames, fps)
+  |     for frame = 0 to totalFrames:
+  |       page.evaluate(f => window.animationController.setFrame(f, fps), frame)
+  |       buffer = page.screenshot({ type: 'png', optimizeForSpeed: true })
+  |       ffmpegStdin.write(buffer)
+  |       emit('progress', { frame, totalFrames })
+  |
+  +-- 6. Encoder.finish()
+  |     ffmpegStdin.end()
+  |     await ffmpegProcess exit
+  |
+  +-- 7. Browser.close()
+  |
+  +-- 8. emit('complete', { downloadUrl })
+```
+
+### 3. State Injection Detail
+
+The frontend App reads all settings from React useState. For render mode, the backend injects a `window.__EXPORT_CONFIG__` object BEFORE React loads. The App checks for this object and uses it instead of useState defaults.
+
 ```typescript
-const visiblePageIndices = useMemo(() => {
-  if (!cameraRef.current || pageOffsets.length === 0) return [];
+// Backend: browser.ts
+await page.evaluateOnNewDocument((config) => {
+  window.__EXPORT_CONFIG__ = config;
+}, {
+  musicXml: xmlContent,
+  syncAnchors: Object.fromEntries(anchorsMap),  // Map -> plain object
+  audioDuration: durationSeconds,                 // No audio element needed
+  fps: 30,
+  scoreColor: '#000000',
+  scoreScale: 1.0,
+  musicFont: 'Bravura',
+  scoreRegion: null,
+  scoreBorder: 'none',
+  scoreShadowDistance: 0,
+  hideUnplayedNotes: true,
+  smoothReveal: true,
+  activeNoteheadColor: '#000000',
+  activeNoteheadScale: 1.2,
+  activeNoteheadEntryMs: 50,
+  activeNoteheadHoldMs: 200,
+  activeNoteheadExitMs: 500,
+  colorFullNote: false,
+  bgUrl: null,  // Or base64 data URL
+});
+```
 
-  // Extract current camera Y from transform (or track in state)
-  const cameraY = currentYRef.current - (scoreRegion?.height ?? containerHeight) / 2;
-  const viewportHeight = scoreRegion?.height ?? containerHeight;
+```typescript
+// Frontend: App.tsx (modified)
+const exportConfig = (window as any).__EXPORT_CONFIG__;
+const isRenderMode = !!exportConfig;
 
-  // Buffer: render 1 page above and below visible range
-  const buffer = 1;
-  const visibleStart = Math.max(0, cameraY - pageHeights[0] * buffer);
-  const visibleEnd = cameraY + viewportHeight + pageHeights[0] * buffer;
+// Use export config or interactive defaults
+const [fps, setFps] = useState(exportConfig?.fps ?? 60);
+const [scoreColor, setScoreColor] = useState(exportConfig?.scoreColor ?? '#000000');
+// ... etc for all settings
+```
 
-  const indices: number[] = [];
-  for (let i = 0; i < pageOffsets.length; i++) {
-    const pageTop = pageOffsets[i];
-    const pageBottom = pageTop + pageHeights[i];
+### 4. Sync Anchors Injection
 
-    if (pageBottom >= visibleStart && pageTop <= visibleEnd) {
-      indices.push(i);
-    }
-  }
+Sync anchors are a `Map<string, number>` in the frontend. Maps cannot be serialized to JSON. The backend serializes as a plain object, and the frontend reconstructs the Map.
 
-  return indices;
-}, [currentYRef.current, pageOffsets, pageHeights, containerHeight, scoreRegion?.height]);
+```typescript
+// Backend sends:
+{ syncAnchors: { "evt-0": 0.0, "evt-5": 1.234, "evt-100": 45.678 } }
 
-// Render logic
-{svgPages.map((svg, i) => {
-  const isVisible = visiblePageIndices.includes(i);
-  if (!isVisible) {
-    // Placeholder: maintain scroll height
-    return (
-      <div
-        key={i}
-        style={{ height: pageHeights[i], width: scoreRegion?.width ?? containerWidth }}
-      />
+// Frontend reconstructs:
+const anchorsMap = new Map(Object.entries(exportConfig.syncAnchors));
+useSyncStore.setState({ anchors: anchorsMap });
+```
+
+### 5. MusicXML Content Injection
+
+Two options for getting the MusicXML content to the page:
+
+**Option A (recommended): Inject as string via evaluateOnNewDocument.**
+The MusicXML is set on `window.__EXPORT_CONFIG__.musicXml`. The App reads it and sets state directly, bypassing the file upload UI.
+
+**Option B: Serve the file and fetch it.**
+Backend serves the file at `/api/files/:jobId/score.xml`. Frontend fetches on load. Adds an unnecessary network round-trip for data the backend already has.
+
+Option A is simpler and eliminates latency. MusicXML files are typically 50KB-2MB, well within what `evaluateOnNewDocument` can handle.
+
+### 6. Background Image Injection
+
+Background images are binary files. Options:
+
+**Option A (recommended for small images): Base64 data URL.**
+Convert the uploaded image to a base64 data URL and inject via `window.__EXPORT_CONFIG__.bgUrl = 'data:image/png;base64,...'`. Works for images up to ~5MB.
+
+**Option B (for large images): Serve via HTTP.**
+Backend serves at `/api/files/:jobId/bg.png`. Pass URL to frontend. Better for very large images.
+
+Start with Option A. If performance suffers, switch to B.
+
+---
+
+## Frontend Modifications for Render Mode
+
+### New: Render Mode Detection
+
+```typescript
+// App.tsx or a new useRenderMode hook
+const exportConfig = typeof window !== 'undefined'
+  ? (window as any).__EXPORT_CONFIG__
+  : null;
+const isRenderMode = !!exportConfig;
+```
+
+### Modified: App.tsx
+
+When `isRenderMode` is true:
+
+1. **Skip UI:** Do not render sidebar, transport bar, tabs, upload zone
+2. **Auto-load data:** Use `exportConfig.musicXml` directly instead of waiting for file upload
+3. **Inject anchors:** Call `useSyncStore.setState({ anchors: new Map(...) })` on mount
+4. **Set all settings from config:** Override every useState default with config values
+5. **Render only the score viewport:** Full-screen RegularRenderer, no chrome
+
+### Modified: RegularRenderer.tsx
+
+When render mode is detected:
+
+1. **Disable page virtualization:** Mount ALL pages. The existing `extractionDoneRef.current` gate already handles this -- pages mount for extraction, then virtualize. In render mode, skip the virtualization step entirely.
+
+2. **Disable camera CSS transition:** Remove `transition: "transform 200ms ease-out"` from the camera div. Frame capture requires instant state, not animated transitions.
+
+3. **Set viewport dimensions from export resolution:** The container should be sized to match the Puppeteer viewport exactly (e.g., 1920x1080), not the preview WIDTH constant of 980px.
+
+4. **No audio element:** The `setTimestamp()` function already works without audio. It reads from `interpolatedEvents` and applies animation state mathematically. The `getDuration()` function returns `audioDuration` from state, which the backend injects via config.
+
+5. **Expose readiness signal:** The existing `window.animationController` exposure already signals readiness. Add a more explicit signal:
+   ```typescript
+   (window as any).__EXPORT_READY__ = true;
+   ```
+
+### What Does NOT Need to Change
+
+- `setTimestamp()` logic -- already stateless, synchronous, reflow-forcing
+- `interpolateTimestamps()` -- pure function, works with any input
+- `useVerovio` hook -- works the same, just with different container width
+- `noteAnimation.ts` -- not used in render mode (setTimestamp does its own animation math)
+- `getEvents.ts` -- extraction works identically
+- `eventStore` / `syncStore` -- Zustand stores work fine in headless Chrome
+
+---
+
+## Patterns to Follow
+
+### Pattern 1: Job State Machine
+
+Jobs follow a strict lifecycle. No state skipping. Cleanup on every terminal state.
+
+```
+QUEUED -> PREPARING -> RENDERING -> ENCODING -> COMPLETE
+                  \        \          \
+                   \        \          +-> ERROR
+                    \        +----------> ERROR
+                     +-----------------> ERROR
+```
+
+```typescript
+interface ExportJob {
+  id: string;
+  status: 'queued' | 'preparing' | 'rendering' | 'encoding' | 'complete' | 'error';
+  progress: { frame: number; totalFrames: number; percent: number };
+  createdAt: number;
+  completedAt?: number;
+  outputPath?: string;
+  error?: string;
+  tempDir: string;  // Cleaned up on terminal states
+}
+```
+
+### Pattern 2: Puppeteer Screenshot to FFmpeg stdin Pipe
+
+The core capture pattern. No intermediate files. Screenshots flow directly from Chrome to FFmpeg.
+
+```typescript
+// encoder.ts
+import { spawn } from 'child_process';
+
+function startEncoder(outputPath: string, fps: number, width: number, height: number) {
+  const ffmpeg = spawn('ffmpeg', [
+    '-y',                       // Overwrite output
+    '-f', 'image2pipe',         // Read images from stdin
+    '-framerate', String(fps),  // Input frame rate
+    '-i', '-',                  // Read from stdin
+    '-c:v', 'libx264',         // H.264 codec
+    '-pix_fmt', 'yuv420p',     // Compatibility pixel format
+    '-crf', '18',               // High quality (0=lossless, 23=default, 51=worst)
+    '-preset', 'medium',        // Encoding speed/quality tradeoff
+    '-vf', `scale=${width}:${height}`,  // Ensure exact resolution
+    '-movflags', '+faststart',  // Web-optimized MP4
+    outputPath,
+  ]);
+
+  return ffmpeg;
+}
+
+// captureLoop.ts
+async function captureFrames(
+  page: Page,
+  ffmpegStdin: Writable,
+  totalFrames: number,
+  fps: number,
+  onProgress: (frame: number) => void,
+) {
+  for (let frame = 0; frame <= totalFrames; frame++) {
+    await page.evaluate(
+      (f, r) => (window as any).animationController.setFrame(f, r),
+      frame, fps,
     );
+
+    const buffer = await page.screenshot({
+      type: 'png',
+      optimizeForSpeed: true,  // Faster PNG encoding (zlib q1)
+      encoding: 'binary',
+    });
+
+    ffmpegStdin.write(buffer);
+    onProgress(frame);
   }
+
+  ffmpegStdin.end();
+}
+```
+
+**Why PNG, not JPEG:** PNG is lossless. Music notation has thin lines (staff lines, stems) and sharp edges that JPEG compression visibly degrades. The file size difference is irrelevant since frames are piped to FFmpeg's stdin, not written to disk.
+
+**Why `optimizeForSpeed: true`:** Reduces PNG compression from zlib default to level 1 (RLE encoding). For piped frames that are immediately consumed by FFmpeg, compression ratio is irrelevant -- encoding speed matters.
+
+### Pattern 3: WebSocket Progress Protocol
+
+Simple JSON messages over WebSocket. Client connects with job ID after initiating export.
+
+```typescript
+// Messages from server to client
+type ProgressMessage =
+  | { type: 'queued'; position: number }
+  | { type: 'preparing'; message: string }
+  | { type: 'rendering'; frame: number; totalFrames: number; percent: number; eta: number }
+  | { type: 'encoding'; message: string }
+  | { type: 'complete'; downloadUrl: string; duration: number; fileSize: number }
+  | { type: 'error'; message: string; code: string };
+```
+
+ETA calculation: Track time per frame over a rolling window of 30 frames. Multiply by remaining frames.
+
+### Pattern 4: Frontend Render Mode Wrapper
+
+Instead of scattering render-mode checks throughout App.tsx, create a dedicated wrapper component.
+
+```typescript
+// RenderApp.tsx (new)
+export default function RenderApp() {
+  const config = (window as any).__EXPORT_CONFIG__;
+
+  // Inject sync anchors into Zustand store
+  useEffect(() => {
+    const anchorsMap = new Map(
+      Object.entries(config.syncAnchors).map(([k, v]) => [k, v as number])
+    );
+    useSyncStore.setState({ anchors: anchorsMap });
+  }, []);
 
   return (
-    <div
-      key={i}
-      ref={(el) => { pageContainerRefs.current[i] = el; }}
-      style={{ width: scoreRegion?.width ?? containerWidth }}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <RegularRenderer
+        xml={config.musicXml}
+        bgUrl={config.bgUrl}
+        fps={config.fps}
+        scoreColor={config.scoreColor}
+        syncAnchors={/* from store */}
+        scoreRegion={config.scoreRegion}
+        scoreBorder={config.scoreBorder}
+        scoreScale={config.scoreScale}
+        musicFont={config.musicFont}
+        activeNoteheadColor={config.activeNoteheadColor}
+        activeNoteheadScale={config.activeNoteheadScale}
+        activeNoteheadAnimationEntryMs={config.activeNoteheadEntryMs}
+        activeNoteheadAnimationHoldMs={config.activeNoteheadHoldMs}
+        activeNoteheadAnimationExitMs={config.activeNoteheadExitMs}
+        colorFullNote={config.colorFullNote}
+        renderMode={true}  // New prop: disables virtualization, transitions
+      />
+    </div>
   );
-})}
-```
-
-**Pros**:
-- Simple, no new files
-- useMemo prevents recalculation unless camera moves
-- Direct access to existing state
-
-**Cons**:
-- Couples virtualization to component logic
-- Harder to test in isolation
-
-**Dependencies**: `currentYRef.current` as trigger (requires minor refactor to track cameraY)
-
-### Option B: Custom useVirtualization Hook
-
-**Where**: New file `src/hooks/useVirtualization.ts`
-
-**Structure**:
-```typescript
-export function useVirtualization({
-  totalHeight,
-  pageHeights,
-  pageOffsets,
-  cameraY,
-  viewportHeight,
-  bufferPages = 1,
-}: {
-  totalHeight: number;
-  pageHeights: number[];
-  pageOffsets: number[];
-  cameraY: number;
-  viewportHeight: number;
-  bufferPages?: number;
-}) {
-  return useMemo(() => {
-    // Same calculation as Option A
-  }, [cameraY, pageOffsets, pageHeights, viewportHeight, bufferPages]);
-}
-```
-
-**Pros**:
-- Reusable for future renderers
-- Testable independently
-- Cleaner component code
-
-**Cons**:
-- Extra abstraction for single use case
-- Adds file overhead
-
-**Recommendation**: Use Option A for MVP (simpler), refactor to Option B if SingleLineRenderer needs virtualization.
-
-### Option C: TanStack Virtual Library
-
-**Library**: [@tanstack/react-virtual](https://tanstack.com/virtual/latest)
-
-**Integration**:
-```typescript
-import { useVirtualizer } from '@tanstack/react-virtual';
-
-const virtualizer = useVirtualizer({
-  count: svgPages.length,
-  getScrollElement: () => cameraRef.current,
-  estimateSize: (index) => pageHeights[index],
-  overscan: 1, // Buffer pages
-});
-
-// Render
-{virtualizer.getVirtualItems().map((virtualItem) => (
-  <div
-    key={virtualItem.key}
-    style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      width: '100%',
-      transform: `translateY(${virtualItem.start}px)`,
-      height: `${virtualItem.size}px`,
-    }}
-    dangerouslySetInnerHTML={{ __html: svgPages[virtualItem.index] }}
-  />
-))}
-```
-
-**Pros**:
-- Battle-tested for variable heights
-- Handles edge cases (resize, dynamic content)
-- 18.5k npm downloads/week ([npm-compare](https://npm-compare.com/@tanstack/react-virtual,react-infinite-scroll-component,react-virtualized,react-window))
-
-**Cons**:
-- External dependency (+10KB bundle)
-- Requires CSS transform refactor (currently using translateY on parent)
-- Overkill for static page list (not infinite scroll)
-
-**Recommendation**: Avoid for MVP. TanStack Virtual excels at [dynamic/measured sizing](https://medium.com/@eva.matova6/optimizing-large-datasets-with-virtualized-lists-70920e10da54), but our page heights are pre-computed from Verovio SVG parsing.
-
-### Confidence Assessment
-
-| Aspect | Confidence | Reason |
-|--------|------------|--------|
-| useMemo approach | HIGH | Standard React pattern, matches [React docs guidance](https://react.dev/reference/react/useMemo) |
-| Visible range calculation | HIGH | Verified with [multiple virtualization tutorials](https://blog.logrocket.com/virtual-scrolling-core-principles-and-basic-implementation-in-react/) |
-| Camera Y extraction | MEDIUM | Requires minor refactor to expose cameraY as state/ref |
-| Animation guards | MEDIUM | Need to verify querySelector behavior when page unmounts |
-
-## Cursor Architecture
-
-### Option A: Absolute-Positioned Overlay (Recommended)
-
-**Where**: Inside score container, sibling to camera div
-
-**Structure**:
-```typescript
-// Track active event Y position
-const cursorY = useMemo(() => {
-  if (interpolatedEvents.length === 0 || eventIndexRef.current < 0) return null;
-  return interpolatedEvents[eventIndexRef.current]?.y ?? null;
-}, [interpolatedEvents, eventIndexRef.current]); // Trigger on event change
-
-// Render (inside score container, after camera div)
-{cursorY !== null && (
-  <div
-    style={{
-      position: 'absolute',
-      left: scoreRegion?.x ?? 0,
-      top: cursorY, // Absolute Y within score container
-      width: scoreRegion?.width ?? containerWidth,
-      height: 2, // Thin line cursor
-      backgroundColor: '#FF0000',
-      pointerEvents: 'none',
-      zIndex: 2,
-      transition: 'top 200ms ease-out', // Match camera easing
-    }}
-  />
-)}
-```
-
-**Pros**:
-- Simple CSS positioning
-- No DOM queries needed (uses event.y directly)
-- Transitions handled by CSS
-- Sibling to camera div, so scrolls with score
-
-**Cons**:
-- Requires exposing `eventIndexRef.current` to render (currently not a dependency)
-- CSS transition may not match rAF-driven camera movement perfectly
-
-**Integration Point**: Lines 757-782 (score container div)
-
-### Option B: Ref-Based Imperative Updates
-
-**Where**: Inside animateSync function (lines 353-409)
-
-**Structure**:
-```typescript
-const cursorRef = useRef<HTMLDivElement>(null);
-
-// In animateSync, after applyCamera
-if (cursorRef.current) {
-  cursorRef.current.style.top = `${currentYRef.current}px`;
 }
 
-// Render
-<div
-  ref={cursorRef}
-  style={{
-    position: 'absolute',
-    left: scoreRegion?.x ?? 0,
-    top: 0,
-    width: scoreRegion?.width ?? containerWidth,
-    height: 2,
-    backgroundColor: '#FF0000',
-    pointerEvents: 'none',
-    zIndex: 2,
-    transition: 'none', // Controlled by rAF
-  }}
-/>
+// main.tsx (modified)
+const exportConfig = (window as any).__EXPORT_CONFIG__;
+const RootComponent = exportConfig ? RenderApp : App;
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <RootComponent />
+  </StrictMode>,
+);
 ```
 
-**Pros**:
-- Precise timing sync with camera updates
-- No React re-renders for cursor position
-- Matches animation frame timing exactly
+---
 
-**Cons**:
-- Imperative style (less React-idiomatic)
-- Couples cursor to animation logic
-- No CSS easing (must implement manually if desired)
+## Anti-Patterns to Avoid
 
-**Recommendation**: Use Option A for MVP (simpler), Option B if precise frame-by-frame sync needed for Puppeteer rendering.
+### Anti-Pattern 1: Real-Time Capture (Recording Screen)
 
-### Option C: Framer Motion or GSAP Library
+**What:** Using screen recording or CDP `Page.startScreencast` to capture video in real-time.
+**Why bad:** Animation timing depends on browser performance. Frames may be dropped. Output will be inconsistent across hardware. At 30fps with 1080p, each frame only has 33ms -- not enough for Verovio rendering + screenshot.
+**Instead:** Frame-by-frame capture with `setFrame()`. Each frame waits for the previous to complete. Deterministic, reproducible output regardless of hardware speed.
 
-**Libraries**:
-- [Framer Motion](https://motion.dev/docs/cursor): React-native animation library
-- [GSAP](https://blog.olivierlarose.com/tutorials/blend-mode-cursor): Professional web animator choice
+### Anti-Pattern 2: Writing Frame PNGs to Disk Then Encoding
 
-**Structure (Framer Motion example)**:
-```typescript
-import { motion } from 'framer-motion';
+**What:** Save each screenshot as `frame_0001.png`, then run `ffmpeg -i frame_%04d.png`.
+**Why bad:** For a 3-minute video at 30fps = 5,400 frames. At ~2MB per 1080p PNG = 10.8GB of temp disk. Slow disk I/O. Cleanup complexity.
+**Instead:** Pipe each PNG buffer directly to FFmpeg's stdin via `image2pipe`. Zero disk for frames.
 
-<motion.div
-  animate={{ top: cursorY }}
-  transition={{ type: 'tween', ease: 'easeOut', duration: 0.2 }}
-  style={{
-    position: 'absolute',
-    left: scoreRegion?.x ?? 0,
-    width: scoreRegion?.width ?? containerWidth,
-    height: 2,
-    backgroundColor: '#FF0000',
-  }}
-/>
+### Anti-Pattern 3: Loading Frontend via file:// Protocol
+
+**What:** `page.goto('file:///path/to/dist/index.html')`.
+**Why bad:** WASM loading fails due to CORS restrictions on file:// URLs. Verovio's WASM module requires proper HTTP serving.
+**Instead:** Serve the built frontend via a local HTTP server (e.g., `express.static(distPath)`). Navigate to `http://localhost:PORT`.
+
+### Anti-Pattern 4: Injecting Settings via URL Query Parameters
+
+**What:** Encoding all settings as URL params: `?scoreColor=%23000000&fps=30&musicFont=Bravura&...`.
+**Why bad:** URL length limits (~2000 chars). MusicXML content is 50KB-2MB. Sync anchors can have hundreds of entries. Cannot encode binary data (background images).
+**Instead:** `evaluateOnNewDocument` with a config object. No size limits. Supports any data type.
+
+### Anti-Pattern 5: Using fluent-ffmpeg
+
+**What:** Using the `fluent-ffmpeg` npm package for FFmpeg integration.
+**Why bad:** The fluent-ffmpeg repository was **archived by the owner on May 22, 2025** and is now read-only. No further maintenance, bug fixes, or security patches. It wraps `child_process.spawn` anyway.
+**Instead:** Use `child_process.spawn('ffmpeg', [...args])` directly. Full control over arguments. No abandoned dependency.
+
+---
+
+## Integration Points: New vs Modified
+
+### New Components (Backend: export-service/)
+
+| Component | File(s) | Purpose |
+|-----------|---------|---------|
+| HTTP Server | `server.ts` | Express server, routes, static file serving |
+| Export Route | `routes/export.ts` | Accept export request, validate, enqueue job |
+| Download Route | `routes/download.ts` | Serve completed MP4 files |
+| Job Manager | `jobs/jobManager.ts` | Job queue, state machine, cleanup, concurrency |
+| Render Job | `jobs/renderJob.ts` | Orchestrate single export pipeline |
+| Browser Manager | `pipeline/browser.ts` | Puppeteer launch, page setup, state injection |
+| Capture Loop | `pipeline/captureLoop.ts` | Frame-by-frame screenshot loop |
+| FFmpeg Encoder | `pipeline/encoder.ts` | Spawn FFmpeg, pipe stdin, handle exit |
+| WebSocket Progress | `ws/progress.ts` | Broadcast job progress to connected clients |
+| Shared Types | `shared/types.ts` | ExportRequest, ExportSettings, JobStatus |
+
+### Modified Components (Frontend: renderer/src/)
+
+| Component | File | Change |
+|-----------|------|--------|
+| Entry Point | `main.tsx` | Detect `__EXPORT_CONFIG__`, render `RenderApp` or `App` |
+| Render App | `RenderApp.tsx` (NEW) | Minimal wrapper for render mode |
+| RegularRenderer | `renderers/RegularRenderer.tsx` | Add `renderMode` prop: skip virtualization, skip camera transition, size to viewport |
+| Global Types | `types/global.d.ts` | Add `__EXPORT_CONFIG__` and `__EXPORT_READY__` to Window interface |
+
+### Unchanged Components
+
+| Component | Why Unchanged |
+|-----------|---------------|
+| `useVerovio.ts` | Works with any container width; no render-mode-specific logic needed |
+| `interpolation.ts` | Pure function, works identically |
+| `getEvents.ts` | Event extraction is render-mode-agnostic |
+| `syncStore.ts` | Zustand store works in headless Chrome; state set programmatically |
+| `eventStore.ts` | Caching works the same |
+| `noteAnimation.ts` | Not used in render mode (setTimestamp computes inline) |
+| `animationController.ts` | Module used only for internal state; window API exposed by RegularRenderer |
+| `borders/` | Border components render SVG, work in headless Chrome |
+| `SyncEditor.tsx` | Not rendered in render mode |
+| `App.tsx` | Not rendered in render mode (RenderApp replaces it) |
+
+---
+
+## File Upload and Serving Strategy
+
+### Upload Flow
+
+```
+Client                              Backend
+  |                                    |
+  |  POST /api/export                  |
+  |  Content-Type: multipart/form-data |
+  |  Fields:                           |
+  |    musicXml (string)               |
+  |    audioFile (binary, optional)    |
+  |    bgImage (binary, optional)      |
+  |    settings (JSON string)          |
+  |    syncAnchors (JSON string)       |
+  |                                    |
+  v                                    v
+                                  Create temp dir: /tmp/manuscript-export-{jobId}/
+                                  Write musicXml to score.xml
+                                  Write audioFile to audio.{ext}
+                                  Write bgImage to bg.{ext}
+                                  Parse settings JSON
+                                  Compute audio duration (ffprobe)
+                                  Enqueue job
+                                  Return { jobId }
 ```
 
-**Pros**:
-- Professional-grade easing ([60fps with CSS transforms](https://blog.olivierlarose.com/tutorials/blend-mode-cursor))
-- Handles complex animations easily
-- Better cross-browser consistency
+### Audio Duration Without Audio Element
 
-**Cons**:
-- External dependency (Framer Motion: 48KB gzipped)
-- Overkill for simple Y-position animation
-- May conflict with existing CSS transitions
+The frontend uses `audioRef.current.duration` for duration. In render mode, there is no `<audio>` element. Two approaches:
 
-**Recommendation**: Avoid for MVP. Framer Motion excels at [complex cursor trails](https://blog.olivierlarose.com/tutorials/cartoon-cursor-trailing), but our cursor is a static position indicator.
+**Use ffprobe (recommended):** The backend runs `ffprobe -v quiet -print_format json -show_format audioFile` to get duration. Inject as `exportConfig.audioDuration`.
 
-### Cursor Visibility During Virtualization
+**Client sends duration:** The frontend already knows the audio duration from the `<audio>` element. Include it in the export request.
 
-**Challenge**: If active event is on an unmounted page, cursor position invalid
+Use both: client sends duration as a hint, backend verifies with ffprobe.
 
-**Solution**: Guard check in cursor render
+### Serving the Frontend App
+
+The backend needs to serve the built frontend for Puppeteer to navigate to.
+
 ```typescript
-const cursorY = useMemo(() => {
-  if (interpolatedEvents.length === 0 || eventIndexRef.current < 0) return null;
-  const activeEvent = interpolatedEvents[eventIndexRef.current];
+// server.ts
+import express from 'express';
+import path from 'path';
 
-  // Find which page contains this Y position
-  const pageIndex = pageOffsets.findIndex((offset, i) => {
-    const pageTop = offset;
-    const pageBottom = offset + pageHeights[i];
-    return activeEvent.y >= pageTop && activeEvent.y < pageBottom;
-  });
+const app = express();
 
-  // Only show cursor if page is mounted
-  if (pageIndex === -1 || !visiblePageIndices.includes(pageIndex)) return null;
+// Serve the built frontend SPA
+const frontendDist = path.resolve(__dirname, '../../renderer/dist');
+app.use('/app', express.static(frontendDist));
 
-  return activeEvent.y;
-}, [interpolatedEvents, eventIndexRef.current, visiblePageIndices, pageOffsets, pageHeights]);
+// Serve job-specific files (background images)
+app.use('/api/files', express.static(tempDir));
 ```
 
-### Confidence Assessment
+The backend builds the frontend at startup or uses a pre-built dist:
 
-| Aspect | Confidence | Reason |
-|--------|------------|--------|
-| Absolute positioning | HIGH | Standard CSS pattern, no library needed |
-| CSS transitions | MEDIUM | Timing may drift from rAF animation |
-| Visibility guard | HIGH | Logical check, prevents phantom cursor |
-| Performance | HIGH | Single div, no expensive operations |
-
-## SVGO Integration Architecture
-
-### Option A: Preprocess in useVerovio Hook (Recommended)
-
-**Where**: `src/hooks/useVerovio.ts`, lines 100-104 (after renderToSVG)
-
-**Structure**:
-```typescript
-import { optimize } from 'svgo';
-
-// In useVerovio, after rendering pages
-const count = toolkit.getPageCount();
-const pages: string[] = [];
-for (let i = 1; i <= count; i++) {
-  const rawSvg = toolkit.renderToSVG(i);
-
-  // SVGO optimization
-  const optimized = optimize(rawSvg, {
-    plugins: [
-      'removeDoctype',
-      'removeXMLProcInst',
-      'removeComments',
-      'removeMetadata',
-      'removeEditorsNSData',
-      'cleanupAttrs',
-      'mergeStyles',
-      'inlineStyles',
-      'minifyStyles',
-      'cleanupIds',
-      'removeUselessDefs',
-      'cleanupNumericValues',
-      'convertColors',
-      'removeUnknownsAndDefaults',
-      'removeNonInheritableGroupAttrs',
-      'removeUselessStrokeAndFill',
-      'removeViewBox', // Keep viewBox for responsive scaling
-      'cleanupEnableBackground',
-      'removeHiddenElems',
-      'removeEmptyText',
-      'convertShapeToPath',
-      'convertEllipseToCircle',
-      'moveElemsAttrsToGroup',
-      'moveGroupAttrsToElems',
-      'collapseGroups',
-      'convertPathData',
-      'convertTransform',
-      'removeEmptyAttrs',
-      'removeEmptyContainers',
-      'mergePaths',
-      'removeUnusedNS',
-      'sortDefsChildren',
-      'removeTitle',
-      'removeDesc',
-    ],
-  });
-
-  pages.push(optimized.data);
-}
+```bash
+# In export-service/package.json scripts
+"prebuild": "cd ../renderer && npm run build"
 ```
 
-**Pros**:
-- Happens once per score load (cached in svgPages[])
-- No runtime overhead (preprocessing done upfront)
-- Reduces DOM size for all pages (virtualized or not)
-- Integrates naturally with existing render flow
+---
 
-**Cons**:
-- Increases initial load time (~50-100ms per page based on [SVGO benchmarks](https://github.com/svg/svgo))
-- For 50-page score: +2.5-5s load time
-- May interfere with Verovio's specific SVG structure (IDs, classes)
+## Scalability Considerations
 
-**Mitigation**: Make SVGO optional via prop `enableSvgOptimization?: boolean`
+| Concern | At 1 user | At 10 users | At 100+ users |
+|---------|-----------|-------------|---------------|
+| **Concurrency** | 1 job at a time | Queue with 1-2 parallel jobs | Worker pool or separate machines |
+| **Memory** | 1 Chrome instance (~300MB) | 2 instances (~600MB) | Need horizontal scaling |
+| **Disk** | Temp files cleaned per-job | Same, no accumulation | Same |
+| **CPU** | FFmpeg uses 1-2 cores per job | Need 4-8 cores | Offload to dedicated encoding server |
+| **Latency** | Frame capture: ~50-100ms/frame at 1080p | Same per-job | Parallel workers reduce queue wait |
+| **Total time** | 3min video at 30fps = 5400 frames * 80ms = ~7min | Same per-job, queued | Parallel workers |
 
-### Option B: Web Worker Background Processing
+### Export Time Estimation
 
-**Where**: New file `src/workers/svgOptimizer.worker.ts`
+For a 3-minute song at 30fps:
+- Total frames: 3 * 60 * 30 = 5,400
+- Per-frame: ~50ms setFrame + ~50ms screenshot = ~100ms
+- Total capture: ~540 seconds (9 minutes)
+- FFmpeg encoding: overlaps with capture (piped), adds ~30s finalization
+- **Total: ~10 minutes for a 3-minute video at 30fps, 1080p**
 
-**Structure**:
+This is acceptable for an async job. User sees progress via WebSocket.
+
+### Optimization Opportunities (Future)
+
+1. **Lower resolution for preview exports:** 720p cuts frame count and screenshot time
+2. **JPEG screenshots for draft quality:** 3-5x faster than PNG, acceptable for preview
+3. **Parallel frame capture:** Multiple browser tabs, each capturing a range of frames, merging afterward. Complex but potentially 4x faster.
+4. **Hardware encoding:** `libx264` -> `h264_videotoolbox` (macOS) or `h264_nvenc` (NVIDIA). Significantly faster encoding.
+
+---
+
+## Puppeteer Launch Configuration
+
 ```typescript
-// worker
-import { optimize } from 'svgo';
-
-self.onmessage = (e) => {
-  const { svgPages, options } = e.data;
-  const optimized = svgPages.map(svg => optimize(svg, options).data);
-  self.postMessage(optimized);
-};
-
-// In useVerovio
-const [optimizedPages, setOptimizedPages] = useState<string[]>([]);
-
-useEffect(() => {
-  if (svgPages.length === 0) return;
-
-  const worker = new Worker(new URL('../workers/svgOptimizer.worker.ts', import.meta.url));
-  worker.postMessage({ svgPages, options });
-  worker.onmessage = (e) => {
-    setOptimizedPages(e.data);
-    worker.terminate();
-  };
-
-  return () => worker.terminate();
-}, [svgPages]);
-```
-
-**Pros**:
-- Non-blocking (preserves UI responsiveness)
-- Good for large scores (50+ pages)
-- Progressive enhancement (show unoptimized first, swap in optimized)
-
-**Cons**:
-- Complexity: worker setup, bundler config
-- Memory overhead: two copies of SVG strings in memory
-- Race conditions: user scrolls before optimization completes
-
-**Recommendation**: Defer to future optimization. Current scores are <20 pages, blocking is acceptable.
-
-### Option C: Build-Time Preprocessing
-
-**Where**: Not applicable (SVG generated at runtime from XML)
-
-**Reason**: Verovio generates SVG dynamically based on score width, scale, font. Cannot pre-optimize static files.
-
-### SVGO Plugin Caveats for Verovio
-
-**Critical**: Verovio relies on specific SVG structure for animation queries
-
-**Must preserve**:
-- Element IDs (event.svgIds like `note-0000001234567890`)
-- Class names (`.notehead`, `.staff`, `.definition-scale`)
-- Group hierarchy (`<g class="note">` wrapping noteheads)
-
-**Recommended config**:
-```typescript
-{
-  plugins: [
-    {
-      name: 'cleanupIds',
-      params: {
-        preserve: [/^note-/, /^measure-/], // Keep Verovio IDs
-      },
-    },
-    {
-      name: 'removeViewBox',
-      active: false, // Keep viewBox for responsive rendering
-    },
+const browser = await puppeteer.launch({
+  headless: true,
+  args: [
+    '--no-sandbox',              // Required in Docker/CI
+    '--disable-setuid-sandbox',  // Required in Docker/CI
+    '--disable-dev-shm-usage',   // Use /tmp instead of /dev/shm (prevents OOM)
+    '--disable-gpu',             // No GPU needed for 2D rendering
+    '--disable-extensions',      // No browser extensions
+    '--disable-background-timer-throttling',  // Prevent timer throttling
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--font-render-hinting=none',  // Consistent font rendering
+    `--window-size=${width},${height}`,
   ],
-}
+  defaultViewport: {
+    width: 1920,
+    height: 1080,
+    deviceScaleFactor: 1,  // 1 = exact pixel match; 2 = 2x retina
+  },
+});
 ```
 
-**Testing required**: Verify querySelector still finds noteheads after optimization.
+---
 
-### Confidence Assessment
+## WebSocket Protocol Detail
 
-| Aspect | Confidence | Reason |
-|--------|------------|--------|
-| SVGO integration | MEDIUM | Library stable, but Verovio SVG structure unknown |
-| Performance gain | LOW | No benchmarks for Verovio-generated SVG |
-| ID preservation | LOW | Must verify with test score |
-| Load time impact | MEDIUM | Estimated based on [SVGO benchmarks](https://github.com/svg/svgo), not measured |
+### Connection
 
-### Recommendation: Defer SVGO
-
-**Rationale**:
-1. Virtualization provides immediate performance boost (removes 80%+ of DOM nodes)
-2. SVGO optimization is incremental (reduces remaining 20% by ~30-50%)
-3. Risk of breaking animation queries is non-trivial
-4. Testing burden high (must verify across multiple score types)
-
-**Alternative**: Investigate Verovio's `compress` option (may have built-in optimization)
-
-## Build Order and Dependencies
-
-### Phase 1: Virtualization Foundation
-
-**Goal**: Reduce DOM nodes for long scores
-
-**Tasks**:
-1. Refactor camera state: expose `cameraY` as state or ref (currently derived from transform)
-2. Implement visible range calculation (useMemo with buffer)
-3. Update render logic: conditional mount + placeholder divs
-4. Test querySelector with unmounted pages (add guards if needed)
-
-**Files Modified**:
-- `src/renderers/RegularRenderer.tsx` (lines 307-322, 771-779)
-
-**Success Criteria**:
-- 50-page score renders <10 pages in DOM
-- Camera scrolling smooth (no jank)
-- Animation still works for visible noteheads
-- No errors when animating off-screen events
-
-**Risk**: Animation queries may fail silently if event's page is unmounted. Mitigation: Add guard `if (!element) continue` in animation loop.
-
-### Phase 2: Cursor Overlay
-
-**Goal**: Visual indicator for active event position
-
-**Tasks**:
-1. Calculate cursor Y from `interpolatedEvents[eventIndexRef.current].y`
-2. Add cursor div as sibling to camera div (absolute positioning)
-3. Implement visibility guard (hide if page unmounted)
-4. Match CSS transition timing to camera easing
-
-**Files Modified**:
-- `src/renderers/RegularRenderer.tsx` (lines 757-782)
-
-**Success Criteria**:
-- Red line cursor tracks active event
-- Cursor hidden when event off-screen
-- Smooth transition matches camera movement
-- No layout shift when cursor appears/disappears
-
-**Risk**: CSS transition may lag behind rAF-driven camera. Mitigation: Test with fast playback, switch to imperative updates if needed.
-
-### Phase 3: SVGO Optimization (Optional)
-
-**Goal**: Reduce SVG file size and DOM complexity
-
-**Tasks**:
-1. Add SVGO dependency (`npm install svgo`)
-2. Integrate optimize() call in useVerovio hook
-3. Configure plugins to preserve Verovio IDs and classes
-4. Test querySelector with optimized SVG
-5. Benchmark load time impact
-6. Add `enableSvgOptimization` prop with default `false`
-
-**Files Modified**:
-- `src/hooks/useVerovio.ts` (lines 100-104)
-- `src/renderers/RegularRenderer.tsx` (add prop)
-
-**Success Criteria**:
-- SVG strings 30-50% smaller (measure with `svg.length`)
-- Animation still works (noteheads found by querySelector)
-- Load time increase <1s per 10 pages
-- Opt-in via prop (safe default)
-
-**Risk**: HIGH - May break animation if IDs mangled. Mitigation: Extensive testing, make opt-in, document known issues.
-
-## Alternative Architectures Considered
-
-### react-window VariableSizeList
-
-**Rejected because**:
-- Designed for scrolling containers, but we use CSS `translateY` on fixed viewport
-- Would require major refactor of camera system
-- [Comparison shows](https://mashuktamim.medium.com/react-virtualization-showdown-tanstack-virtualizer-vs-react-window-for-sticky-table-grids-69b738b36a83) TanStack better for custom layouts, but both overkill for static page list
-
-### Intersection Observer API
-
-**Rejected because**:
-- Async callbacks may lag behind 60fps camera movement
-- Requires ref for each page div (memory overhead)
-- [Virtualization patterns](https://www.patterns.dev/vanilla/virtual-lists/) prefer sync calculation for predictable behavior
-
-### Canvas Rendering
-
-**Rejected because**:
-- Verovio outputs SVG, converting to canvas is expensive
-- Loses SVG benefits (crisp scaling, DOM queries for animation)
-- Out of scope for this milestone
-
-## Performance Expectations
-
-### Baseline (Current)
-
-| Metric | 10 Pages | 50 Pages | 100 Pages |
-|--------|----------|----------|-----------|
-| DOM Nodes | ~5,000 | ~25,000 | ~50,000 |
-| Initial Render | 200ms | 1,000ms | 2,000ms |
-| Scroll FPS | 60 | 45 | 30 |
-| Memory | 50MB | 250MB | 500MB |
-
-**Source**: Estimated based on [React virtualization benchmarks](https://medium.com/@ignatovich.dm/virtualization-in-react-improving-performance-for-large-lists-3df0800022ef)
-
-### After Virtualization
-
-| Metric | 10 Pages | 50 Pages | 100 Pages |
-|--------|----------|----------|-----------|
-| DOM Nodes | ~5,000 | ~10,000 | ~10,000 |
-| Initial Render | 200ms | 400ms | 400ms |
-| Scroll FPS | 60 | 60 | 60 |
-| Memory | 50MB | 80MB | 80MB |
-
-**Improvement**: 5x reduction in DOM nodes for large scores, 60fps maintained
-
-### After SVGO (If Implemented)
-
-| Metric | Improvement |
-|--------|-------------|
-| SVG String Size | -30% to -50% |
-| DOM Node Count | -10% to -20% (fewer empty groups/defs) |
-| Parse Time | -15% to -25% (smaller strings) |
-
-**Source**: [SVGO documentation](https://github.com/svg/svgo) claims 20-50% size reduction
-
-**Trade-off**: +50-100ms load time per page for optimization
-
-## Integration Risks and Mitigations
-
-### Risk 1: Animation Queries Fail on Unmounted Pages
-
-**Scenario**: User scrubs to timestamp, active event on page 5, but only pages 1-3 mounted
-
-**Impact**: `querySelector` returns null, animation silently fails
-
-**Mitigation**:
-```typescript
-for (const id of event.svgIds) {
-  const stavenote = scoreRef.current.querySelector(`#${CSS.escape(id)}`);
-  if (!stavenote) {
-    console.warn(`[Animation] Element ${id} not found (page may be unmounted)`);
-    continue; // Skip this notehead
-  }
-  // Apply animation
-}
+```
+Client: ws://host:3001/ws?jobId=abc123
+Server: Accept, register listener for jobId
 ```
 
-**Confidence**: HIGH - Standard defensive programming
+### Messages (Server to Client)
 
-### Risk 2: Camera Y Extraction Coupling
-
-**Scenario**: Currently `currentYRef.current` stores target Y, but camera applies clamping and centering. Visible range calculation needs actual camera Y (post-clamping).
-
-**Impact**: Incorrect visible range if camera clamped at edges
-
-**Mitigation**: Track actual camera Y in separate ref inside `applyCamera`:
 ```typescript
-function applyCamera(targetY: number) {
-  const scoreHeight = totalHeight || 0;
-  const viewportHeight = scoreRegion?.height ?? containerHeight;
+// Queued (waiting for other jobs to finish)
+{ "type": "queued", "position": 2 }
 
-  let cameraY = targetY - viewportHeight / 2;
-  cameraY = Math.max(0, cameraY);
-  cameraY = Math.min(cameraY, Math.max(0, scoreHeight - viewportHeight));
+// Preparing (launching browser, loading frontend)
+{ "type": "preparing", "message": "Loading score..." }
 
-  cameraYRef.current = cameraY; // NEW: Track actual camera Y
+// Rendering (frame capture in progress)
+{ "type": "rendering", "frame": 150, "totalFrames": 5400, "percent": 2.78, "eta": 485 }
 
-  if (cameraRef.current) {
-    cameraRef.current.style.transform = `translateY(${-cameraY}px)`;
+// Encoding finalization
+{ "type": "encoding", "message": "Finalizing video..." }
+
+// Complete
+{ "type": "complete", "downloadUrl": "/api/export/abc123/download", "fileSize": 52428800 }
+
+// Error
+{ "type": "error", "message": "FFmpeg exited with code 1", "code": "ENCODER_FAILED" }
+```
+
+### Heartbeat
+
+Server sends `{ "type": "ping" }` every 30s. Client responds with `{ "type": "pong" }`. Disconnect on 3 missed pongs.
+
+---
+
+## Error Handling Strategy
+
+| Error | Detection | Recovery |
+|-------|-----------|----------|
+| Puppeteer launch fails | try/catch on `puppeteer.launch()` | Retry once, then fail job |
+| Page navigation fails | `page.goto()` timeout | Rebuild frontend, retry once |
+| `animationController` never appears | `waitForFunction` timeout (30s) | Fail job with "Renderer failed to initialize" |
+| Screenshot fails | try/catch on `page.screenshot()` | Retry frame 3x, then fail job |
+| FFmpeg exits non-zero | `ffmpeg.on('exit', code)` | Fail job with FFmpeg stderr |
+| FFmpeg stdin backpressure | `write()` returns false | `await` drain event before next frame |
+| Temp disk full | `write` ENOSPC error | Fail job, clean temp directory |
+| Client disconnects WebSocket | `ws.on('close')` | Job continues (result downloadable later) |
+
+### FFmpeg Backpressure Handling
+
+Critical: FFmpeg may not consume frames as fast as Puppeteer produces them. The Node.js writable stream `write()` returns `false` when the internal buffer is full. Must respect this:
+
+```typescript
+async function writeFrame(stdin: Writable, buffer: Buffer): Promise<void> {
+  const canContinue = stdin.write(buffer);
+  if (!canContinue) {
+    await new Promise<void>(resolve => stdin.once('drain', resolve));
   }
 }
 ```
 
-**Confidence**: HIGH - Minor refactor, no API changes
+---
 
-### Risk 3: SVGO Breaks Verovio IDs
+## Temp File Management
 
-**Scenario**: SVGO's `cleanupIds` plugin renames `note-0000001234567890` to `a` or removes it
+```
+/tmp/manuscript-export-{jobId}/
+  score.xml           # Uploaded MusicXML
+  audio.mp3           # Uploaded audio (optional)
+  bg.png              # Uploaded background (optional)
+  output.mp4          # Final encoded video
+```
 
-**Impact**: Animation queries return null for all noteheads
+### Cleanup Rules
 
-**Mitigation**:
-1. Configure SVGO to preserve ID patterns: `preserve: [/^note-/, /^measure-/]`
-2. Test with sample score before and after optimization
-3. Compare querySelector results for same event ID
-4. Make feature opt-in with default disabled
+1. **On job complete:** Keep `output.mp4` for download. Delete source files after 1 hour.
+2. **On job error:** Delete entire temp directory immediately.
+3. **On server startup:** Scan `/tmp/manuscript-export-*`, delete directories older than 2 hours.
+4. **On download:** After first download, schedule deletion in 10 minutes.
 
-**Confidence**: MEDIUM - Depends on SVGO plugin behavior, requires empirical testing
-
-### Risk 4: Cursor Flicker During Transitions
-
-**Scenario**: CSS transition duration doesn't match camera easing, cursor appears to lead/lag
-
-**Impact**: Visual jank, unprofessional appearance
-
-**Mitigation**:
-1. Match cursor transition exactly: `transition: 'top 200ms ease-out'` (same as camera line 759)
-2. If still janky, switch to imperative updates in `animateSync` (Option B)
-3. Use `will-change: top` CSS hint for GPU acceleration
-
-**Confidence**: MEDIUM - CSS transitions usually smooth, but [timing drift is possible](https://blog.olivierlarose.com/tutorials/blend-mode-cursor)
-
-## Testing Recommendations
-
-### Virtualization Tests
-
-1. **Visual Test**: Load 50-page score, scroll through, verify all pages render when visible
-2. **Performance Test**: Measure DOM node count with `document.querySelectorAll('*').length` before/after
-3. **Animation Test**: Play through score, verify noteheads animate on visible pages
-4. **Edge Case**: Scrub to end of score, verify last page renders
-
-### Cursor Tests
-
-1. **Visual Test**: Play score, verify red line appears and follows active event
-2. **Visibility Test**: Scrub to off-screen event, verify cursor disappears
-3. **Timing Test**: Play at 2x speed, verify cursor doesn't lag behind camera
-4. **Edge Case**: First/last event, verify cursor appears correctly
-
-### SVGO Tests (If Implemented)
-
-1. **Correctness Test**: Load optimized score, verify visually identical to unoptimized
-2. **Animation Test**: Verify noteheads still animate after optimization
-3. **Size Test**: Measure `svgPages[0].length` before/after, verify 30%+ reduction
-4. **Load Time Test**: Measure `useVerovio` hook duration, verify increase <100ms per page
-
-## Future Optimization Opportunities
-
-### Dynamic Buffer Sizing
-
-**Current**: Fixed 1-page buffer above/below
-**Future**: Adaptive buffer based on scroll velocity (fast scroll = larger buffer)
-
-### Page-Level Memoization
-
-**Current**: Re-render all visible pages on every camera move
-**Future**: Memoize individual page divs with `React.memo`, only re-render if visibility changes
-
-### Lazy Event Extraction
-
-**Current**: Extract all events on SVG load (line 254)
-**Future**: Extract events only for mounted pages, defer off-screen pages
-
-### Cursor Enhancements
-
-**Current**: Static red line
-**Future**:
-- Animated pulse during playback
-- Color based on note velocity/dynamics
-- Note name tooltip on hover
+---
 
 ## Sources
 
-### Virtualization
-- [Virtualization in React: Improving Performance for Large Lists](https://medium.com/@ignatovich.dm/virtualization-in-react-improving-performance-for-large-lists-3df0800022ef)
-- [List Virtualization in React](https://medium.com/@atulbanwar/list-virtualization-in-react-3db491346af4)
-- [Virtual scrolling: Core principles and basic implementation in React](https://blog.logrocket.com/virtual-scrolling-core-principles-and-basic-implementation-in-react/)
-- [TanStack Virtual Documentation](https://tanstack.com/virtual/latest)
-- [List Virtualization Patterns](https://www.patterns.dev/vanilla/virtual-lists/)
+### HIGH Confidence
+- **Codebase analysis:** `RegularRenderer.tsx` lines 526-668 (setTimestamp stateless implementation), lines 670-715 (window.animationController exposure)
+- **Codebase analysis:** `animationController.ts` lines 125-128 (setFrame/setTimestamp synchronous design)
+- **Codebase analysis:** `SingleLineRenderer.tsx` lines 163-167 (existing render mode detection pattern via URL params)
+- [Puppeteer ScreenshotOptions API](https://pptr.dev/api/puppeteer.screenshotoptions) - optimizeForSpeed, encoding, type options
+- [Puppeteer page.evaluateOnNewDocument](https://pptr.dev/api/puppeteer.page.evaluateonnewdocument) - Inject code before page scripts run
+- [Puppeteer page.setViewport](https://pptr.dev/api/puppeteer.page.setviewport) - Viewport configuration with deviceScaleFactor
 
-### Library Comparisons
-- [React Virtualization Showdown: TanStack Virtualizer vs React-Window](https://mashuktamim.medium.com/react-virtualization-showdown-tanstack-virtualizer-vs-react-window-for-sticky-table-grids-69b738b36a83)
-- [Comparing TanStack Virtual with React-Window](https://borstch.com/blog/development/comparing-tanstack-virtual-with-react-window-which-one-should-you-choose)
-- [npm-compare: React Virtualization Libraries](https://npm-compare.com/@tanstack/react-virtual,react-infinite-scroll-component,react-virtualized,react-window)
+### MEDIUM Confidence
+- [HTML5 slideshow to video with Puppeteer + FFmpeg](https://robinz.in/convert-an-html5-slideshow-to-a-video/) - Screenshot-to-stdin pipe pattern
+- [Node.js real-time video with FFmpeg](https://ofarukcaki.medium.com/producing-real-time-video-with-node-js-and-ffmpeg-a59ac27461a1) - stdin.write() + stdin.end() pattern
+- [timecut: Node.js web page video recorder](https://github.com/tungs/timecut) - Frame-by-frame capture architecture reference
+- [Puppeteer screenshot speed optimization](https://www.bannerbear.com/blog/ways-to-speed-up-puppeteer-screenshots/) - optimizeForSpeed flag, PNG vs JPEG performance
+- [Optimize screenshots with CDP](https://screenshotone.com/blog/optimize-for-speed-when-rendering-screenshots-in-puppeteer-and-chrome-devtools-protocol/) - optimizeForSpeed uses zlib q1 encoding
+- [fluent-ffmpeg archived May 2025](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg) - Repository archived, use child_process.spawn directly
+- [pnpm workspaces](https://pnpm.io/workspaces) - Monorepo workspace configuration
 
-### Cursor and Animation
-- [How to Make an Animated Cursor using React and GSAP](https://blog.olivierlarose.com/tutorials/blend-mode-cursor)
-- [Custom Cursor - React cursor animation | Motion](https://motion.dev/docs/cursor)
-- [useMousePosition React Hook](https://www.joshwcomeau.com/snippets/react-hooks/use-mouse-position/)
-- [Build Scroll Timeline Animation Component in React 2026](https://zoer.ai/posts/zoer/react-scroll-timeline-animation-component)
+### LOW Confidence
+- [WebSocket streaming patterns 2025](https://www.videosdk.live/developer-hub/websocket/websocket-streaming) - General WebSocket architecture patterns
+- [Puppeteer issue #1034: Create video with screenshot](https://github.com/puppeteer/puppeteer/issues/1034) - Community approaches to video creation
 
-### Performance Optimization
-- [React useMemo Documentation](https://react.dev/reference/react/useMemo)
-- [React Performance Optimization: 15 Best Practices for 2025](https://dev.to/alex_bobes/react-performance-optimization-15-best-practices-for-2025-17l9)
-- [React 19 Compiler in 2025: Why useMemo/useCallback Are Dead](https://isitdev.com/react-19-compiler-usememo-usecallback-dead-2025/)
+---
 
-### SVGO
-- [SVGO GitHub Repository](https://github.com/svg/svgo)
-- [SVGO Documentation](https://svgo.dev/)
-- [Master React SVG Integration, Animation and Optimization](https://strapi.io/blog/mastering-react-svg-integration-animation-optimization)
-- [Improving SVG Runtime Performance](https://codepen.io/tigt/post/improving-svg-rendering-performance)
+*Architecture research completed: 2026-02-09*
+*Domain: Backend video export service for Manuscript score renderer*
+*Focus: Integration with existing React SPA, headless Chrome pipeline, FFmpeg encoding*
