@@ -1,0 +1,10 @@
+node_modules/
+dist/
+export-service/node_modules/
+export-service/dist/
+.git/
+.gitignore
+.planning/
+demo/
+*.md
+.DS_Store
