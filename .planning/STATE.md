@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 ## Current Position
 
 Phase: 15 - Backend Foundation & Settings Transfer
-Plan: 1 of 3
+Plan: 2 of 3
 Status: Executing
-Last activity: 2026-02-09 — Completed 15-01 (project scaffold + schemas)
+Last activity: 2026-02-09 — Completed 15-02 (Fastify server + multipart upload + job management)
 
-Progress: [###-------] 1/3 plans
+Progress: [######----] 2/3 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 20
+- Total plans completed: 21
 - Average duration: 2.4 min
-- Total execution time: 48 min
+- Total execution time: 50 min
 
 **By Phase:**
 
@@ -40,7 +40,7 @@ Progress: [###-------] 1/3 plans
 | 12 - SingleLineRenderer Core      | 1/2   | 4 min | 4 min    |
 | 13 - Section Virtualization       | 2/3   | 6 min | 3 min    |
 | 14 - Page Virtualization          | 2/2   | 5 min | 2.5 min  |
-| 15 - Backend Foundation           | 1/3   | 2 min | 2 min    |
+| 15 - Backend Foundation           | 2/3   | 4 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -52,6 +52,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 - 15-01: Placed export-service/ inside renderer repo (git root is renderer/, not Manuscript/)
 - 15-01: Used TypeBox for single-source schema + type derivation (eliminates drift)
+- 15-02: Audio files streamed to disk via pipeline() (not buffered in memory)
+- 15-02: Fastify multipart plugin rejects non-multipart at plugin level (406)
 
 ### Roadmap Evolution
 
@@ -69,9 +71,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 15-01-PLAN.md
+Stopped at: Completed 15-02-PLAN.md
 Resume file: None
-Next: `/gsd:execute-phase 15` (plan 02)
+Next: `/gsd:execute-phase 15` (plan 03)
 
 ### Quick Tasks Completed
 
