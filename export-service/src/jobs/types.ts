@@ -8,6 +8,13 @@ export type JobStatus =
   | 'complete'
   | 'error';
 
+export type JobProgressEvent =
+  | { type: 'stage'; jobId: string; stage: 'preparing' | 'rendering' | 'encoding' | 'muxing' }
+  | { type: 'progress'; jobId: string; frame: number; totalFrames: number; percent: number }
+  | { type: 'complete'; jobId: string; downloadUrl: string }
+  | { type: 'error'; jobId: string; error: string }
+  | { type: 'cancelled'; jobId: string };
+
 export interface ExportJob {
   id: string;
   status: JobStatus;
@@ -18,4 +25,11 @@ export interface ExportJob {
   settings: ExportSettings;
   syncAnchors: Record<string, number>;
   outputPath?: string;
+  // Progress tracking (for reconnection state sync)
+  currentFrame?: number;
+  totalFrames?: number;
+  percent?: number;
+  stage?: string;
+  // Cancellation
+  abortController?: AbortController;
 }
