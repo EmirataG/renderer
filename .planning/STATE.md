@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-05)
+See: .planning/PROJECT.md (updated 2026-02-08)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** v1.2 SingleLineRenderer (Phase 13: Section Virtualization)
+**Current focus:** v1.3 Performance & Polish (RegularRenderer virtualization, cursor, polish)
 
 ## Current Position
 
-Phase: 13 - Section Virtualization
-Plan: 2 of 3
-Status: In progress
-Last activity: 2026-02-08 -- Completed Phase 13-02 (seamless section boundaries)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-08 — Milestone v1.3 started
 
-Progress: [========= ] 88% (v1.0 complete, v1.1 complete, v1.2 phases 10-13.2 complete)
+Progress: [          ] 0%
 
 ## Performance Metrics
 

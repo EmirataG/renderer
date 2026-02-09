@@ -46,13 +46,12 @@ Capabilities shipped and confirmed working:
 
 ### Active
 
-- SLR-01: SingleLineRenderer component displaying score as one horizontal line
-- SLR-02: Horizontal camera system keeping active note centered in score region
-- SLR-03: Section-based rendering via Verovio for performance optimization
-- SLR-04: Lazy section loading (only visible sections mounted in DOM)
-- SLR-05: Seamless section transitions (breaks invisible to users)
-- SLR-06: Notehead animation working on horizontal layout
-- SLR-07: Score region bounds controlling animation viewport
+- VIRT-01: Page virtualization - only visible pages mounted in DOM
+- VIRT-02: Placeholder divs maintain layout for unmounted pages
+- VIRT-03: Pages unmount when scrolled out of view
+- GAP-01: Seamless page transitions with no visible gaps
+- CUR-01: Moving cursor follows active event during playback
+- PERF-01: Research SVGO for SVG optimization potential
 
 ### Out of Scope
 
@@ -64,18 +63,16 @@ Capabilities shipped and confirmed working:
 - Canvas rendering — investigated, poor cost-benefit vs paginated SVG
 - Web Worker rendering — defer until profiling shows need
 
-## Current Milestone: v1.2 SingleLineRenderer
+## Current Milestone: v1.3 Performance & Polish
 
-**Goal:** Add a new renderer that displays scores as a single horizontal line with smooth camera tracking and lazy section loading for performance.
+**Goal:** Finalize RegularRenderer with virtualization, visual polish, and a moving playback cursor.
 
 **Target features:**
-- SingleLineRenderer component with horizontal layout
-- Horizontal camera tracking (active note stays centered)
-- Section-based Verovio rendering for performance
-- Lazy section loading (only visible sections in DOM)
-- Seamless section transitions (invisible breaks)
-- Same notehead animation as RegularRenderer
-- Score region bounds control animation viewport
+- Page virtualization (only visible pages in DOM, placeholders for rest)
+- Seamless page transitions (no gaps between pages)
+- Moving cursor that follows active event during playback
+- SVGO optimization research for SVG performance
+- Unmount pages when scrolled out of view
 
 ## Context
 
