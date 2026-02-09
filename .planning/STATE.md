@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 17 - Puppeteer Integration & Frame Capture (COMPLETE)
-Plan: 2 of 2
+Phase: 18 - FFmpeg Encoding & Audio Mux (COMPLETE)
+Plan: 1 of 1
 Status: Phase Complete
-Last activity: 2026-02-09 — Completed 17-02 (Page setup, frame capture, render job orchestrator)
+Last activity: 2026-02-09 — Completed 18-01 (FFmpeg encoding, audio muxing, renderJob refactor)
 
-Progress: [##########] 2/2 plans
+Progress: [##########] 1/1 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 25
-- Average duration: 2.4 min
-- Total execution time: 59 min
+- Total plans completed: 26
+- Average duration: 2.3 min
+- Total execution time: 61 min
 
 **By Phase:**
 
@@ -43,6 +43,7 @@ Progress: [##########] 2/2 plans
 | 15 - Backend Foundation           | 3/3   | 6 min | 2 min    |
 | 16 - Frontend Render Mode         | 1/1   | 3 min | 3 min    |
 | 17 - Puppeteer Integration        | 2/2   | 4 min | 2 min    |
+| 18 - FFmpeg Encoding & Audio Mux  | 1/1   | 2 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -67,6 +68,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 17-02: Frame buffers collected in memory for Phase 17; Phase 18 will pipe to FFmpeg stdin
 - 17-02: evaluateOnNewDocument called BEFORE page.goto() for config injection ordering
 - 17-02: (job as any) cast for frameBuffers to avoid premature ExportJob type changes
+- 18-01: Direct child_process.spawn over fluent-ffmpeg (archived May 2025)
+- 18-01: Two-step encode+mux: stdin piping for frames, then separate mux pass for audio
+- 18-01: CRF 18 medium preset for visually lossless quality on score animations
+- 18-01: Always transcode audio to AAC (simplicity over conditional codec copy)
 
 ### Roadmap Evolution
 
@@ -84,9 +89,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 17-02-PLAN.md (Phase 17 complete)
+Stopped at: Completed 18-01-PLAN.md (Phase 18 complete)
 Resume file: None
-Next: Phase 18 - FFmpeg Encoding
+Next: Phase 19 - Download & Cleanup
 
 ### Quick Tasks Completed
 
