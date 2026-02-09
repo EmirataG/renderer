@@ -139,6 +139,11 @@ Plans:
 
 **Requirements:** VID-01, VID-02, VID-03
 
+**Plans:** 1 plan
+
+Plans:
+- [ ] 18-01-PLAN.md -- FFmpeg encoding modules, audio muxing, renderJob refactor to pipe frames
+
 **Success Criteria:**
 1. Backend spawns FFmpeg process reading PNG frames from stdin, encoding to H.264 MP4 with yuv420p pixel format
 2. Backend muxes original audio file into MP4 with correct sync (duration matches video)
@@ -196,7 +201,7 @@ Plans:
 | 15 - Backend Foundation & Settings Transfer | ✓ Complete | 3/3 | 6/6 | 100% |
 | 16 - Frontend Render Mode | ✓ Complete | 1/1 | 2/2 | 100% |
 | 17 - Puppeteer Integration & Frame Capture | ✓ Complete | 2/2 | 4/4 | 100% |
-| 18 - FFmpeg Encoding & Audio Mux | Pending | 0/? | 0/? | 0% |
+| 18 - FFmpeg Encoding & Audio Mux | Pending | 0/1 | 0/2 | 0% |
 | 19 - Progress Streaming & Download | Pending | 0/? | 0/? | 0% |
 | 20 - Docker Image & Fly.io Deployment | Pending | 0/? | 0/? | 0% |
 | 21 - Resolution Presets & Enhanced UX | Pending | 0/? | 0/? | 0% |
