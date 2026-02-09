@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 16 - Frontend Render Mode
-Plan: 1 of 1
-Status: Phase Complete
-Last activity: 2026-02-09 — Completed 16-01 (Frontend render mode for headless frame capture)
+Phase: 17 - Puppeteer Integration & Frame Capture
+Plan: 1 of 2
+Status: In Progress
+Last activity: 2026-02-09 — Completed 17-01 (Browser pool and static serving)
 
-Progress: [##########] 1/1 plans
+Progress: [#####-----] 1/2 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 23
+- Total plans completed: 24
 - Average duration: 2.4 min
-- Total execution time: 55 min
+- Total execution time: 57 min
 
 **By Phase:**
 
@@ -42,6 +42,7 @@ Progress: [##########] 1/1 plans
 | 14 - Page Virtualization          | 2/2   | 5 min | 2.5 min  |
 | 15 - Backend Foundation           | 3/3   | 6 min | 2 min    |
 | 16 - Frontend Render Mode         | 1/1   | 3 min | 3 min    |
+| 17 - Puppeteer Integration        | 1/2   | 2 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -60,6 +61,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 16-01: propAudioDuration naming to avoid shadowing state variable audioDuration
 - 16-01: Virtualization bypass via extractionDoneRef staying false (reuses existing mount condition)
 - 16-01: Dynamic import() in main.tsx for code splitting (RenderApp and App in separate chunks)
+- 17-01: generic-pool for browser pooling with testOnBorrow validation
+- 17-01: decorateReply: false on @fastify/static to avoid plugin conflicts
+- 17-01: frontendDistPath resolved via import.meta.dirname for ESM compatibility
 
 ### Roadmap Evolution
 
@@ -77,9 +81,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 16-01-PLAN.md (Phase 16 complete)
+Stopped at: Completed 17-01-PLAN.md
 Resume file: None
-Next: `/gsd:plan-phase 17`
+Next: Execute 17-02-PLAN.md
 
 ### Quick Tasks Completed
 
