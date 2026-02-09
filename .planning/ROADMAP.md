@@ -52,7 +52,7 @@ Reduced memory usage and improved rendering performance for long scores through 
 
 **Milestone Goal:** Finalize RegularRenderer with page virtualization (only visible pages in DOM), seamless page transitions, and a moving playhead cursor that follows playback.
 
-- [ ] **Phase 14: Page Virtualization** - Only mount visible pages + buffer, placeholder divs for unmounted, fix page gaps
+- [x] **Phase 14: Page Virtualization** - Only mount visible pages + buffer, placeholder divs for unmounted, fix page gaps ✓
 - [ ] **Phase 15: Playhead Cursor** - Vertical line cursor synchronized with audio playback
 
 ## Phase Details
@@ -140,8 +140,8 @@ Plans:
   5. No visible flash or jank when pages mount/unmount during scroll
 **Plans:** 2 plans
 Plans:
-- [ ] 14-01-PLAN.md — Core virtualization (camera-driven visible page range, conditional rendering, placeholder divs) + isRenderMode removal
-- [ ] 14-02-PLAN.md — Seamless page stacking (adjustPageHeight, viewBox trimming) + visual verification
+- [x] 14-01-PLAN.md — Core virtualization (camera-driven visible page range, conditional rendering, placeholder divs) + isRenderMode removal
+- [x] 14-02-PLAN.md — Seamless page stacking (adjustPageHeight, viewBox trimming) + visual verification
 
 ### Phase 15: Playhead Cursor
 **Goal**: Vertical line cursor follows active event during playback, synchronized with audio
@@ -261,5 +261,5 @@ v1.3: 14 -> 15
 | 12. SingleLineRenderer Core | v1.2 | 2/2 | Complete | 2026-02-07 |
 | 13. Section Virtualization | v1.2 | 0/3 | Paused | -- |
 | 13.1. Unplayed Score Styling | v1.2 | 2/3 | Paused | -- |
-| 14. Page Virtualization | v1.3 | 0/2 | Planned | -- |
+| 14. Page Virtualization | v1.3 | 2/2 | Complete | 2026-02-08 |
 | 15. Playhead Cursor | v1.3 | 0/2 | Planned | -- |

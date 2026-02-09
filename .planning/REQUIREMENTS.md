@@ -1,79 +1,74 @@
-# Requirements: Manuscript Renderer v1.2 SingleLineRenderer
+# Requirements: Manuscript Renderer v1.3 Performance & Polish
 
-**Defined:** 2026-02-05
+**Defined:** 2026-02-08
 **Core Value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
 
-## v1.2 Requirements
+## v1.3 Requirements
 
-### Horizontal Layout
+### Page Virtualization
 
-- [x] **HOR-01**: Score renders as single horizontal line with no system breaks
-- [x] **HOR-02**: Verovio configured with `breaks: 'none'` for single-system output
-- [ ] **HOR-03**: Section transitions are visually seamless (no gaps, staff lines continuous)
+- [x] **VIRT-01**: Only visible pages + buffer mounted in DOM (not entire score)
+- [x] **VIRT-02**: Placeholder divs maintain layout for unmounted pages
+- [x] **VIRT-03**: Pages unmount when scrolled out of view + buffer distance
+- [x] **VIRT-04**: Fast initial load - only first 1-2 pages rendered on load
+- [x] **VIRT-05**: No visible flash or jank during page mount/unmount
 
-### Camera System
+### Page Gap Fix
 
-- [ ] **CAM-01**: Horizontal camera tracking keeps active note in viewport
-- [ ] **CAM-02**: Camera uses CSS `translateX()` transforms
-- [ ] **CAM-03**: Score region bounds control animation viewport (same as RegularRenderer)
-- [ ] **CAM-04**: Active event positioned at center of score region
-- [ ] **CAM-05**: Smooth easing transitions during camera movement
+- [x] **GAP-01**: No visible gaps between adjacent pages during scroll
+- [x] **GAP-02**: Staff lines appear continuous across page boundaries
 
-### Section-Based Performance
+### Playhead Cursor
 
-- [x] **SEC-01**: Long scores split into sections (10-20 measures each)
-- [x] **SEC-02**: Sections rendered via Verovio `select({ measureRange })` API
-- [ ] **SEC-03**: Lazy loading -- only visible sections mounted in DOM
-- [ ] **SEC-04**: Section overlap for tied notes/slurs continuity
+- [ ] **CUR-01**: Vertical line cursor positioned at active event's X coordinate
+- [ ] **CUR-02**: Cursor spans height of current system (not full page)
+- [ ] **CUR-03**: Cursor synchronized with audio playback timestamp
+- [ ] **CUR-04**: Smooth cursor movement during playback (CSS transition)
+- [ ] **CUR-05**: Cursor hidden when not playing or no audio loaded
 
-### Animation
+### Polish
 
-- [ ] **ANI-01**: Notehead animation (scale, color, entry/hold/exit) works on horizontal layout
-- [ ] **ANI-02**: Animation targets correct section's SVG elements
-- [x] **ANI-03**: Each event has a single X coordinate for animation targeting
+- [ ] **POL-01**: Camera follows cursor during playback (existing behavior maintained)
+- [ ] **POL-02**: Configurable cursor color (default: red)
 
-## Future Requirements
+## Deferred to Future Milestones
 
-Deferred to later milestones:
-
-- **Puppeteer support** -- Frame capture for SingleLineRenderer video export
-- **Renderer toggle UI** -- User can switch between RegularRenderer and SingleLineRenderer
-- **Variable section sizes** -- Optimize section boundaries based on measure density
+- **SVGO optimization**: Research showed limited benefit for music notation SVGs (preserve element IDs, complex structure)
+- **Cursor scrubbing**: Click/drag cursor to seek audio
+- **Cursor hover tooltips**: Show measure number, timestamp on hover
+- **Multi-voice cursors**: Separate cursor per voice/staff
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Vertical rendering changes | RegularRenderer unchanged, this milestone is horizontal only |
-| Puppeteer frame capture | Focus on preview playback, Puppeteer support deferred |
-| Mobile/touch gestures | Desktop-first, same as v1.0/v1.1 |
-| Score border styles | Use existing border system, no horizontal-specific changes |
+| SingleLineRenderer changes | Focus on RegularRenderer for this milestone |
+| Puppeteer frame capture changes | Not affected by virtualization |
+| Mobile/touch gestures | Desktop-first priority |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HOR-01 | Phase 10 | Complete |
-| HOR-02 | Phase 10 | Complete |
-| HOR-03 | Phase 13 | Pending |
-| CAM-01 | Phase 12 | Pending |
-| CAM-02 | Phase 12 | Pending |
-| CAM-03 | Phase 12 | Pending |
-| CAM-04 | Phase 12 | Pending |
-| CAM-05 | Phase 12 | Pending |
-| SEC-01 | Phase 10 | Complete |
-| SEC-02 | Phase 10 | Complete |
-| SEC-03 | Phase 13 | Pending |
-| SEC-04 | Phase 13 | Pending |
-| ANI-01 | Phase 12 | Pending |
-| ANI-02 | Phase 12 | Pending |
-| ANI-03 | Phase 11 | Complete |
+| VIRT-01 | Phase 14 | Complete |
+| VIRT-02 | Phase 14 | Complete |
+| VIRT-03 | Phase 14 | Complete |
+| VIRT-04 | Phase 14 | Complete |
+| VIRT-05 | Phase 14 | Complete |
+| GAP-01 | Phase 14 | Complete |
+| GAP-02 | Phase 14 | Complete |
+| CUR-01 | Phase 15 | Pending |
+| CUR-02 | Phase 15 | Pending |
+| CUR-03 | Phase 15 | Pending |
+| CUR-04 | Phase 15 | Pending |
+| CUR-05 | Phase 15 | Pending |
+| POL-01 | Phase 15 | Pending |
+| POL-02 | Phase 15 | Pending |
 
 **Coverage:**
-- v1.2 requirements: 15 total
-- Mapped to phases: 15
+- v1.3 requirements: 14 total
+- Mapped to phases: 14
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-02-05*
-*Last updated: 2026-02-05 after Phase 11 completion*
+*Requirements defined: 2026-02-08*
