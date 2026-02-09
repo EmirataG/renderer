@@ -79,6 +79,13 @@ Page virtualization for RegularRenderer: only visible pages + buffer mounted in 
 
 **Requirements:** SRV-01, SRV-02, SRV-04
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 15-01-PLAN.md -- Scaffold export-service project with TypeBox schema, validation, and shared types
+- [ ] 15-02-PLAN.md -- Fastify server, multipart export route, job manager, temp file lifecycle
+- [ ] 15-03-PLAN.md -- Frontend export client utility and end-to-end contract verification
+
 **Success Criteria:**
 1. User can trigger export from browser, backend receives MusicXML + audio + all settings via multipart upload
 2. Backend validates settings (schema, Map serialization, missing fields) and rejects incomplete exports with clear error message
@@ -154,7 +161,7 @@ Page virtualization for RegularRenderer: only visible pages + buffer mounted in 
 1. Docker image builds successfully based on Puppeteer base image with FFmpeg and fonts installed
 2. Backend deploys to Fly.io with auto-stop/auto-start enabled for cost efficiency when idle
 3. Backend survives cold starts with acceptable latency (< 30s from idle to first frame capture)
-4. Backend successfully exports video end-to-end in production environment (upload → capture → encode → download)
+4. Backend successfully exports video end-to-end in production environment (upload -> capture -> encode -> download)
 
 ### Phase 21: Resolution Presets & Enhanced UX
 
@@ -175,7 +182,7 @@ Page virtualization for RegularRenderer: only visible pages + buffer mounted in 
 
 | Phase | Status | Plans | Tasks | Completion |
 |-------|--------|-------|-------|------------|
-| 15 - Backend Foundation & Settings Transfer | Pending | 0/? | 0/? | 0% |
+| 15 - Backend Foundation & Settings Transfer | Planned | 0/3 | 0/6 | 0% |
 | 16 - Frontend Render Mode | Pending | 0/? | 0/? | 0% |
 | 17 - Puppeteer Integration & Frame Capture | Pending | 0/? | 0/? | 0% |
 | 18 - FFmpeg Encoding & Audio Mux | Pending | 0/? | 0/? | 0% |
