@@ -43,6 +43,10 @@ interface Props {
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
   colorFullNote?: boolean;
+  // render mode for headless frame capture (disables virtualization + transitions)
+  renderMode?: boolean;
+  // audio duration override for render mode (no audio element needed)
+  audioDuration?: number;
 }
 
 export default function RegularRenderer({
@@ -63,6 +67,9 @@ export default function RegularRenderer({
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
   colorFullNote = false,
+  // render mode for headless frame capture
+  renderMode = false,
+  audioDuration: propAudioDuration,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
@@ -92,6 +99,13 @@ export default function RegularRenderer({
   const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
+
+  // In render mode, set audioDuration from prop (no audio element needed)
+  useEffect(() => {
+    if (propAudioDuration != null && propAudioDuration > 0) {
+      setAudioDuration(propAudioDuration);
+    }
+  }, [propAudioDuration]);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
@@ -206,11 +220,13 @@ export default function RegularRenderer({
         const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, pageOffsets);
         setEventsInStore(cachedEvents, svgPages);
 
-        // Extraction complete — activate virtualization
-        extractionDoneRef.current = true;
-        const initialVisible = getVisiblePageRange();
-        visiblePagesRef.current = initialVisible;
-        setVisiblePages(initialVisible);
+        // Extraction complete — activate virtualization (skip in render mode to keep all pages mounted)
+        if (!renderMode) {
+          extractionDoneRef.current = true;
+          const initialVisible = getVisiblePageRange();
+          visiblePagesRef.current = initialVisible;
+          setVisiblePages(initialVisible);
+        }
       }
     });
 
@@ -697,12 +713,14 @@ export default function RegularRenderer({
       },
       setTimestamp,
       getDuration: () => audioDuration,
-      getFps: () => 30,
+      getFps: () => fps,
     };
 
     console.log("[RegularRenderer] Animation controller exposed on window");
+    (window as any).rendererReady = true;
 
     return () => {
+      (window as any).rendererReady = false;
       delete (window as any).animationController;
       destroyAnimationController();
     };
@@ -754,7 +772,7 @@ export default function RegularRenderer({
           >
             <div
               ref={cameraRef}
-              style={{ display: "flex", width: "100%", pointerEvents: "none", transition: "transform 200ms ease-out" }}
+              style={{ display: "flex", width: "100%", pointerEvents: "none", transition: renderMode ? "none" : "transform 200ms ease-out" }}
             >
               <div
                 ref={scoreRef}
