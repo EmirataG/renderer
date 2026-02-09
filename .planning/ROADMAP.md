@@ -179,6 +179,12 @@ Plans:
 
 **Requirements:** DEP-01, DEP-02
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 20-01-PLAN.md -- Dockerfile, .dockerignore, env PORT config, SIGTERM graceful shutdown
+- [ ] 20-02-PLAN.md -- fly.toml configuration, Fly.io deployment, production verification
+
 **Success Criteria:**
 1. Docker image builds successfully based on Puppeteer base image with FFmpeg and fonts installed
 2. Backend deploys to Fly.io with auto-stop/auto-start enabled for cost efficiency when idle
@@ -209,7 +215,7 @@ Plans:
 | 17 - Puppeteer Integration & Frame Capture | ✓ Complete | 2/2 | 4/4 | 100% |
 | 18 - FFmpeg Encoding & Audio Mux | ✓ Complete | 1/1 | 2/2 | 100% |
 | 19 - Progress Streaming & Download | Planned | 0/2 | 0/4 | 0% |
-| 20 - Docker Image & Fly.io Deployment | Pending | 0/? | 0/? | 0% |
+| 20 - Docker Image & Fly.io Deployment | Planned | 0/2 | 0/4 | 0% |
 | 21 - Resolution Presets & Enhanced UX | Pending | 0/? | 0/? | 0% |
 
 **Milestone v1.4 Coverage:**
