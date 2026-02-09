@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+
 export const config = {
   /** HTTP server port */
   port: 3001,
@@ -22,4 +24,19 @@ export const config = {
 
   /** CORS origin setting (true = reflect request origin) */
   corsOrigin: true as const,
+
+  /** Maximum concurrent Puppeteer browser instances */
+  maxBrowsers: 3,
+
+  /** Maximum time to wait to acquire a browser from the pool (30s) */
+  browserAcquireTimeoutMs: 30_000,
+
+  /** Idle browsers are destroyed after this duration (2 min) */
+  browserIdleTimeoutMs: 120_000,
+
+  /** Path to the Vite-built frontend dist directory */
+  frontendDistPath: join(import.meta.dirname, '../../../dist'),
+
+  /** Timeout for waiting for renderer to become ready (30s) */
+  pageReadyTimeoutMs: 30_000,
 } as const;
