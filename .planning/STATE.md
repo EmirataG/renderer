@@ -75,7 +75,7 @@ None.
 Last session: 2026-02-09
 Stopped at: Completed 15-03-PLAN.md (Phase 15 complete)
 Resume file: None
-Next: Next phase (16+)
+Next: `/gsd:plan-phase 16`
 
 ### Quick Tasks Completed
 

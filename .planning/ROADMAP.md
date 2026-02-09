@@ -82,9 +82,9 @@ Page virtualization for RegularRenderer: only visible pages + buffer mounted in 
 **Plans:** 3 plans
 
 Plans:
-- [ ] 15-01-PLAN.md -- Scaffold export-service project with TypeBox schema, validation, and shared types
-- [ ] 15-02-PLAN.md -- Fastify server, multipart export route, job manager, temp file lifecycle
-- [ ] 15-03-PLAN.md -- Frontend export client utility and end-to-end contract verification
+- [x] 15-01-PLAN.md -- Scaffold export-service project with TypeBox schema, validation, and shared types
+- [x] 15-02-PLAN.md -- Fastify server, multipart export route, job manager, temp file lifecycle
+- [x] 15-03-PLAN.md -- Frontend export client utility and end-to-end contract verification
 
 **Success Criteria:**
 1. User can trigger export from browser, backend receives MusicXML + audio + all settings via multipart upload
@@ -182,7 +182,7 @@ Plans:
 
 | Phase | Status | Plans | Tasks | Completion |
 |-------|--------|-------|-------|------------|
-| 15 - Backend Foundation & Settings Transfer | Planned | 0/3 | 0/6 | 0% |
+| 15 - Backend Foundation & Settings Transfer | ✓ Complete | 3/3 | 6/6 | 100% |
 | 16 - Frontend Render Mode | Pending | 0/? | 0/? | 0% |
 | 17 - Puppeteer Integration & Frame Capture | Pending | 0/? | 0/? | 0% |
 | 18 - FFmpeg Encoding & Audio Mux | Pending | 0/? | 0/? | 0% |

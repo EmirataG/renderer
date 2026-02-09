@@ -7,10 +7,10 @@
 
 ### Backend Server
 
-- [ ] **SRV-01**: Export API accepts MusicXML + audio + all settings via multipart upload
-- [ ] **SRV-02**: Settings validation rejects incomplete exports (missing audio, MusicXML, or sync anchors)
+- [x] **SRV-01**: Export API accepts MusicXML + audio + all settings via multipart upload
+- [x] **SRV-02**: Settings validation rejects incomplete exports (missing audio, MusicXML, or sync anchors)
 - [ ] **SRV-03**: Multiple concurrent exports supported with controlled concurrency
-- [ ] **SRV-04**: Temporary files cleaned up after export completion or failure
+- [x] **SRV-04**: Temporary files cleaned up after export completion or failure
 
 ### Render Mode
 
@@ -72,10 +72,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRV-01 | Phase 15 | Pending |
-| SRV-02 | Phase 15 | Pending |
+| SRV-01 | Phase 15 | ✓ Done |
+| SRV-02 | Phase 15 | ✓ Done |
 | SRV-03 | Phase 17 | Pending |
-| SRV-04 | Phase 15 | Pending |
+| SRV-04 | Phase 15 | ✓ Done |
 | RND-01 | Phase 17 | Pending |
 | RND-02 | Phase 16 | Pending |
 | RND-03 | Phase 16 | Pending |
