@@ -158,6 +158,12 @@ Plans:
 
 **Requirements:** PRG-01, PRG-02, PRG-03, PRG-04
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 19-01-PLAN.md -- Backend infrastructure: EventEmitter on JobManager, progress emission, AbortController cancellation, signal-aware capture/encode
+- [ ] 19-02-PLAN.md -- WebSocket progress route, MP4 download route, server registration with @fastify/websocket
+
 **Success Criteria:**
 1. User connects to WebSocket and receives real-time progress updates (frame count, percentage, stage labels)
 2. User can download completed MP4 directly from browser via download endpoint
@@ -201,8 +207,8 @@ Plans:
 | 15 - Backend Foundation & Settings Transfer | ✓ Complete | 3/3 | 6/6 | 100% |
 | 16 - Frontend Render Mode | ✓ Complete | 1/1 | 2/2 | 100% |
 | 17 - Puppeteer Integration & Frame Capture | ✓ Complete | 2/2 | 4/4 | 100% |
-| 18 - FFmpeg Encoding & Audio Mux | Pending | 0/1 | 0/2 | 0% |
-| 19 - Progress Streaming & Download | Pending | 0/? | 0/? | 0% |
+| 18 - FFmpeg Encoding & Audio Mux | ✓ Complete | 1/1 | 2/2 | 100% |
+| 19 - Progress Streaming & Download | Planned | 0/2 | 0/4 | 0% |
 | 20 - Docker Image & Fly.io Deployment | Pending | 0/? | 0/? | 0% |
 | 21 - Resolution Presets & Enhanced UX | Pending | 0/? | 0/? | 0% |
 
