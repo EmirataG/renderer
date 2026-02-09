@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 17 - Puppeteer Integration & Frame Capture
-Plan: 1 of 2
-Status: In Progress
-Last activity: 2026-02-09 — Completed 17-01 (Browser pool and static serving)
+Phase: 17 - Puppeteer Integration & Frame Capture (COMPLETE)
+Plan: 2 of 2
+Status: Phase Complete
+Last activity: 2026-02-09 — Completed 17-02 (Page setup, frame capture, render job orchestrator)
 
-Progress: [#####-----] 1/2 plans
+Progress: [##########] 2/2 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 24
+- Total plans completed: 25
 - Average duration: 2.4 min
-- Total execution time: 57 min
+- Total execution time: 59 min
 
 **By Phase:**
 
@@ -42,7 +42,7 @@ Progress: [#####-----] 1/2 plans
 | 14 - Page Virtualization          | 2/2   | 5 min | 2.5 min  |
 | 15 - Backend Foundation           | 3/3   | 6 min | 2 min    |
 | 16 - Frontend Render Mode         | 1/1   | 3 min | 3 min    |
-| 17 - Puppeteer Integration        | 1/2   | 2 min | 2 min    |
+| 17 - Puppeteer Integration        | 2/2   | 4 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -64,6 +64,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 17-01: generic-pool for browser pooling with testOnBorrow validation
 - 17-01: decorateReply: false on @fastify/static to avoid plugin conflicts
 - 17-01: frontendDistPath resolved via import.meta.dirname for ESM compatibility
+- 17-02: Frame buffers collected in memory for Phase 17; Phase 18 will pipe to FFmpeg stdin
+- 17-02: evaluateOnNewDocument called BEFORE page.goto() for config injection ordering
+- 17-02: (job as any) cast for frameBuffers to avoid premature ExportJob type changes
 
 ### Roadmap Evolution
 
@@ -81,9 +84,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 17-01-PLAN.md
+Stopped at: Completed 17-02-PLAN.md (Phase 17 complete)
 Resume file: None
-Next: Execute 17-02-PLAN.md
+Next: Phase 18 - FFmpeg Encoding
 
 ### Quick Tasks Completed
 
