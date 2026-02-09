@@ -88,6 +88,7 @@ None.
 | ID | Title | Date |
 |----|-------|------|
 | 009 | Revert white-space removal and research SVG-to-Graphics alternatives | 2026-02-08 |
+| 010 | Fix score centering on viewport resize | 2026-02-09 |
 
 ## Session Continuity
 
@@ -119,6 +120,6 @@ grep "export default" src/renderers/PixiSingleLineRenderer.tsx
 ```
 
 ---
-*Last updated: 2026-02-08*
+*Last updated: 2026-02-09*
 *Milestone: v1.3 PixiJS SingleLineRenderer*
 *Status: Phase 15 complete, ready for Phase 16*
