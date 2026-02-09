@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 18 - FFmpeg Encoding & Audio Mux (COMPLETE)
-Plan: 1 of 1
-Status: Phase Complete
-Last activity: 2026-02-09 — Completed 18-01 (FFmpeg encoding, audio muxing, renderJob refactor)
+Phase: 19 - Progress Streaming & Download
+Plan: 1 of 2
+Status: In Progress
+Last activity: 2026-02-09 — Completed 19-01 (progress events, cancellation, signal-aware capture/encode)
 
-Progress: [##########] 1/1 plans
+Progress: [#####-----] 1/2 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 26
+- Total plans completed: 27
 - Average duration: 2.3 min
-- Total execution time: 61 min
+- Total execution time: 63 min
 
 **By Phase:**
 
@@ -44,6 +44,7 @@ Progress: [##########] 1/1 plans
 | 16 - Frontend Render Mode         | 1/1   | 3 min | 3 min    |
 | 17 - Puppeteer Integration        | 2/2   | 4 min | 2 min    |
 | 18 - FFmpeg Encoding & Audio Mux  | 1/1   | 2 min | 2 min    |
+| 19 - Progress Streaming & DL      | 1/2   | 2 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -72,6 +73,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 18-01: Two-step encode+mux: stdin piping for frames, then separate mux pass for audio
 - 18-01: CRF 18 medium preset for visually lossless quality on score animations
 - 18-01: Always transcode audio to AAC (simplicity over conditional codec copy)
+- 19-01: EventEmitter over callback pattern for decoupled progress consumption
+- 19-01: 250ms throttle interval (4 events/sec max) to prevent WebSocket flood
+- 19-01: Progress state stored on ExportJob for reconnection sync (not just emitted)
+- 19-01: Double abort check in captureFrames (before evaluate AND before screenshot)
 
 ### Roadmap Evolution
 
@@ -89,9 +94,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 18-01-PLAN.md (Phase 18 complete)
+Stopped at: Completed 19-01-PLAN.md
 Resume file: None
-Next: Phase 19 - Download & Cleanup
+Next: 19-02-PLAN.md (WebSocket route, download endpoint, cleanup)
 
 ### Quick Tasks Completed
 
