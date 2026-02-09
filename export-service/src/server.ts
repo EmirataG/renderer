@@ -1,10 +1,12 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import exportRoutes from './routes/export.js';
 import statusRoutes from './routes/status.js';
 import { config } from './shared/config.js';
 import { jobManager } from './jobs/jobManager.js';
+import { shutdownPool } from './browser/browserPool.js';
 
 async function main() {
   const server = Fastify({ logger: true });
@@ -17,6 +19,13 @@ async function main() {
       files: config.maxFiles,
       fieldSize: config.maxFieldSize,
     },
+  });
+
+  // Serve the Vite-built frontend for Puppeteer to load
+  await server.register(fastifyStatic, {
+    root: config.frontendDistPath,
+    prefix: '/',
+    decorateReply: false,
   });
 
   // Health check
@@ -33,9 +42,10 @@ async function main() {
     });
   }, config.cleanupIntervalMs);
 
-  // Clean up timer on server close
+  // Clean up timer and browser pool on server close
   server.addHook('onClose', async () => {
     clearInterval(cleanupTimer);
+    await shutdownPool();
   });
 
   // Start server
