@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 
 ## Current Position
 
-Phase: 19 - Progress Streaming & Download
-Plan: 2 of 2
-Status: Complete
-Last activity: 2026-02-09 — Completed 19-02 (WebSocket progress route, download endpoint, server wiring)
+Phase: 20 - Docker & Fly.io Deployment
+Plan: 1 of 2
+Status: In Progress
+Last activity: 2026-02-09 — Completed 20-01 (Dockerfile, .dockerignore, env PORT, SIGTERM shutdown)
 
-Progress: [##########] 2/2 plans
+Progress: [#####-----] 1/2 plans
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 28
+- Total plans completed: 29
 - Average duration: 2.3 min
-- Total execution time: 65 min
+- Total execution time: 66 min
 
 **By Phase:**
 
@@ -45,6 +45,7 @@ Progress: [##########] 2/2 plans
 | 17 - Puppeteer Integration        | 2/2   | 4 min | 2 min    |
 | 18 - FFmpeg Encoding & Audio Mux  | 1/1   | 2 min | 2 min    |
 | 19 - Progress Streaming & DL      | 2/2   | 4 min | 2 min    |
+| 20 - Docker & Fly.io Deployment   | 1/2   | 1 min | 1 min    |
 
 _Updated after each plan completion_
 
@@ -80,6 +81,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 19-02: Side-effect import '@fastify/websocket' for type augmentation in route files
 - 19-02: Params cast on websocket route (generic type param breaks overload matching)
 - 19-02: createReadStream + manual headers for download (decorateReply: false prevents sendFile)
+- 20-01: Pin Puppeteer Docker image to 24.37.2 matching project puppeteer dependency
+- 20-01: PUPPETEER_SKIP_DOWNLOAD=true to use base image Chrome (avoid 300MB re-download)
+- 20-01: pptruser for runtime security (non-root Chrome execution)
 
 ### Roadmap Evolution
 
@@ -97,9 +101,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: Completed 19-02-PLAN.md (Phase 19 complete)
+Stopped at: Completed 20-01-PLAN.md
 Resume file: None
-Next: Phase 20 or UAT for Phase 19
+Next: 20-02-PLAN.md (fly.toml and deployment)
 
 ### Quick Tasks Completed
 
