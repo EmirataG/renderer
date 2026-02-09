@@ -53,14 +53,20 @@ Capabilities shipped and confirmed working:
 
 ### Active
 
-(No active milestone — use `/gsd:new-milestone` to start next)
+- Backend video export service with headless browser rendering
+- Frame-by-frame capture matching exact preview output
+- All settings transfer (score region, colors, fonts, animation params)
+- WebSocket progress streaming during export
+- Configurable resolution and framerate
+- Multiple concurrent export support
+- Fly.io deployment
 
 ### Out of Scope
 
 - hideUnplayedNotes feature — not currently implemented
 - smoothReveal feature — not currently implemented
 - BPM-based playback — permanently removed in v1.0
-- Server-side rendering — remains a client-side SPA
+- Server-side rendering of the SPA itself — remains a client-side SPA (backend is for video export only)
 - Mobile support — not in scope
 - Canvas rendering — investigated, poor cost-benefit vs paginated SVG
 - Web Worker rendering — defer until profiling shows need
@@ -110,5 +116,18 @@ Capabilities shipped and confirmed working:
 | Short scores skip virtualization | <=3 pages mount all without overhead | ✓ Good |
 | Symmetric 1-page buffer | Equal above/below for smooth scrolling | ✓ Good |
 
+## Current Milestone: v1.4 Backend Video Export
+
+**Goal:** Deploy a backend service that renders the exact preview animation in a headless browser, captures frames, and encodes to MP4 for download.
+
+**Target features:**
+- Export button in browser UI sends all settings + data to backend
+- Headless Chromium replays animation frame-by-frame via existing animationController API
+- FFmpeg encodes frames to MP4 at user-configurable resolution/framerate
+- WebSocket streams real-time progress back to browser
+- Direct download when rendering completes
+- Multiple concurrent exports supported
+- Deployed on Fly.io with Docker (Chrome + FFmpeg)
+
 ---
-*Last updated: 2026-02-09 after v1.3 milestone*
+*Last updated: 2026-02-09 after v1.4 milestone start*

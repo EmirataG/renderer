@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-09)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** Planning next milestone
+**Current focus:** v1.4 Backend Video Export
 
 ## Current Position
 
-Phase: (none — between milestones)
-Plan: N/A
-Status: v1.3 shipped
-Last activity: 2026-02-09 — Milestone v1.3 Performance & Polish archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-09 — Milestone v1.4 started
 
 Progress: [==========] 100%
 
@@ -65,9 +65,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-09
-Stopped at: v1.3 milestone archived
+Stopped at: Defining v1.4 requirements
 Resume file: None
-Next: /gsd:new-milestone
+Next: Define requirements → create roadmap
 
 ### Quick Tasks Completed
 
