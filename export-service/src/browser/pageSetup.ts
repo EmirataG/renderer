@@ -119,8 +119,13 @@ export async function buildExportConfig(job: {
   settings: ExportSettings;
   syncAnchors: Record<string, number>;
 }): Promise<ExportConfig> {
+  const files = await readdir(job.tempDir);
+  const musicXmlFile = files.find((f) => f.startsWith('musicXml'));
+  if (!musicXmlFile) {
+    throw new Error(`MusicXML file not found in ${job.tempDir}`);
+  }
   const musicXml = await readFile(
-    join(job.tempDir, 'musicXml.xml'),
+    join(job.tempDir, musicXmlFile),
     'utf-8',
   );
 
