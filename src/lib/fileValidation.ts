@@ -11,7 +11,7 @@ export interface ValidationResult {
 const SIZE_LIMITS: Record<FileCategory, number> = {
   musicxml: 10 * 1024 * 1024, // 10MB
   audio: 50 * 1024 * 1024, // 50MB
-  image: 5 * 1024 * 1024, // 5MB
+  image: 20 * 1024 * 1024, // 20MB
 };
 
 // Allowed extensions (lowercase, with leading dot)
