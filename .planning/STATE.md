@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 9: Fix export video sizing and camera
+Last activity: 2026-02-10 - Completed quick task 10: Fix squished export, JPEG screenshots, 30fps
 
 Progress: [#####-----] 1/2 plans
 
@@ -114,3 +114,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-006: Revert Phase 13.1 (Unplayed Score Styling) - feature didn't work correctly
 - quick-007: Performance optimizations - useMemo CSS, binary search timeline, useShallow Zustand, pre-compiled regex
 - quick-009: Fix export video - dynamic viewport from bg image, full-frame render mode sizing, cubic ease-in-out camera interpolation
+- quick-010: Fix squished export (scoreRegion scaling), JPEG screenshots, 30fps default
