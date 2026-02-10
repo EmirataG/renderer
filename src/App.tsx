@@ -296,24 +296,13 @@ export default function App() {
               </div>
             </section>
 
-            {/* AUDIO PREVIEW SECTION */}
+            {/* Hidden audio element for duration detection (used by export) */}
             {audioFile && (
-              <section className="mb-5">
-                <h2 className="grunge-section-title">
-                  Audio Preview
-                </h2>
-                <div className="p-3">
-                  <p className="text-xs text-neutral-300 mb-2 truncate">
-                    {audioFile.name}
-                  </p>
-                  <audio
-                    ref={audioRef}
-                    src={audioFile.url}
-                    controls
-                    className="w-full h-8"
-                  />
-                </div>
-              </section>
+              <audio
+                ref={audioRef}
+                src={audioFile.url}
+                className="hidden"
+              />
             )}
 
             {/* PLAYBACK SECTION */}
@@ -398,56 +387,6 @@ export default function App() {
                     <option value="Gootville">Gootville</option>
                     <option value="Leipzig">Leipzig</option>
                   </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="flex justify-between text-xs font-medium">
-                    <span className="text-neutral-300">Shadow</span>
-                    <span className="text-white font-mono">
-                      {scoreShadowDistance === 0
-                        ? "Off"
-                        : `${scoreShadowDistance}px`}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={6}
-                    step={0.5}
-                    value={scoreShadowDistance}
-                    onChange={(e) =>
-                      setScoreShadowDistance(Number(e.target.value))
-                    }
-                    className="grunge-range"
-                  />
-                </div>
-
-                <div className="pt-1 space-y-3">
-                  <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={hideUnplayedNotes}
-                      onChange={(e) => setHideUnplayedNotes(e.target.checked)}
-                      className="grunge-checkbox"
-                    />
-                    <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
-                      Hide Unplayed Notes
-                    </span>
-                  </label>
-
-                  {hideUnplayedNotes && (
-                    <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={smoothReveal}
-                        onChange={(e) => setSmoothReveal(e.target.checked)}
-                        className="grunge-checkbox"
-                      />
-                      <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
-                        Smooth Reveal
-                      </span>
-                    </label>
-                  )}
                 </div>
 
                 {/* Border Picker */}

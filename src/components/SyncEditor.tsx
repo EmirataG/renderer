@@ -611,16 +611,16 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
             {/* Play/Pause button */}
             <button
               onClick={togglePlayback}
-              className="grunge-btn w-10 h-10 flex items-center justify-center"
+              className="grunge-btn w-12 h-12 flex items-center justify-center"
               title={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying ? (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
                   <rect x="6" y="4" width="4" height="16" />
                   <rect x="14" y="4" width="4" height="16" />
                 </svg>
               ) : (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
                   <polygon points="5,3 19,12 5,21" />
                 </svg>
               )}
