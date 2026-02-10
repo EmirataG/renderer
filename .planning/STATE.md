@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 15: Fix export ENOENT on musicXml.xml temp file
+Last activity: 2026-02-10 - Completed quick task 16: Fix preview overflow and sticky bottom control buttons
 
 Progress: [#####-----] 1/2 plans
 
@@ -121,3 +121,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-013: Fix export camera coordinate mismatch -- getBoundingClientRect includes CSS scale but pageOffsets don't; normalize with domScale
 - quick-014: Remove inspector controls (shadow, hide unplayed, smooth reveal, audio preview) + enlarge sync play/pause icons
 - quick-015: Fix export ENOENT -- musicXml file lookup by prefix instead of hardcoded .xml extension
+- quick-016: Fix preview overflow (overflow-hidden on content area) + sticky export bar at sidebar bottom
