@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 12: Fix export camera to match preview
+Last activity: 2026-02-10 - Completed quick task 13: Fix export camera coordinate space mismatch
 
 Progress: [#####-----] 1/2 plans
 
@@ -118,3 +118,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-011: Fix stale dist -- export was loading Feb 9 build; add FRONTEND_URL config for dev
 - quick-012: CSS scale from WIDTH=980 matching reference app pattern -- score, borders, region all scale correctly
 - quick-012b: Fix export camera -- simulate CSS transition on post-clamp cameraY to match preview discrete motion model
+- quick-013: Fix export camera coordinate mismatch -- getBoundingClientRect includes CSS scale but pageOffsets don't; normalize with domScale
