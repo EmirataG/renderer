@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-09 — Completed 20-01 (Dockerfile, .dockerignore, env PORT, SIGTERM shutdown)
+Last activity: 2026-02-10 - Completed quick task 9: Fix export video sizing and camera
 
 Progress: [#####-----] 1/2 plans
 
