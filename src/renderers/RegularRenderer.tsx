@@ -19,6 +19,41 @@ import {
 
 const WIDTH = 980;
 
+/**
+ * Evaluate a CSS cubic-bezier(x1, y1, x2, y2) curve at time t.
+ * Uses Newton-Raphson to solve for the curve parameter on the X axis,
+ * then evaluates Y (progress) at that parameter.
+ */
+function cubicBezierEase(x1: number, y1: number, x2: number, y2: number, t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+
+  // Newton-Raphson: solve X(s) = t for s
+  let s = t;
+  for (let i = 0; i < 8; i++) {
+    const xVal = ((ax * s + bx) * s + cx) * s - t;
+    const dxVal = (3 * ax * s + 2 * bx) * s + cx;
+    if (Math.abs(dxVal) < 1e-6) break;
+    s -= xVal / dxVal;
+  }
+  s = Math.max(0, Math.min(1, s));
+
+  return ((ay * s + by) * s + cy) * s;
+}
+
+/** CSS ease-out = cubic-bezier(0, 0, 0.58, 1) */
+function cssEaseOut(t: number): number {
+  return cubicBezierEase(0, 0, 0.58, 1, t);
+}
+
 interface Props {
   // core
   xml: string;
@@ -594,7 +629,7 @@ export default memo(function RegularRenderer({
       let visualCameraY: number;
       if (elapsed >= 0 && elapsed < TRANSITION_SEC) {
         const t = elapsed / TRANSITION_SEC;
-        const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out ≈ CSS ease-out
+        const eased = cssEaseOut(t);
         visualCameraY = cameraTransitionFrom.current +
           (cameraTransitionTarget.current - cameraTransitionFrom.current) * eased;
       } else {
