@@ -4,6 +4,9 @@ export const config = {
   /** HTTP server port */
   port: parseInt(process.env.PORT ?? '3001', 10),
 
+  /** Frontend URL for Puppeteer to load. In dev, use Vite dev server; in prod, use self. */
+  frontendUrl: process.env.FRONTEND_URL ?? `http://localhost:${parseInt(process.env.PORT ?? '3001', 10)}`,
+
   /** HTTP server host (0.0.0.0 = all interfaces) */
   host: '0.0.0.0',
 

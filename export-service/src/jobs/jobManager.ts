@@ -154,7 +154,7 @@ class JobManager extends EventEmitter {
       browser = await browserPool.acquire();
 
       // Setup page with config injection, readiness wait, duration verification
-      const frontendUrl = `http://localhost:${config.port}/`;
+      const frontendUrl = `${config.frontendUrl}/`;
       const viewport = { width: exportConfig.viewportWidth, height: exportConfig.viewportHeight };
       console.log(`[renderJob] Setting up page for job ${jobId}...`);
       const result = await setupPage(browser, frontendUrl, exportConfig, viewport);
