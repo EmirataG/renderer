@@ -47,9 +47,6 @@ interface Props {
   renderMode?: boolean;
   // audio duration override for render mode (no audio element needed)
   audioDuration?: number;
-  // viewport override for render mode (use exact dimensions instead of WIDTH=980 scaling)
-  viewportWidth?: number;
-  viewportHeight?: number;
 }
 
 export default function RegularRenderer({
@@ -73,9 +70,6 @@ export default function RegularRenderer({
   // render mode for headless frame capture
   renderMode = false,
   audioDuration: propAudioDuration,
-  // viewport override for render mode
-  viewportWidth,
-  viewportHeight,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
@@ -117,11 +111,6 @@ export default function RegularRenderer({
   const visiblePagesRef = useRef<Set<number>>(new Set([0, 1]));
 
   function setDims(w: number, h: number) {
-    if (viewportWidth && viewportHeight) {
-      setContainerWidth(viewportWidth);
-      setContainerHeight(viewportHeight);
-      return;
-    }
     const f = WIDTH / w;
     setContainerWidth(Math.floor(w * f));
     setContainerHeight(Math.floor(h * f));
@@ -186,7 +175,7 @@ export default function RegularRenderer({
     } else {
       setDims(1920, 1080);
     }
-  }, [bgUrl, viewportWidth, viewportHeight]);
+  }, [bgUrl]);
 
   /* ---------------- Verovio SVG rendering ---------------- */
 
