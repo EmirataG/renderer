@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useVerovio } from "../hooks/useVerovio";
@@ -52,7 +52,7 @@ interface Props {
   transportPortalEl?: HTMLDivElement | null;
 }
 
-export default function RegularRenderer({
+export default memo(function RegularRenderer({
   xml,
   bgUrl,
   fps = 60,
@@ -974,4 +974,4 @@ export default function RegularRenderer({
       )}
     </div>
   );
-}
+});
