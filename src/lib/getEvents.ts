@@ -205,6 +205,15 @@ export function computeEventPositions(
     globalY: 0,
   }));
 
+  // Detect CSS transform scale on ancestor elements (e.g., RenderApp's scale wrapper).
+  // getBoundingClientRect() returns viewport coordinates that include CSS transforms,
+  // but pageOffsets are in pre-transform CSS pixels. We need positions in the same
+  // pre-transform space so the camera translateY (applied inside the transform) is correct.
+  const firstContainer = pageContainers[0];
+  const domScale = firstContainer && firstContainer.clientWidth > 0
+    ? firstContainer.getBoundingClientRect().width / firstContainer.clientWidth
+    : 1;
+
   for (const event of cachedEvents) {
     if (event.svgIds.length === 0) continue;
 
@@ -226,12 +235,13 @@ export function computeEventPositions(
     const systemEl = noteEl.closest('g.system');
     if (systemEl) {
       const sysRect = systemEl.getBoundingClientRect();
-      const localY = sysRect.top - containerRect.top + sysRect.height / 2;
+      // Divide by domScale to convert from viewport pixels to pre-transform CSS pixels
+      const localY = (sysRect.top - containerRect.top + sysRect.height / 2) / domScale;
       event.globalY = pageOffsets[pageIndex] + localY;
     } else {
       // Fallback: use note's own position
       const noteRect = noteEl.getBoundingClientRect();
-      const localY = noteRect.top - containerRect.top + noteRect.height / 2;
+      const localY = (noteRect.top - containerRect.top + noteRect.height / 2) / domScale;
       event.globalY = pageOffsets[pageIndex] + localY;
     }
   }
