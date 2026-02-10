@@ -100,8 +100,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-09
-Stopped at: Completed 20-01-PLAN.md
+Last session: 2026-02-10
+Stopped at: Completed quick-9 (fix export video sizing, viewport, smooth camera)
 Resume file: None
 Next: 20-02-PLAN.md (fly.toml and deployment)
 
@@ -113,3 +113,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-005: Fix music font selector - add fontLoadAll: true to Verovio hooks
 - quick-006: Revert Phase 13.1 (Unplayed Score Styling) - feature didn't work correctly
 - quick-007: Performance optimizations - useMemo CSS, binary search timeline, useShallow Zustand, pre-compiled regex
+- quick-009: Fix export video - dynamic viewport from bg image, full-frame render mode sizing, cubic ease-in-out camera interpolation
