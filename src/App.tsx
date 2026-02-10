@@ -267,7 +267,7 @@ export default function App() {
   return (
     <ToastProvider>
       <main className="h-screen flex bg-black text-neutral-100">
-        <aside className="w-80 bg-black border-r border-neutral-800 overflow-auto flex flex-col grunge-scrollbar">
+        <aside className="w-80 bg-black border-r border-neutral-800 flex flex-col">
           {/* Header */}
           <div className="px-5 py-4 border-b border-neutral-800">
             <div className="flex items-center justify-between">
@@ -280,7 +280,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex-1 px-4 py-4 space-y-1">
+          <div className="flex-1 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">
             {/* UPLOAD SECTION */}
             <section className="mb-5">
               <h2 className="grunge-section-title">
@@ -551,95 +551,91 @@ export default function App() {
               </div>
             </section>
 
-            {/* EXPORT SECTION */}
-            <section className="mb-5">
-              <h2 className="grunge-section-title">
-                Export
-              </h2>
-              <div className="p-3 space-y-3">
-                {exportState.status === 'idle' && (
-                  <>
-                    <button
-                      onClick={handleExport}
-                      disabled={!musicXMLFile || !audioFile || anchors.size === 0}
-                      className="grunge-btn w-full"
-                    >
-                      Export Video
-                    </button>
-                    {(!musicXMLFile || !audioFile || anchors.size === 0) && (
-                      <p className="text-xs text-neutral-500">
-                        {!musicXMLFile ? 'Upload a score first' : !audioFile ? 'Upload audio first' : 'Add sync anchors first'}
-                      </p>
-                    )}
-                  </>
-                )}
+          </div>
 
-                {(exportState.status === 'uploading' || exportState.status === 'rendering' || exportState.status === 'encoding') && (
-                  <>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-neutral-300 capitalize">{exportState.stage || exportState.status}</span>
-                        <span className="text-white font-mono tabular-nums">{Math.round(exportState.percent)}%</span>
-                      </div>
-                      <div className="w-full bg-neutral-700 h-1.5">
-                        <div
-                          className="bg-white h-1.5 transition-all duration-300"
-                          style={{ width: `${exportState.percent}%` }}
-                        />
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleCancelExport}
-                      className="grunge-btn grunge-btn-sm w-full"
-                    >
-                      Cancel
-                    </button>
-                  </>
+          {/* EXPORT BAR - always visible at bottom of sidebar */}
+          <div className="flex-shrink-0 border-t border-neutral-800 px-4 py-3 space-y-3">
+            {exportState.status === 'idle' && (
+              <>
+                <button
+                  onClick={handleExport}
+                  disabled={!musicXMLFile || !audioFile || anchors.size === 0}
+                  className="grunge-btn w-full"
+                >
+                  Export Video
+                </button>
+                {(!musicXMLFile || !audioFile || anchors.size === 0) && (
+                  <p className="text-xs text-neutral-500">
+                    {!musicXMLFile ? 'Upload a score first' : !audioFile ? 'Upload audio first' : 'Add sync anchors first'}
+                  </p>
                 )}
+              </>
+            )}
 
-                {exportState.status === 'complete' && (
-                  <>
-                    <p className="text-xs text-green-400">Export complete</p>
-                    <button
-                      onClick={handleDownload}
-                      className="grunge-btn w-full"
-                    >
-                      Download MP4
-                    </button>
-                    <button
-                      onClick={resetExport}
-                      className="grunge-btn grunge-btn-sm w-full text-neutral-400"
-                    >
-                      New Export
-                    </button>
-                  </>
-                )}
+            {(exportState.status === 'uploading' || exportState.status === 'rendering' || exportState.status === 'encoding') && (
+              <>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-neutral-300 capitalize">{exportState.stage || exportState.status}</span>
+                    <span className="text-white font-mono tabular-nums">{Math.round(exportState.percent)}%</span>
+                  </div>
+                  <div className="w-full bg-neutral-700 h-1.5">
+                    <div
+                      className="bg-white h-1.5 transition-all duration-300"
+                      style={{ width: `${exportState.percent}%` }}
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={handleCancelExport}
+                  className="grunge-btn grunge-btn-sm w-full"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
 
-                {exportState.status === 'error' && (
-                  <>
-                    <p className="text-xs text-red-400">{exportState.error || 'Export failed'}</p>
-                    <button
-                      onClick={resetExport}
-                      className="grunge-btn w-full"
-                    >
-                      Try Again
-                    </button>
-                  </>
-                )}
+            {exportState.status === 'complete' && (
+              <>
+                <p className="text-xs text-green-400">Export complete</p>
+                <button
+                  onClick={handleDownload}
+                  className="grunge-btn w-full"
+                >
+                  Download MP4
+                </button>
+                <button
+                  onClick={resetExport}
+                  className="grunge-btn grunge-btn-sm w-full text-neutral-400"
+                >
+                  New Export
+                </button>
+              </>
+            )}
 
-                {exportState.status === 'cancelled' && (
-                  <>
-                    <p className="text-xs text-neutral-400">Export cancelled</p>
-                    <button
-                      onClick={resetExport}
-                      className="grunge-btn w-full"
-                    >
-                      New Export
-                    </button>
-                  </>
-                )}
-              </div>
-            </section>
+            {exportState.status === 'error' && (
+              <>
+                <p className="text-xs text-red-400">{exportState.error || 'Export failed'}</p>
+                <button
+                  onClick={resetExport}
+                  className="grunge-btn w-full"
+                >
+                  Try Again
+                </button>
+              </>
+            )}
+
+            {exportState.status === 'cancelled' && (
+              <>
+                <p className="text-xs text-neutral-400">Export cancelled</p>
+                <button
+                  onClick={resetExport}
+                  className="grunge-btn w-full"
+                >
+                  New Export
+                </button>
+              </>
+            )}
           </div>
         </aside>
 
@@ -672,7 +668,7 @@ export default function App() {
                   <div className="flex-1" />
                 </div>
                 {/* Renderer content */}
-                <div className="flex-1 flex items-center justify-center">
+                <div className="flex-1 flex items-center justify-center overflow-hidden">
                   {/* Wrapper for RegularRenderer + overlay */}
                   <div className="relative">
                     {useSingleLineRenderer ? (
