@@ -267,7 +267,7 @@ export default function App() {
   return (
     <ToastProvider>
       <main className="h-screen flex bg-black text-neutral-100">
-        <aside className="w-80 bg-black border-r border-neutral-800 flex flex-col">
+        <aside className="w-80 bg-black border-r border-neutral-800 flex flex-col overflow-hidden">
           {/* Header */}
           <div className="px-5 py-4 border-b border-neutral-800">
             <div className="flex items-center justify-between">
@@ -668,9 +668,9 @@ export default function App() {
                   <div className="flex-1" />
                 </div>
                 {/* Renderer content */}
-                <div className="flex-1 flex items-center justify-center overflow-auto">
+                <div className="flex-1 min-h-0 overflow-auto">
                   {/* Wrapper for RegularRenderer + overlay */}
-                  <div className="relative">
+                  <div className="relative m-auto w-fit">
                     {useSingleLineRenderer ? (
                       <SingleLineRenderer
                         xml={musicXMLFile.xml}
