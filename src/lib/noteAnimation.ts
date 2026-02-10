@@ -152,3 +152,51 @@ export function resetNoteheadAnimations(root: HTMLElement | null) {
     });
   });
 }
+
+/**
+ * Reset notehead/stem/accid/flag/dots/artic styles for a single event's SVG elements.
+ * This is the per-event inverse of the apply block in setTimestamp (delta-based animation),
+ * scoped to a single event's DOM nodes instead of the entire score root.
+ */
+export function resetEventNoteheads(
+  root: HTMLElement,
+  svgIds: string[],
+  colorFullNote: boolean,
+): void {
+  for (const id of svgIds) {
+    const stavenote = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
+    if (!stavenote) continue;
+
+    // Reset noteheads: scale and color
+    const noteheads = stavenote.querySelectorAll<SVGGElement>("g.notehead");
+    noteheads.forEach((nh) => {
+      nh.style.transform = "scale(1)";
+      nh.style.transition = "";
+
+      nh.querySelectorAll<SVGGraphicsElement>("use").forEach((shape) => {
+        shape.style.removeProperty("fill");
+        shape.style.removeProperty("stroke");
+        shape.style.removeProperty("color");
+      });
+    });
+
+    // Reset full-note coloring (stems, accidentals, etc.)
+    if (colorFullNote) {
+      const extras = stavenote.querySelectorAll<SVGGraphicsElement>(
+        FULL_NOTE_SELECTORS
+      );
+      extras.forEach((group) => {
+        group.style.removeProperty("fill");
+        group.style.removeProperty("stroke");
+        group.style.removeProperty("color");
+        group.style.transition = "";
+
+        group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line").forEach((child) => {
+          child.style.removeProperty("fill");
+          child.style.removeProperty("stroke");
+          child.style.removeProperty("color");
+        });
+      });
+    }
+  }
+}
