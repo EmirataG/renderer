@@ -47,6 +47,9 @@ interface Props {
   renderMode?: boolean;
   // audio duration override for render mode (no audio element needed)
   audioDuration?: number;
+  // viewport override for render mode (use exact dimensions instead of WIDTH=980 scaling)
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 export default function RegularRenderer({
@@ -70,6 +73,9 @@ export default function RegularRenderer({
   // render mode for headless frame capture
   renderMode = false,
   audioDuration: propAudioDuration,
+  // viewport override for render mode
+  viewportWidth,
+  viewportHeight,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
@@ -98,14 +104,7 @@ export default function RegularRenderer({
   const scoreWidth = scoreRegion?.width ?? containerWidth;
   const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [audioDuration, setAudioDuration] = useState(0);
-
-  // In render mode, set audioDuration from prop (no audio element needed)
-  useEffect(() => {
-    if (propAudioDuration != null && propAudioDuration > 0) {
-      setAudioDuration(propAudioDuration);
-    }
-  }, [propAudioDuration]);
+  const [audioDuration, setAudioDuration] = useState(propAudioDuration ?? 0);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
@@ -118,6 +117,11 @@ export default function RegularRenderer({
   const visiblePagesRef = useRef<Set<number>>(new Set([0, 1]));
 
   function setDims(w: number, h: number) {
+    if (viewportWidth && viewportHeight) {
+      setContainerWidth(viewportWidth);
+      setContainerHeight(viewportHeight);
+      return;
+    }
     const f = WIDTH / w;
     setContainerWidth(Math.floor(w * f));
     setContainerHeight(Math.floor(h * f));
@@ -128,7 +132,7 @@ export default function RegularRenderer({
   useEffect(() => {
     if (!audioUrl) {
       audioRef.current = null;
-      setAudioDuration(0);
+      if (!propAudioDuration) setAudioDuration(0);
       return;
     }
 
@@ -182,7 +186,7 @@ export default function RegularRenderer({
     } else {
       setDims(1920, 1080);
     }
-  }, [bgUrl]);
+  }, [bgUrl, viewportWidth, viewportHeight]);
 
   /* ---------------- Verovio SVG rendering ---------------- */
 
@@ -566,11 +570,29 @@ export default function RegularRenderer({
       if (currentIndex < 0) return;
       const currentEvent = events[currentIndex];
 
-      // Update event index and Y position
-      eventIndexRef.current = currentIndex;
+      // Camera Y with interpolation for smooth scrolling in render mode
+      let targetY = currentEvent.y;
 
-      // Camera Y: events in the same system share identical Y values
-      currentYRef.current = currentEvent.y;
+      // Interpolate between current event Y and next event Y based on timestamp position
+      if (currentIndex < totalEvents - 1) {
+        const nextEvent = events[currentIndex + 1];
+        // Only interpolate if the two events have different Y positions (different systems)
+        if (nextEvent.y !== currentEvent.y) {
+          const segmentStart = currentEvent.computedTimestamp;
+          const segmentEnd = nextEvent.computedTimestamp;
+          const segmentDuration = segmentEnd - segmentStart;
+          if (segmentDuration > 0) {
+            const progress = (seconds - segmentStart) / segmentDuration;
+            // Use ease-in-out for natural-feeling camera movement
+            // cubic-bezier approximation: 3t^2 - 2t^3
+            const eased = progress * progress * (3 - 2 * progress);
+            targetY = currentEvent.y + (nextEvent.y - currentEvent.y) * eased;
+          }
+        }
+      }
+
+      eventIndexRef.current = currentIndex;
+      currentYRef.current = targetY;
 
       applyCamera(currentYRef.current);
 
@@ -712,7 +734,10 @@ export default function RegularRenderer({
         setTimestamp(timestamp);
       },
       setTimestamp,
-      getDuration: () => audioDuration,
+      getDuration: () => {
+        console.log('[RegularRenderer] getDuration called, audioDuration=', audioDuration);
+        return audioDuration;
+      },
       getFps: () => fps,
     };
 
@@ -872,34 +897,36 @@ export default function RegularRenderer({
         </div>
       </div>
 
-      {/* Transport bar */}
-      <div className="mt-3 px-3 py-2">
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={play}
-            disabled={!canPlay || isPlaying}
-            className="grunge-btn grunge-btn-sm flex-1"
-          >
-            Play
-          </button>
-          <button
-            onClick={stop}
-            disabled={!isPlaying}
-            className="grunge-btn grunge-btn-sm flex-1"
-          >
-            Pause
-          </button>
-          <button
-            onClick={reset}
-            className="grunge-btn grunge-btn-sm flex-1"
-          >
-            Reset
-          </button>
+      {/* Transport bar (hidden in render mode) */}
+      {!renderMode && (
+        <div className="mt-3 px-3 py-2">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={play}
+              disabled={!canPlay || isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Play
+            </button>
+            <button
+              onClick={stop}
+              disabled={!isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Pause
+            </button>
+            <button
+              onClick={reset}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Reset
+            </button>
+          </div>
+          {transportMessage && (
+            <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
+          )}
         </div>
-        {transportMessage && (
-          <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
-        )}
-      </div>
+      )}
     </div>
   );
 }

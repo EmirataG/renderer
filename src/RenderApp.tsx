@@ -17,8 +17,10 @@ export default function RenderApp() {
 
   // Inject sync anchors into Zustand before rendering
   useEffect(() => {
+    const anchorEntries = Object.entries(config.syncAnchors);
+    console.log(`[RenderApp] Injecting ${anchorEntries.length} sync anchors, audioDuration=${config.audioDuration}`);
     useSyncStore.setState({
-      anchors: new Map(Object.entries(config.syncAnchors)),
+      anchors: new Map(anchorEntries),
     });
     setReady(true);
   }, []);
@@ -28,8 +30,8 @@ export default function RenderApp() {
   return (
     <div
       style={{
-        width: "100vw",
-        height: "100vh",
+        width: config.viewportWidth,
+        height: config.viewportHeight,
         overflow: "hidden",
         background: config.bgUrl
           ? `url(${config.bgUrl}) center/cover no-repeat`
@@ -40,6 +42,8 @@ export default function RenderApp() {
         xml={config.musicXml}
         bgUrl={config.bgUrl ?? undefined}
         fps={config.fps}
+        viewportWidth={config.viewportWidth}
+        viewportHeight={config.viewportHeight}
         scoreColor={config.scoreColor}
         syncAnchors={anchors}
         scoreRegion={config.scoreRegion as ScoreRegion | null}
