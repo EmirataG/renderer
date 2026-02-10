@@ -101,7 +101,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed quick-23 (exact CSS cubic-bezier easing for export camera scrolling)
+Stopped at: Completed quick-25 (delta-based notehead animation in export setTimestamp)
 Resume file: None
 Next: 20-02-PLAN.md (fly.toml and deployment)
 
@@ -130,3 +130,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-022: ScoreRegionEditor grunge styling + fixed-position buttons at viewport bottom
 - quick-023: Exact CSS cubic-bezier(0, 0, 0.58, 1) evaluator replaces power-curve approximation in export camera easing
 - quick-024: FFmpeg preset medium → veryfast for 3-5x faster export encoding
+- quick-025: Delta-based notehead animation in export -- O(active_window) per-frame DOM mutations instead of O(N) reset-all
