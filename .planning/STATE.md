@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 23: Exact CSS cubic-bezier easing for export camera scrolling
+Last activity: 2026-02-10 - Completed quick task 24: FFmpeg preset medium to veryfast for faster export encoding
 
 Progress: [#####-----] 1/2 plans
 
@@ -72,7 +72,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 17-02: (job as any) cast for frameBuffers to avoid premature ExportJob type changes
 - 18-01: Direct child_process.spawn over fluent-ffmpeg (archived May 2025)
 - 18-01: Two-step encode+mux: stdin piping for frames, then separate mux pass for audio
-- 18-01: CRF 18 medium preset for visually lossless quality on score animations
+- 18-01: CRF 18 veryfast preset for visually lossless quality on score animations (changed from medium in quick-24)
 - 18-01: Always transcode audio to AAC (simplicity over conditional codec copy)
 - 19-01: EventEmitter over callback pattern for decoupled progress consumption
 - 19-01: 250ms throttle interval (4 events/sec max) to prevent WebSocket flood
@@ -129,3 +129,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-021: React.memo on RegularRenderer -- export progress re-renders killed notehead CSS transitions via dangerouslySetInnerHTML style tag replacement
 - quick-022: ScoreRegionEditor grunge styling + fixed-position buttons at viewport bottom
 - quick-023: Exact CSS cubic-bezier(0, 0, 0.58, 1) evaluator replaces power-curve approximation in export camera easing
+- quick-024: FFmpeg preset medium → veryfast for 3-5x faster export encoding

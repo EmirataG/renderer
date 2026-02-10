@@ -22,7 +22,7 @@ export function startVideoEncode(
     '-i', 'pipe:0',
     '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p',
-    '-preset', 'medium',
+    '-preset', 'veryfast',
     '-crf', '18',
     '-movflags', '+faststart',
     '-an',
