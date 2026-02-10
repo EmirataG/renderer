@@ -15,6 +15,7 @@ import { useEventStore } from "../stores/eventStore";
 import {
   animateNoteheads,
   resetNoteheadAnimations,
+  resetEventNoteheads,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
@@ -150,6 +151,7 @@ export default memo(function RegularRenderer({
   const cameraTransitionTarget = useRef(0);       // cameraY we're transitioning TO
   const cameraTransitionStart = useRef(-Infinity); // timestamp (seconds) when transition started
   const extractionDoneRef = useRef(false);
+  const prevActiveRangeRef = useRef<{ start: number; end: number } | null>(null);
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0, 1]));
   const visiblePagesRef = useRef<Set<number>>(new Set([0, 1]));
 
@@ -245,6 +247,7 @@ export default memo(function RegularRenderer({
         return;
       }
       resetNoteheadAnimations(scoreRef.current);
+      prevActiveRangeRef.current = null;
 
       // Cache validity check: skip extraction if svgPages reference unchanged
       if (svgPagesRef === svgPages) return;
@@ -520,6 +523,7 @@ export default memo(function RegularRenderer({
 
     if (scoreRef.current) {
       resetNoteheadAnimations(scoreRef.current);
+      prevActiveRangeRef.current = null;
     }
   }
 
@@ -645,18 +649,45 @@ export default memo(function RegularRenderer({
       eventIndexRef.current = currentIndex;
       currentYRef.current = eventY;
 
-      // For frame capture, we need to calculate exact animation state for each event
-      // and apply it directly (no CSS transitions)
+      // For frame capture: delta-based animation (only touch changed DOM elements)
       const holdSeconds = activeNoteheadAnimationHoldMs / 1000;
       const exitSeconds = activeNoteheadAnimationExitMs / 1000;
+      const animDuration = holdSeconds + exitSeconds;
 
       if (!scoreRef.current) return;
 
-      // Reset all noteheads first
-      resetNoteheadAnimations(scoreRef.current);
+      // Find firstActiveIndex: scan backwards from currentIndex to find the
+      // earliest event still within the animation window
+      let firstActiveIndex = currentIndex;
+      while (firstActiveIndex > 0) {
+        const prevEvent = events[firstActiveIndex - 1];
+        const timeSincePrev = seconds - prevEvent.computedTimestamp;
+        if (timeSincePrev >= animDuration || !prevEvent.svgIds?.length) {
+          break;
+        }
+        firstActiveIndex--;
+      }
+      // Also skip forward past events with no svgIds at the start
+      while (firstActiveIndex < currentIndex && !events[firstActiveIndex].svgIds?.length) {
+        firstActiveIndex++;
+      }
 
-      // Apply animations with interpolated values for each event
-      for (let i = 0; i <= currentIndex; i++) {
+      const prev = prevActiveRangeRef.current;
+
+      // Reset events that fell out of the active window
+      // These are events that were in prev range but are now before firstActiveIndex
+      if (prev !== null) {
+        const resetEnd = Math.min(prev.end, firstActiveIndex - 1);
+        for (let i = prev.start; i <= resetEnd; i++) {
+          const evt = events[i];
+          if (evt.svgIds?.length) {
+            resetEventNoteheads(scoreRef.current, evt.svgIds, colorFullNote);
+          }
+        }
+      }
+
+      // Apply/update styles for the active window [firstActiveIndex, currentIndex]
+      for (let i = firstActiveIndex; i <= currentIndex; i++) {
         const event = events[i];
         const eventTime = event.computedTimestamp;
         const timeSinceEvent = seconds - eventTime;
@@ -670,24 +701,16 @@ export default memo(function RegularRenderer({
           // Hold period: full scale and color
           scale = activeNoteheadScale;
           color = activeNoteheadColor;
-        } else if (timeSinceEvent < holdSeconds + exitSeconds) {
+        } else if (timeSinceEvent < animDuration) {
           // Exit period: interpolate scale and color using ease-in curve
           const exitProgress = (timeSinceEvent - holdSeconds) / exitSeconds;
-          // CSS ease-in approximation: cubic-bezier(0.42, 0, 1, 1) ~ progress^1.675
           const easedProgress = Math.pow(exitProgress, 1.675);
-
-          // Interpolate scale from activeNoteheadScale to 1
-          scale =
-            activeNoteheadScale + (1 - activeNoteheadScale) * easedProgress;
-
-          // Interpolate color from activeNoteheadColor to scoreColor
-          color = interpolateColor(
-            activeNoteheadColor,
-            scoreColor,
-            easedProgress,
-          );
+          scale = activeNoteheadScale + (1 - activeNoteheadScale) * easedProgress;
+          color = interpolateColor(activeNoteheadColor, scoreColor, easedProgress);
         } else {
-          // Animation complete, skip this event
+          // Animation complete -- this event shouldn't be in the window but
+          // guard defensively. Reset it and continue.
+          resetEventNoteheads(scoreRef.current!, event.svgIds, colorFullNote);
           continue;
         }
 
@@ -698,45 +721,43 @@ export default memo(function RegularRenderer({
           );
           if (!stavenote) continue;
 
-          const noteheads =
-            stavenote.querySelectorAll<SVGGElement>("g.notehead");
+          const noteheads = stavenote.querySelectorAll<SVGGElement>("g.notehead");
           noteheads.forEach((nh) => {
-            // Apply scale
             nh.style.transformBox = "fill-box";
             nh.style.transformOrigin = "center";
-            nh.style.transition = ""; // No CSS transition for frame capture
+            nh.style.transition = "";
             nh.style.transform = `scale(${scale})`;
 
-            // Apply color to shapes (Verovio uses <use> elements for noteheads)
             if (color) {
-              const shapes =
-                nh.querySelectorAll<SVGGraphicsElement>("use");
+              const shapes = nh.querySelectorAll<SVGGraphicsElement>("use");
               shapes.forEach((shape) => {
-                shape.style.fill = color;
-                shape.style.stroke = color;
-                shape.style.color = color;
+                shape.style.fill = color!;
+                shape.style.stroke = color!;
+                shape.style.color = color!;
               });
             }
           });
 
-          // Full note coloring (stems, accidentals, etc.)
           if (color && colorFullNote) {
             const extras = stavenote.querySelectorAll<SVGGraphicsElement>(
               "g.stem, g.accid, g.flag, g.dots, g.artic"
             );
             extras.forEach((group) => {
-              group.style.fill = color;
-              group.style.stroke = color;
-              group.style.color = color;
+              group.style.fill = color!;
+              group.style.stroke = color!;
+              group.style.color = color!;
               group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line").forEach((child) => {
-                child.style.fill = color;
-                child.style.stroke = color;
-                child.style.color = color;
+                child.style.fill = color!;
+                child.style.stroke = color!;
+                child.style.color = color!;
               });
             });
           }
         }
       }
+
+      // Store current active range for next frame's delta
+      prevActiveRangeRef.current = { start: firstActiveIndex, end: currentIndex };
 
       // Force reflow to ensure CSS styles are applied synchronously
       // before Puppeteer takes the screenshot
