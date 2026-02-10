@@ -591,7 +591,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
       {/* Score display - fixed width with horizontal scroll */}
       <div
-        className="flex-1 overflow-auto bg-white p-4"
+        className="flex-1 min-h-0 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
         <div ref={scoreRef} style={{ width: FIXED_SCORE_WIDTH, minWidth: FIXED_SCORE_WIDTH }}>
@@ -604,9 +604,9 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         </div>
       </div>
 
-      {/* Audio controls */}
+      {/* Audio controls - always visible at bottom */}
       {audioUrl && (
-        <div className="bg-black border-t border-neutral-800 px-4 py-3">
+        <div className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-3">
           <div className="flex items-center gap-4">
             {/* Play/Pause button */}
             <button
@@ -668,7 +668,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
       )}
 
       {/* Event list (optional - shows anchor status) */}
-      <div className="bg-black border-t border-neutral-800 px-4 py-2 max-h-40 overflow-auto grunge-scrollbar">
+      <div className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-2 max-h-40 overflow-auto grunge-scrollbar">
         <div className="flex flex-wrap gap-1">
           {interpolatedEvents.slice(0, 50).map((evt) => (
             <button
