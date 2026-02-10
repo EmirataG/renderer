@@ -106,6 +106,10 @@ export default function RegularRenderer({
   const eventIndexRef = useRef(-1); // -1 so first event (index 0) triggers animation
   const currentYRef = useRef(0);
   const cameraYRef = useRef(0);
+  // Render-mode: simulate CSS "transform 200ms ease-out" transition
+  const cameraTransitionFrom = useRef(0);        // cameraY we're transitioning FROM
+  const cameraTransitionTarget = useRef(0);       // cameraY we're transitioning TO
+  const cameraTransitionStart = useRef(-Infinity); // timestamp (seconds) when transition started
   const extractionDoneRef = useRef(false);
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0, 1]));
   const visiblePagesRef = useRef<Set<number>>(new Set([0, 1]));
@@ -559,31 +563,48 @@ export default function RegularRenderer({
       if (currentIndex < 0) return;
       const currentEvent = events[currentIndex];
 
-      // Camera Y with interpolation for smooth scrolling in render mode
-      let targetY = currentEvent.y;
+      // --- Camera: simulate preview's CSS "transform 200ms ease-out" ---
+      // In preview, applyCamera() sets translateY instantly and CSS transitions
+      // smooth it over 200ms. In render mode CSS transitions are disabled, so
+      // we replicate the effect by computing the target cameraY (post-clamp)
+      // and interpolating changes on that final value.
+      const eventY = currentEvent.y;
+      const scoreHeight = totalHeight || (scoreRef.current?.scrollHeight ?? 0);
+      const viewportHeight = scoreRegion?.height ?? containerHeight;
 
-      // Interpolate between current event Y and next event Y based on timestamp position
-      if (currentIndex < totalEvents - 1) {
-        const nextEvent = events[currentIndex + 1];
-        // Only interpolate if the two events have different Y positions (different systems)
-        if (nextEvent.y !== currentEvent.y) {
-          const segmentStart = currentEvent.computedTimestamp;
-          const segmentEnd = nextEvent.computedTimestamp;
-          const segmentDuration = segmentEnd - segmentStart;
-          if (segmentDuration > 0) {
-            const progress = (seconds - segmentStart) / segmentDuration;
-            // Use ease-in-out for natural-feeling camera movement
-            // cubic-bezier approximation: 3t^2 - 2t^3
-            const eased = progress * progress * (3 - 2 * progress);
-            targetY = currentEvent.y + (nextEvent.y - currentEvent.y) * eased;
-          }
-        }
+      // Compute what applyCamera would produce for this event's Y
+      let newTargetCameraY = eventY - viewportHeight / 2;
+      newTargetCameraY = Math.max(0, newTargetCameraY);
+      newTargetCameraY = Math.min(newTargetCameraY, Math.max(0, scoreHeight - viewportHeight));
+
+      // Detect target change — start a new transition
+      if (Math.abs(newTargetCameraY - cameraTransitionTarget.current) > 0.5) {
+        cameraTransitionFrom.current = cameraYRef.current; // from current visual position
+        cameraTransitionTarget.current = newTargetCameraY;
+        cameraTransitionStart.current = seconds;
+      }
+
+      // Simulate 200ms ease-out (matching CSS transition)
+      const TRANSITION_SEC = 0.2;
+      const elapsed = seconds - cameraTransitionStart.current;
+      let visualCameraY: number;
+      if (elapsed >= 0 && elapsed < TRANSITION_SEC) {
+        const t = elapsed / TRANSITION_SEC;
+        const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out ≈ CSS ease-out
+        visualCameraY = cameraTransitionFrom.current +
+          (cameraTransitionTarget.current - cameraTransitionFrom.current) * eased;
+      } else {
+        visualCameraY = cameraTransitionTarget.current;
+      }
+
+      // Apply camera directly (bypass applyCamera — we already did the clamping)
+      cameraYRef.current = visualCameraY;
+      if (cameraRef.current) {
+        cameraRef.current.style.transform = `translateY(${-visualCameraY}px)`;
       }
 
       eventIndexRef.current = currentIndex;
-      currentYRef.current = targetY;
-
-      applyCamera(currentYRef.current);
+      currentYRef.current = eventY;
 
       // For frame capture, we need to calculate exact animation state for each event
       // and apply it directly (no CSS transitions)
