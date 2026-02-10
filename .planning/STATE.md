@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 21: Memo RegularRenderer to prevent re-renders from export progress
+Last activity: 2026-02-10 - Completed quick task 22: Fix ScoreRegionEditor UI styling and resize behavior
 
 Progress: [#####-----] 1/2 plans
 
@@ -127,3 +127,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-019: Sticky bottom playback bar in SyncEditor (min-h-0 on score, flex-shrink-0 on controls)
 - quick-020: Portal transport bar (Play/Pause/Reset) from RegularRenderer to sticky bottom of preview view via createPortal
 - quick-021: React.memo on RegularRenderer -- export progress re-renders killed notehead CSS transitions via dangerouslySetInnerHTML style tag replacement
+- quick-022: ScoreRegionEditor grunge styling + fixed-position buttons at viewport bottom
