@@ -155,10 +155,12 @@ class JobManager extends EventEmitter {
 
       // Setup page with config injection, readiness wait, duration verification
       const frontendUrl = `http://localhost:${config.port}/`;
-      const viewport = { width: 1920, height: 1080 };
+      const viewport = { width: exportConfig.viewportWidth, height: exportConfig.viewportHeight };
+      console.log(`[renderJob] Setting up page for job ${jobId}...`);
       const result = await setupPage(browser, frontendUrl, exportConfig, viewport);
       context = result.context;
       page = result.page;
+      console.log(`[renderJob] Page ready. Duration: ${result.duration}s, totalFrames: ${result.totalFrames}`);
 
       // Emit rendering stage
       this.updateStatus(jobId, 'rendering');
@@ -168,6 +170,7 @@ class JobManager extends EventEmitter {
       // Start FFmpeg encode process
       const silentVideoPath = join(job.tempDir, 'video-silent.mp4');
       const encoder = startVideoEncode(silentVideoPath, exportConfig.fps, viewport.width, viewport.height);
+      console.log(`[renderJob] FFmpeg started. Capturing ${result.totalFrames} frames...`);
 
       // Pipe captured frames directly to FFmpeg stdin (bounded memory)
       // with throttled progress emission

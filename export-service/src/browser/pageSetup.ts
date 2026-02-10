@@ -1,8 +1,75 @@
 import type { Browser, BrowserContext, Page, Viewport } from 'puppeteer';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, readdir } from 'node:fs/promises';
+import { join, extname } from 'node:path';
 import { config } from '../shared/config.js';
 import type { ExportSettings } from '../shared/exportSettings.js';
+
+const MIME_BY_EXT: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+};
+
+interface BgInfo {
+  dataUrl: string | null;
+  width: number;
+  height: number;
+}
+
+/**
+ * Parse image dimensions from a raw file buffer without external dependencies.
+ * Supports PNG, JPEG, and WEBP formats.
+ * Returns { width, height } or null if parsing fails.
+ */
+function parseImageDimensions(buf: Buffer, ext: string): { width: number; height: number } | null {
+  try {
+    if (ext === '.png') {
+      // PNG: bytes 16-19 = width (big-endian uint32), bytes 20-23 = height
+      if (buf.length >= 24) {
+        const width = buf.readUInt32BE(16);
+        const height = buf.readUInt32BE(20);
+        if (width > 0 && height > 0) return { width, height };
+      }
+    } else if (ext === '.jpg' || ext === '.jpeg') {
+      // JPEG: search for SOF0 marker (0xFF 0xC0), height at offset+5, width at offset+7
+      for (let i = 0; i < buf.length - 9; i++) {
+        if (buf[i] === 0xff && (buf[i + 1] === 0xc0 || buf[i + 1] === 0xc2)) {
+          const height = buf.readUInt16BE(i + 5);
+          const width = buf.readUInt16BE(i + 7);
+          if (width > 0 && height > 0) return { width, height };
+        }
+      }
+    } else if (ext === '.webp') {
+      // WEBP: RIFF header check, then VP8 chunk; simple VP8: width at 26-27, height at 28-29 (little-endian)
+      if (buf.length >= 30 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+        const width = buf.readUInt16LE(26) & 0x3fff;
+        const height = buf.readUInt16LE(28) & 0x3fff;
+        if (width > 0 && height > 0) return { width, height };
+      }
+    }
+  } catch {
+    // Parsing failed, return null to fall through to defaults
+  }
+  return null;
+}
+
+async function buildBgInfo(tempDir: string): Promise<BgInfo> {
+  const files = await readdir(tempDir);
+  const bgFile = files.find((f) => f.startsWith('bgImage'));
+  if (!bgFile) return { dataUrl: null, width: 1920, height: 1080 };
+
+  const ext = extname(bgFile).toLowerCase();
+  const mime = MIME_BY_EXT[ext] ?? 'image/png';
+  const buf = await readFile(join(tempDir, bgFile));
+  const dataUrl = `data:${mime};base64,${buf.toString('base64')}`;
+
+  const dims = parseImageDimensions(buf, ext);
+  if (dims) {
+    return { dataUrl, width: dims.width, height: dims.height };
+  }
+  return { dataUrl, width: 1920, height: 1080 };
+}
 
 /**
  * Export configuration injected into the browser page via evaluateOnNewDocument.
@@ -28,6 +95,8 @@ export interface ExportConfig {
   activeNoteheadExitMs: number;
   colorFullNote: boolean;
   bgUrl: string | null;
+  viewportWidth: number;
+  viewportHeight: number;
 }
 
 /**
@@ -55,6 +124,8 @@ export async function buildExportConfig(job: {
     'utf-8',
   );
 
+  const bgInfo = await buildBgInfo(job.tempDir);
+
   return {
     musicXml,
     syncAnchors: job.syncAnchors,
@@ -74,8 +145,17 @@ export async function buildExportConfig(job: {
     activeNoteheadHoldMs: job.settings.activeNoteheadHoldMs,
     activeNoteheadExitMs: job.settings.activeNoteheadExitMs,
     colorFullNote: job.settings.colorFullNote,
-    bgUrl: null,
+    bgUrl: bgInfo.dataUrl,
+    viewportWidth: bgInfo.width,
+    viewportHeight: bgInfo.height,
   };
+}
+
+/**
+ * Extract viewport dimensions from an ExportConfig.
+ */
+export function getViewportFromConfig(cfg: ExportConfig): { width: number; height: number } {
+  return { width: cfg.viewportWidth, height: cfg.viewportHeight };
 }
 
 /**
@@ -96,6 +176,17 @@ export async function setupPage(
 
   // Set viewport BEFORE navigation
   await page.setViewport(viewport);
+
+  // Forward browser console to server logs for debugging
+  page.on('console', (msg) => {
+    const text = msg.text();
+    if (text.includes('[RegularRenderer]') || text.includes('[RenderApp]') || msg.type() === 'error') {
+      console.log(`[Browser] ${text}`);
+    }
+  });
+  page.on('pageerror', (err) => {
+    console.error(`[Browser Error] ${String(err)}`);
+  });
 
   // Inject ExportConfig into the page context BEFORE navigation
   await page.evaluateOnNewDocument(
@@ -121,9 +212,10 @@ export async function setupPage(
   const duration = await page.evaluate(
     () => (window as any).animationController!.getDuration(),
   );
+  console.log(`[pageSetup] getDuration returned: ${duration} (type: ${typeof duration})`);
   if (duration <= 0) {
     throw new Error(
-      'Animation has no duration -- check MusicXML and sync anchors',
+      `Animation has no duration (got ${duration}) -- check MusicXML and sync anchors`,
     );
   }
 

@@ -30,6 +30,8 @@ declare global {
     activeNoteheadExitMs: number;
     colorFullNote: boolean;
     bgUrl: string | null;
+    viewportWidth: number;
+    viewportHeight: number;
   }
 
   interface Window {
