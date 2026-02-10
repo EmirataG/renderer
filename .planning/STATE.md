@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 10: Fix squished export, JPEG screenshots, 30fps
+Last activity: 2026-02-10 - Completed quick task 11: Fix stale dist, add FRONTEND_URL config
 
 Progress: [#####-----] 1/2 plans
 
@@ -115,3 +115,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-007: Performance optimizations - useMemo CSS, binary search timeline, useShallow Zustand, pre-compiled regex
 - quick-009: Fix export video - dynamic viewport from bg image, full-frame render mode sizing, cubic ease-in-out camera interpolation
 - quick-010: Fix squished export (scoreRegion scaling), JPEG screenshots, 30fps default
+- quick-011: Fix stale dist -- export was loading Feb 9 build; add FRONTEND_URL config for dev
