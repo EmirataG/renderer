@@ -27,17 +27,11 @@ export default function RenderApp() {
 
   if (!ready) return null;
 
-  // Scale scoreRegion from editor coordinates (WIDTH=980) to viewport dimensions
+  // Match reference app pattern: render at WIDTH=980, CSS-scale to fill viewport.
+  // CSS transform: scale() is NOT bitmap scaling -- the browser renders SVGs,
+  // text, and borders at native viewport resolution. Everything stays crisp.
   const EDITOR_WIDTH = 980;
   const scaleFactor = config.viewportWidth / EDITOR_WIDTH;
-  const scaledRegion = config.scoreRegion
-    ? {
-        x: config.scoreRegion.x * scaleFactor,
-        y: config.scoreRegion.y * scaleFactor,
-        width: config.scoreRegion.width * scaleFactor,
-        height: config.scoreRegion.height * scaleFactor,
-      }
-    : null;
 
   return (
     <div
@@ -45,31 +39,34 @@ export default function RenderApp() {
         width: config.viewportWidth,
         height: config.viewportHeight,
         overflow: "hidden",
-        background: config.bgUrl
-          ? `url(${config.bgUrl}) center/cover no-repeat`
-          : "#000",
       }}
     >
-      <RegularRenderer
-        xml={config.musicXml}
-        fps={config.fps}
-        viewportWidth={config.viewportWidth}
-        viewportHeight={config.viewportHeight}
-        scoreColor={config.scoreColor}
-        syncAnchors={anchors}
-        scoreRegion={scaledRegion as ScoreRegion | null}
-        scoreBorder={(config.scoreBorder ?? "none") as BorderStyle}
-        scoreScale={config.scoreScale ?? 1}
-        musicFont={config.musicFont ?? "Bravura"}
-        activeNoteheadColor={config.activeNoteheadColor ?? undefined}
-        activeNoteheadScale={config.activeNoteheadScale ?? 1}
-        activeNoteheadAnimationEntryMs={config.activeNoteheadEntryMs ?? 50}
-        activeNoteheadAnimationHoldMs={config.activeNoteheadHoldMs ?? 200}
-        activeNoteheadAnimationExitMs={config.activeNoteheadExitMs ?? 200}
-        colorFullNote={config.colorFullNote ?? false}
-        renderMode={true}
-        audioDuration={config.audioDuration}
-      />
+      <div
+        style={{
+          transformOrigin: "top left",
+          transform: `scale(${scaleFactor})`,
+        }}
+      >
+        <RegularRenderer
+          xml={config.musicXml}
+          bgUrl={config.bgUrl ?? undefined}
+          fps={config.fps}
+          scoreColor={config.scoreColor}
+          syncAnchors={anchors}
+          scoreRegion={config.scoreRegion as ScoreRegion | null}
+          scoreBorder={(config.scoreBorder ?? "none") as BorderStyle}
+          scoreScale={config.scoreScale ?? 1}
+          musicFont={config.musicFont ?? "Bravura"}
+          activeNoteheadColor={config.activeNoteheadColor ?? undefined}
+          activeNoteheadScale={config.activeNoteheadScale ?? 1}
+          activeNoteheadAnimationEntryMs={config.activeNoteheadEntryMs ?? 50}
+          activeNoteheadAnimationHoldMs={config.activeNoteheadHoldMs ?? 200}
+          activeNoteheadAnimationExitMs={config.activeNoteheadExitMs ?? 200}
+          colorFullNote={config.colorFullNote ?? false}
+          renderMode={true}
+          audioDuration={config.audioDuration}
+        />
+      </div>
     </div>
   );
 }
