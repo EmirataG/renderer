@@ -280,7 +280,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">
+          <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">
             {/* UPLOAD SECTION */}
             <section className="mb-5">
               <h2 className="grunge-section-title">
@@ -668,7 +668,7 @@ export default function App() {
                   <div className="flex-1" />
                 </div>
                 {/* Renderer content */}
-                <div className="flex-1 flex items-center justify-center overflow-hidden">
+                <div className="flex-1 flex items-center justify-center overflow-auto">
                   {/* Wrapper for RegularRenderer + overlay */}
                   <div className="relative">
                     {useSingleLineRenderer ? (
