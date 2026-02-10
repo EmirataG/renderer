@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 
 /**
- * Start an FFmpeg process that reads PNG frames from stdin and encodes
+ * Start an FFmpeg process that reads JPEG frames from stdin and encodes
  * to a silent H.264 MP4 file. Returns drain-aware write/finish helpers.
  *
  * The caller pipes each captured frame via writeFrame(), then calls finish()
@@ -17,7 +17,7 @@ export function startVideoEncode(
   const proc = spawn('ffmpeg', [
     '-y',
     '-f', 'image2pipe',
-    '-c:v', 'png',
+    '-c:v', 'mjpeg',
     '-framerate', String(fps),
     '-i', 'pipe:0',
     '-c:v', 'libx264',
@@ -38,7 +38,7 @@ export function startVideoEncode(
   });
 
   /**
-   * Write a single PNG frame buffer to FFmpeg stdin.
+   * Write a single JPEG frame buffer to FFmpeg stdin.
    * Respects backpressure: if the internal buffer is full,
    * waits for the 'drain' event before returning.
    */

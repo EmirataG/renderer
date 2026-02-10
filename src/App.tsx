@@ -9,6 +9,8 @@ import { BorderPicker } from "./components/BorderPicker";
 import { BorderStyle } from "./borders";
 import { useSyncStore } from "./stores/syncStore";
 import type { ScoreRegion } from "./types/score";
+import { requestExport } from "./lib/exportClient";
+import type { ExportSettings } from "./lib/exportClient";
 
 export default function App() {
   // Get sync anchors from store
@@ -27,12 +29,14 @@ export default function App() {
   const [audioFile, setAudioFile] = useState<{
     url: string;
     name: string;
+    file: File;
   } | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgFileName, setBgFileName] = useState<string | null>(null);
+  const [bgFile, setBgFile] = useState<File | null>(null);
 
   // Playback settings
-  const [fps, setFps] = useState(60);
+  const [fps, setFps] = useState(30);
   const [scoreColor, setScoreColor] = useState("#000000");
   const [scoreShadowDistance, setScoreShadowDistance] = useState(0);
   const [hideUnplayedNotes, setHideUnplayedNotes] = useState(true);
@@ -110,6 +114,22 @@ export default function App() {
   const [activeNoteheadExitMs, setActiveNoteheadExitMs] = useState(500);
   const [colorFullNote, setColorFullNote] = useState(false);
 
+  // Export state
+  const [exportState, setExportState] = useState<{
+    status: 'idle' | 'uploading' | 'rendering' | 'encoding' | 'complete' | 'error' | 'cancelled';
+    jobId: string | null;
+    percent: number;
+    stage: string | null;
+    error: string | null;
+    downloadUrl: string | null;
+  }>({ status: 'idle', jobId: null, percent: 0, stage: null, error: null, downloadUrl: null });
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => { wsRef.current?.close(); };
+  }, []);
+
   // Upload handlers
   const handleMusicXMLUpload = (
     xml: string,
@@ -119,21 +139,120 @@ export default function App() {
     setMusicXMLFile({ xml, name: fileName, measureCount });
   };
 
-  const handleAudioUpload = (audioUrl: string, fileName: string) => {
+  const handleAudioUpload = (audioUrl: string, fileName: string, file?: File) => {
     // Handle removal
     if (!audioUrl && audioFile?.url) {
       URL.revokeObjectURL(audioFile.url);
     }
-    setAudioFile(audioUrl ? { url: audioUrl, name: fileName } : null);
+    setAudioFile(audioUrl && file ? { url: audioUrl, name: fileName, file } : null);
   };
 
-  const handleImageUpload = (imageUrl: string, fileName: string) => {
+  const handleImageUpload = (imageUrl: string, fileName: string, file?: File) => {
     // Handle removal
     if (!imageUrl && bgUrl) {
       URL.revokeObjectURL(bgUrl);
     }
     setBgUrl(imageUrl || null);
     setBgFileName(fileName || null);
+    setBgFile(file || null);
+  };
+
+  // Export handlers
+  const handleExport = async () => {
+    if (!musicXMLFile || !audioFile) return;
+
+    setExportState({ status: 'uploading', jobId: null, percent: 0, stage: 'Uploading...', error: null, downloadUrl: null });
+
+    try {
+      const settings: ExportSettings = {
+        fps, scoreColor, scoreShadowDistance, hideUnplayedNotes, smoothReveal,
+        scoreRegion, scoreBorder, scoreScale,
+        musicFont: musicFont as ExportSettings['musicFont'],
+        activeNoteheadColor, activeNoteheadScale,
+        activeNoteheadEntryMs, activeNoteheadHoldMs, activeNoteheadExitMs,
+        colorFullNote,
+        audioDuration: audioRef.current?.duration,
+      };
+
+      const backendUrl = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      const response = await requestExport({
+        settings,
+        syncAnchors: anchors,
+        musicXmlContent: musicXMLFile.xml,
+        musicXmlFilename: musicXMLFile.name,
+        audioFile: audioFile.file,
+        bgImageFile: bgFile || undefined,
+      }, backendUrl);
+
+      setExportState(prev => ({ ...prev, status: 'rendering', jobId: response.jobId }));
+
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsBase = import.meta.env.DEV ? 'ws://localhost:3001' : `${wsProtocol}//${window.location.host}`;
+      const ws = new WebSocket(`${wsBase}/api/export/${response.jobId}/ws`);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setExportState(prev => {
+          const next = { ...prev };
+          // Handle all backend event types
+          if (data.type === 'sync') {
+            next.percent = data.percent ?? prev.percent;
+            next.stage = data.stage ?? prev.stage;
+            next.error = data.error ?? prev.error;
+            next.downloadUrl = data.downloadUrl ?? prev.downloadUrl;
+            if (data.status === 'complete') next.status = 'complete';
+            else if (data.status === 'error' || data.status === 'failed') next.status = 'error';
+            else if (data.status === 'cancelled') next.status = 'cancelled';
+            else if (data.status === 'encoding') next.status = 'encoding';
+            else if (data.status === 'rendering') next.status = 'rendering';
+          } else if (data.type === 'progress') {
+            next.percent = data.percent ?? prev.percent;
+            next.stage = 'capturing';
+          } else if (data.type === 'stage') {
+            next.stage = data.stage ?? prev.stage;
+            if (data.stage === 'encoding') next.status = 'encoding';
+          } else if (data.type === 'complete') {
+            next.status = 'complete';
+            next.percent = 100;
+            next.downloadUrl = data.downloadUrl ?? prev.downloadUrl;
+          } else if (data.type === 'error') {
+            next.status = 'error';
+            next.error = data.error ?? 'Export failed';
+          } else if (data.type === 'cancelled') {
+            next.status = 'cancelled';
+          }
+          return next;
+        });
+      };
+
+      ws.onerror = () => {
+        setExportState(prev => ({ ...prev, status: 'error', error: 'Connection lost' }));
+      };
+
+      ws.onclose = () => { wsRef.current = null; };
+    } catch (err) {
+      setExportState(prev => ({ ...prev, status: 'error', error: (err as Error).message }));
+    }
+  };
+
+  const handleCancelExport = () => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cancel' }));
+    }
+  };
+
+  const handleDownload = () => {
+    if (exportState.downloadUrl) {
+      const base = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      window.open(`${base}${exportState.downloadUrl}`, '_blank');
+    }
+  };
+
+  const resetExport = () => {
+    wsRef.current?.close();
+    wsRef.current = null;
+    setExportState({ status: 'idle', jobId: null, percent: 0, stage: null, error: null, downloadUrl: null });
   };
 
   // Build current files object for UploadDropZone
@@ -490,6 +609,96 @@ export default function App() {
                     className="grunge-range"
                   />
                 </div>
+              </div>
+            </section>
+
+            {/* EXPORT SECTION */}
+            <section className="mb-5">
+              <h2 className="grunge-section-title">
+                Export
+              </h2>
+              <div className="p-3 space-y-3">
+                {exportState.status === 'idle' && (
+                  <>
+                    <button
+                      onClick={handleExport}
+                      disabled={!musicXMLFile || !audioFile || anchors.size === 0}
+                      className="grunge-btn w-full"
+                    >
+                      Export Video
+                    </button>
+                    {(!musicXMLFile || !audioFile || anchors.size === 0) && (
+                      <p className="text-xs text-neutral-500">
+                        {!musicXMLFile ? 'Upload a score first' : !audioFile ? 'Upload audio first' : 'Add sync anchors first'}
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {(exportState.status === 'uploading' || exportState.status === 'rendering' || exportState.status === 'encoding') && (
+                  <>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-neutral-300 capitalize">{exportState.stage || exportState.status}</span>
+                        <span className="text-white font-mono tabular-nums">{Math.round(exportState.percent)}%</span>
+                      </div>
+                      <div className="w-full bg-neutral-700 h-1.5">
+                        <div
+                          className="bg-white h-1.5 transition-all duration-300"
+                          style={{ width: `${exportState.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleCancelExport}
+                      className="grunge-btn grunge-btn-sm w-full"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+
+                {exportState.status === 'complete' && (
+                  <>
+                    <p className="text-xs text-green-400">Export complete</p>
+                    <button
+                      onClick={handleDownload}
+                      className="grunge-btn w-full"
+                    >
+                      Download MP4
+                    </button>
+                    <button
+                      onClick={resetExport}
+                      className="grunge-btn grunge-btn-sm w-full text-neutral-400"
+                    >
+                      New Export
+                    </button>
+                  </>
+                )}
+
+                {exportState.status === 'error' && (
+                  <>
+                    <p className="text-xs text-red-400">{exportState.error || 'Export failed'}</p>
+                    <button
+                      onClick={resetExport}
+                      className="grunge-btn w-full"
+                    >
+                      Try Again
+                    </button>
+                  </>
+                )}
+
+                {exportState.status === 'cancelled' && (
+                  <>
+                    <p className="text-xs text-neutral-400">Export cancelled</p>
+                    <button
+                      onClick={resetExport}
+                      className="grunge-btn w-full"
+                    >
+                      New Export
+                    </button>
+                  </>
+                )}
               </div>
             </section>
           </div>

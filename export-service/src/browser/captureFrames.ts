@@ -30,7 +30,8 @@ export async function* captureFrames(
     if (signal?.aborted) break;
 
     const buffer = await page.screenshot({
-      type: 'png',
+      type: 'jpeg',
+      quality: 90,
       optimizeForSpeed: true,
       captureBeyondViewport: false,
     });

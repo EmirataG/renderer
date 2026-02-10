@@ -27,6 +27,18 @@ export default function RenderApp() {
 
   if (!ready) return null;
 
+  // Scale scoreRegion from interactive editor (WIDTH=980) to actual viewport dimensions
+  const EDITOR_WIDTH = 980;
+  const scaleFactor = config.viewportWidth / EDITOR_WIDTH;
+  const scaledRegion = config.scoreRegion
+    ? {
+        x: config.scoreRegion.x * scaleFactor,
+        y: config.scoreRegion.y * scaleFactor,
+        width: config.scoreRegion.width * scaleFactor,
+        height: config.scoreRegion.height * scaleFactor,
+      }
+    : null;
+
   return (
     <div
       style={{
@@ -40,13 +52,12 @@ export default function RenderApp() {
     >
       <RegularRenderer
         xml={config.musicXml}
-        bgUrl={config.bgUrl ?? undefined}
         fps={config.fps}
         viewportWidth={config.viewportWidth}
         viewportHeight={config.viewportHeight}
         scoreColor={config.scoreColor}
         syncAnchors={anchors}
-        scoreRegion={config.scoreRegion as ScoreRegion | null}
+        scoreRegion={scaledRegion as ScoreRegion | null}
         scoreBorder={(config.scoreBorder ?? "none") as BorderStyle}
         scoreScale={config.scoreScale ?? 1}
         musicFont={config.musicFont ?? "Bravura"}
