@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 22: Fix ScoreRegionEditor UI styling and resize behavior
+Last activity: 2026-02-10 - Completed quick task 23: Exact CSS cubic-bezier easing for export camera scrolling
 
 Progress: [#####-----] 1/2 plans
 
@@ -101,7 +101,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-10
-Stopped at: Completed quick-9 (fix export video sizing, viewport, smooth camera)
+Stopped at: Completed quick-23 (exact CSS cubic-bezier easing for export camera scrolling)
 Resume file: None
 Next: 20-02-PLAN.md (fly.toml and deployment)
 
@@ -128,3 +128,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-020: Portal transport bar (Play/Pause/Reset) from RegularRenderer to sticky bottom of preview view via createPortal
 - quick-021: React.memo on RegularRenderer -- export progress re-renders killed notehead CSS transitions via dangerouslySetInnerHTML style tag replacement
 - quick-022: ScoreRegionEditor grunge styling + fixed-position buttons at viewport bottom
+- quick-023: Exact CSS cubic-bezier(0, 0, 0.58, 1) evaluator replaces power-curve approximation in export camera easing
