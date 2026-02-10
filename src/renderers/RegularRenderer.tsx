@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useVerovio } from "../hooks/useVerovio";
 import { extractTimemapEvents, computeEventPositions } from "../lib/getEvents";
@@ -47,6 +48,8 @@ interface Props {
   renderMode?: boolean;
   // audio duration override for render mode (no audio element needed)
   audioDuration?: number;
+  // portal target for transport bar (play/pause/reset) — renders there instead of inline
+  transportPortalEl?: HTMLDivElement | null;
 }
 
 export default function RegularRenderer({
@@ -70,6 +73,7 @@ export default function RegularRenderer({
   // render mode for headless frame capture
   renderMode = false,
   audioDuration: propAudioDuration,
+  transportPortalEl,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
@@ -908,7 +912,7 @@ export default function RegularRenderer({
       </div>
 
       {/* Transport bar (hidden in render mode) */}
-      {!renderMode && (
+      {!renderMode && !transportPortalEl && (
         <div className="mt-3 px-3 py-2">
           <div className="flex items-center justify-center gap-2">
             <button
@@ -936,6 +940,37 @@ export default function RegularRenderer({
             <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
           )}
         </div>
+      )}
+      {/* Transport bar portaled to external container */}
+      {!renderMode && transportPortalEl && createPortal(
+        <>
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={play}
+              disabled={!canPlay || isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Play
+            </button>
+            <button
+              onClick={stop}
+              disabled={!isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Pause
+            </button>
+            <button
+              onClick={reset}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Reset
+            </button>
+          </div>
+          {transportMessage && (
+            <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
+          )}
+        </>,
+        transportPortalEl,
       )}
     </div>
   );

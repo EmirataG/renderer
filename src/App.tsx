@@ -48,6 +48,9 @@ export default function App() {
   // Audio ref for preview
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Transport bar portal target (play/pause/reset rendered here from RegularRenderer)
+  const [transportEl, setTransportEl] = useState<HTMLDivElement | null>(null);
+
   // Score region customization
   const [scoreRegion, setScoreRegion] = useState<ScoreRegion | null>(null);
   const [isEditingRegion, setIsEditingRegion] = useState(false);
@@ -709,6 +712,7 @@ export default function App() {
                         activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
                         activeNoteheadAnimationExitMs={activeNoteheadExitMs}
                         colorFullNote={colorFullNote}
+                        transportPortalEl={transportEl}
                       />
                     )}
                     {/* Score Region Editor Overlay - positioned relative to RegularRenderer */}
@@ -730,6 +734,8 @@ export default function App() {
                     )}
                   </div>
                 </div>
+                {/* Transport bar portal target - always visible at bottom of preview */}
+                <div ref={setTransportEl} className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-3" />
               </div>
               {/* Sync Editor view - always mounted, hidden when not active */}
               {/* Use visibility instead of display to preserve Verovio layout calculations */}
