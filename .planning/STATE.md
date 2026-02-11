@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-10 - Completed quick task 24: FFmpeg preset medium to veryfast for faster export encoding
+Last activity: 2026-02-11 - Completed quick task 30: Resize reset button and anchor action buttons
 
 Progress: [#####-----] 1/2 plans
 
@@ -100,8 +100,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-10
-Stopped at: Completed quick-25 (delta-based notehead animation in export setTimestamp)
+Last session: 2026-02-11
+Stopped at: Completed quick-30 (resize reset button and anchor action buttons)
 Resume file: None
 Next: 20-02-PLAN.md (fly.toml and deployment)
 
@@ -131,3 +131,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-023: Exact CSS cubic-bezier(0, 0, 0.58, 1) evaluator replaces power-curve approximation in export camera easing
 - quick-024: FFmpeg preset medium → veryfast for 3-5x faster export encoding
 - quick-025: Delta-based notehead animation in export -- O(active_window) per-frame DOM mutations instead of O(N) reset-all
+- quick-030: Resize reset button (w-12 h-12) + anchor action buttons with monotonic timestamp validation
