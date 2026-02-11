@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-11 - Completed quick task 36: CSS-based coloring + fixed score scaling
+Last activity: 2026-02-11 - Completed quick task 37: w-fit overflow fix for score container
 
 Progress: [#####-----] 1/2 plans
 
@@ -136,3 +136,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-032: Remove event boxes from sync view, show only Remove Anchor when anchored
 - quick-035: Revert 33/34, unified coloring effect + measure-once container width
 - quick-036: CSS-based anchor/selection coloring + [&_svg]:max-w-none fixed scaling
+- quick-037: w-fit on scoreRef so score container scrolls instead of compressing SVG
