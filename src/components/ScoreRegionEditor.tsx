@@ -8,6 +8,7 @@ interface Props {
   initialRegion: ScoreRegion | null;
   onRegionChange: (region: ScoreRegion | null) => void;
   onClose: () => void;
+  scale?: number;
 }
 
 export function ScoreRegionEditor({
@@ -16,6 +17,7 @@ export function ScoreRegionEditor({
   initialRegion,
   onRegionChange,
   onClose,
+  scale = 1,
 }: Props) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [currentRegion, setCurrentRegion] = useState<ScoreRegion>(() => {
@@ -122,6 +124,7 @@ export function ScoreRegionEditor({
 
       {/* Draggable/resizable region */}
       <Rnd
+        scale={scale}
         default={{
           x: currentRegion.x,
           y: currentRegion.y,
