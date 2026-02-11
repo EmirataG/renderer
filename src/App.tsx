@@ -182,7 +182,7 @@ export default function App() {
         audioDuration: audioRef.current?.duration,
       };
 
-      const backendUrl = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      const backendUrl = process.env.NODE_ENV !== 'production' ? 'http://localhost:3001' : '';
       const response = await requestExport({
         settings,
         syncAnchors: anchors,
@@ -195,7 +195,7 @@ export default function App() {
       setExportState(prev => ({ ...prev, status: 'rendering', jobId: response.jobId }));
 
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsBase = import.meta.env.DEV ? 'ws://localhost:3001' : `${wsProtocol}//${window.location.host}`;
+      const wsBase = process.env.NODE_ENV !== 'production' ? 'ws://localhost:3001' : `${wsProtocol}//${window.location.host}`;
       const ws = new WebSocket(`${wsBase}/api/export/${response.jobId}/ws`);
       wsRef.current = ws;
 
@@ -252,7 +252,7 @@ export default function App() {
 
   const handleDownload = () => {
     if (exportState.downloadUrl) {
-      const base = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      const base = process.env.NODE_ENV !== 'production' ? 'http://localhost:3001' : '';
       window.open(`${base}${exportState.downloadUrl}`, '_blank');
     }
   };
