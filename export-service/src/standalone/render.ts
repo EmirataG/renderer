@@ -9,6 +9,8 @@
  * path with zero React/Zustand dependencies.
  */
 
+import createVerovioModule from 'verovio/wasm';
+import { VerovioToolkit } from 'verovio/esm';
 import {
   createAnimationState,
   setTimestamp,
@@ -436,7 +438,8 @@ async function main(): Promise<void> {
   console.log('[Standalone] DOM structure built, scaleFactor:', scaleFactor);
 
   // 5. Verovio init
-  const toolkit = new (window as any).verovio.toolkit();
+  const VerovioModule = await createVerovioModule();
+  const toolkit = new VerovioToolkit(VerovioModule);
 
   const scoreWidth = config.scoreRegion?.width ?? EDITOR_WIDTH;
   const verovioScale = Math.round(40 * (config.scoreScale ?? 1));

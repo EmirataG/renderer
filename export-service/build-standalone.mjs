@@ -10,16 +10,13 @@ mkdirSync(join(__dirname, 'standalone-dist'), { recursive: true });
 await build({
   entryPoints: [join(__dirname, 'src/standalone/render.ts')],
   bundle: true,
-  format: 'iife',
+  format: 'esm',
   outfile: join(__dirname, 'standalone-dist/render-bundle.js'),
   platform: 'browser',
   target: 'chrome120',
+  external: ['node:*'],
 });
 
-copyFileSync(
-  join(__dirname, '../node_modules/verovio/dist/verovio-toolkit-wasm.js'),
-  join(__dirname, 'standalone-dist/verovio-toolkit-wasm.js')
-);
 copyFileSync(
   join(__dirname, 'src/standalone/render.html'),
   join(__dirname, 'standalone-dist/render.html')
