@@ -4,8 +4,8 @@ export const config = {
   /** HTTP server port */
   port: parseInt(process.env.PORT ?? '3001', 10),
 
-  /** Frontend URL for Puppeteer to load. In dev, use Next.js dev server /render route; in prod, use FRONTEND_URL env var. */
-  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3000/render',
+  /** URL for Puppeteer to load the standalone render page. The export service serves its own /render route; override via FRONTEND_URL for production. */
+  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3001/render',
 
   /** HTTP server host (0.0.0.0 = all interfaces) */
   host: '0.0.0.0',

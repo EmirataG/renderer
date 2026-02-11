@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
@@ -14,6 +16,9 @@ import { shutdownPool } from './browser/browserPool.js';
 async function main() {
   const server = Fastify({ logger: true });
 
+  // Pre-load standalone render page HTML at startup
+  const renderHtml = readFileSync(join(import.meta.dirname, '../standalone-dist/render.html'), 'utf-8');
+
   // Register plugins
   await server.register(cors, { origin: config.corsOrigin });
   await server.register(multipart, {
@@ -24,11 +29,23 @@ async function main() {
     },
   });
 
-  // Serve the Vite-built frontend for Puppeteer to load
+  // Legacy: Serve the Vite-built frontend dist (may be removed in the future)
   await server.register(fastifyStatic, {
     root: config.frontendDistPath,
     prefix: '/',
     decorateReply: false,
+  });
+
+  // Serve standalone render page assets (animation bundle + verovio WASM)
+  await server.register(fastifyStatic, {
+    root: join(import.meta.dirname, '../standalone-dist'),
+    prefix: '/static/',
+    decorateReply: false,
+  });
+
+  // Standalone render page route (served to Puppeteer for frame capture)
+  server.get('/render', async (_request, reply) => {
+    return reply.type('text/html').send(renderHtml);
   });
 
   // WebSocket support (must register before websocket routes)
