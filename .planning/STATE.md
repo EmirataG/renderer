@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 
 ## Current Position
 
-Phase: 22 of 26 (Next.js Scaffold & Migration)
-Plan: 2 of 2 complete
-Status: Phase 22 Complete
-Last activity: 2026-02-11 -- Completed 22-02 (Render route and functional parity verification)
+Phase: 23 of 26 (Firebase Authentication)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-02-11 -- Completed 23-01 (Firebase SDKs, session route, login page)
 
-Progress: [#.........] 10%
+Progress: [##........] 15%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 31
+- Total plans completed: 32
 - Average duration: 2.3 min
-- Total execution time: 72 min
+- Total execution time: 75 min
 
 **By Phase:**
 
@@ -47,6 +47,7 @@ Progress: [#.........] 10%
 | 19 - Progress Streaming & DL      | 2/2   | 4 min | 2 min    |
 | 20 - Docker & Fly.io Deployment   | 1/2   | 1 min | 1 min    |
 | 22 - Next.js Scaffold & Migration | 2/2   | 6 min | 3 min    |
+| 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
 
 _Updated after each plan completion_
 
@@ -61,6 +62,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 22-01: Single dynamic({ ssr: false }) boundary wraps entire App component
 - 22-02: Dedicated /render route for Puppeteer uses same dynamic({ ssr: false }) pattern loading RenderApp
 - 22-02: Export service frontendUrl default changed to http://localhost:3000/render
+- 23-01: Added @/ path alias to tsconfig.json for clean imports across the project
+- 23-01: Firebase Admin SDK initializes without credentials when env vars missing (build-time safety)
+- 23-01: Login page uses force-dynamic to prevent SSR prerender failure from Firebase client SDK
 
 ### Pending Todos
 
@@ -74,6 +78,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 22-02-PLAN.md (Phase 22 complete)
+Stopped at: Completed 23-01-PLAN.md
 Resume file: None
-Next: Phase 23+ (Firebase integration or next milestone phase)
+Next: 23-02-PLAN.md (route protection via proxy.ts and sign-out)
