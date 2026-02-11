@@ -122,7 +122,11 @@ Plans:
 3. Unauthenticated users visiting any editor or dashboard page are redirected to the login page
 4. User can sign out and is returned to the login page
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 23-01-PLAN.md -- Install Firebase SDKs, create client/admin singletons, session Route Handler, and login page with Google sign-in
+- [ ] 23-02-PLAN.md -- Add proxy.ts route protection, sign-out button, and human-verify complete auth flow
 
 ### Phase 24: Project Dashboard & CRUD
 
@@ -180,7 +184,7 @@ Plans:
 | Phase | Status | Plans | Completion |
 |-------|--------|-------|------------|
 | 22 - Next.js Scaffold & Migration | ✓ Complete (2026-02-11) | 2/2 | 100% |
-| 23 - Firebase Authentication | Not started | 0/? | 0% |
+| 23 - Firebase Authentication | Planned | 0/2 | 0% |
 | 24 - Project Dashboard & CRUD | Not started | 0/? | 0% |
 | 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |
 | 26 - Auto-Save & Data Persistence | Not started | 0/? | 0% |
