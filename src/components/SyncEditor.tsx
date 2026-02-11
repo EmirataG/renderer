@@ -262,7 +262,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         applyNoteColor(event.svgIds, '#22c55e');
       }
     }
-  }, [events, anchors, anchorsKey]);
+  }, [events, anchors, anchorsKey, selectedEventId]);
 
   // Handle selection changes efficiently - only update changed events
   useEffect(() => {
