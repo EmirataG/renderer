@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-11 - Completed quick task 40: Extend hideLabels to also hide .labelAbbr
+Last activity: 2026-02-11 - Completed quick task 41: Fix score region glitch by disabling zoom/pan during editing
 
 Progress: [#####-----] 1/2 plans
 
@@ -101,7 +101,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed quick-40 (extend hideLabels to also hide .labelAbbr)
+Stopped at: Completed quick-41 (fix score region glitch - disable zoom/pan during editing)
 Resume file: None
 Next: 20-02-PLAN.md (fly.toml and deployment)
 
@@ -140,3 +140,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-038: Fix invisible SVG -- fixed pixel width on scoreRef instead of w-fit
 - quick-039: Hide instrument labels checkbox in inspector + CSS display:none on .label, threaded through export pipeline
 - quick-040: Extend hideLabels CSS to also hide .labelAbbr (abbreviated instrument labels) in both renderers
+- quick-041: Fix score region glitch -- disable zoom/pan during region editing, reset to 1x on entry via TransformWrapper ref
