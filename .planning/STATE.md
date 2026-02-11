@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-11 - Completed quick task 38: Fix invisible SVG (fixed-width scoreRef)
+Last activity: 2026-02-11 - Completed quick task 39: Hide instrument labels checkbox + export pipeline
 
 Progress: [#####-----] 1/2 plans
 
@@ -101,7 +101,7 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed quick-30 (resize reset button and anchor action buttons)
+Stopped at: Completed quick-39 (hide instrument labels checkbox + export pipeline)
 Resume file: None
 Next: 20-02-PLAN.md (fly.toml and deployment)
 
@@ -138,3 +138,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-036: CSS-based anchor/selection coloring + [&_svg]:max-w-none fixed scaling
 - quick-037: w-fit on scoreRef so score container scrolls instead of compressing SVG
 - quick-038: Fix invisible SVG -- fixed pixel width on scoreRef instead of w-fit
+- quick-039: Hide instrument labels checkbox in inspector + CSS display:none on .label, threaded through export pipeline
