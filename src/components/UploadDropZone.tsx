@@ -6,6 +6,7 @@ import type { FileCategory } from "../lib/fileValidation";
 import { validateMusicXML, isLikelyMusicXML } from "../lib/musicxmlValidation";
 
 interface UploadDropZoneProps {
+  projectId?: string;
   onMusicXMLUpload: (xml: string, fileName: string, measureCount: number) => void;
   onAudioUpload: (audioUrl: string, fileName: string, file?: File) => void;
   onImageUpload: (imageUrl: string, fileName: string, file?: File) => void;
@@ -17,6 +18,7 @@ interface UploadDropZoneProps {
 }
 
 export function UploadDropZone({
+  projectId,
   onMusicXMLUpload,
   onAudioUpload,
   onImageUpload,
@@ -82,12 +84,34 @@ export function UploadDropZone({
   );
 
   const processImage = useCallback(
-    (file: File) => {
-      const url = URL.createObjectURL(file);
-      onImageUpload(url, file.name, file);
-      showToast(`Loaded background: ${file.name}`, "success");
+    async (file: File) => {
+      if (projectId) {
+        // Upload to Firebase Storage via API
+        const formData = new FormData();
+        formData.append('background', file);
+        try {
+          const res = await fetch(`/api/projects/${projectId}/background`, {
+            method: 'PUT',
+            body: formData,
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Failed to upload background');
+          }
+          const { backgroundUrl } = await res.json();
+          onImageUpload(backgroundUrl, file.name);
+          showToast(`Background uploaded: ${file.name}`, 'success');
+        } catch (err) {
+          showToast(err instanceof Error ? err.message : 'Failed to upload background', 'error');
+        }
+      } else {
+        // Local-only mode (no project yet)
+        const url = URL.createObjectURL(file);
+        onImageUpload(url, file.name, file);
+        showToast(`Loaded background: ${file.name}`, 'success');
+      }
     },
-    [showToast, onImageUpload]
+    [projectId, showToast, onImageUpload]
   );
 
   const processFile = useCallback(
@@ -101,6 +125,12 @@ export function UploadDropZone({
 
       const category = validation.category!;
 
+      // Block score/audio uploads for existing projects (immutable after creation)
+      if (projectId && (category === "musicxml" || category === "audio")) {
+        showToast("Score and audio files cannot be changed after project creation.", "error");
+        return;
+      }
+
       switch (category) {
         case "musicxml":
           await processMusicXML(file);
@@ -109,11 +139,11 @@ export function UploadDropZone({
           processAudio(file);
           break;
         case "image":
-          processImage(file);
+          await processImage(file);
           break;
       }
     },
-    [showToast, processMusicXML, processAudio, processImage]
+    [showToast, projectId, processMusicXML, processAudio, processImage]
   );
 
   const handleDrop = useCallback(
@@ -165,8 +195,9 @@ export function UploadDropZone({
   };
 
   // All supported file types for the input accept attribute
-  const acceptedTypes =
-    ".xml,.musicxml,.mp3,.wav,.ogg,.m4a,.jpg,.jpeg,.png,.webp";
+  const acceptedTypes = projectId
+    ? ".jpg,.jpeg,.png,.webp"
+    : ".xml,.musicxml,.mp3,.wav,.ogg,.m4a,.jpg,.jpeg,.png,.webp";
 
   return (
     <div className="space-y-3">
@@ -209,7 +240,7 @@ export function UploadDropZone({
                 Drop files here or click to browse
               </p>
               <p className="mt-1 text-xs text-neutral-500">
-                MusicXML, Audio, or Image files
+                {projectId ? "Background image only" : "MusicXML, Audio, or Image files"}
               </p>
             </>
           )}
@@ -240,7 +271,7 @@ export function UploadDropZone({
           icon={<AudioIcon className="h-4 w-4" />}
           file={currentFiles.audio ? { name: currentFiles.audio.name } : null}
           onRemove={() => handleRemove("audio")}
-          removable={!!currentFiles.audio}
+          removable={!projectId && !!currentFiles.audio}
         />
 
         {/* Image Status */}

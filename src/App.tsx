@@ -34,11 +34,59 @@ export default function App({ projectId }: AppProps) {
   const [audioFile, setAudioFile] = useState<{
     url: string;
     name: string;
-    file: File;
+    file: File | null;
   } | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgFileName, setBgFileName] = useState<string | null>(null);
   const [bgFile, setBgFile] = useState<File | null>(null);
+
+  // Project loading state
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) return;
+
+    async function loadProject() {
+      setIsLoadingProject(true);
+      try {
+        const res = await fetch(`/api/projects/${projectId}`);
+        if (!res.ok) return;
+        const { project } = await res.json();
+
+        // Load score XML from Storage URL
+        if (project.scoreUrl) {
+          const scoreRes = await fetch(project.scoreUrl);
+          const xml = await scoreRes.text();
+          setMusicXMLFile({
+            xml,
+            name: project.scoreFileName || 'score.xml',
+            measureCount: 0, // Verovio will calculate on render
+          });
+        }
+
+        // Set audio from Storage URL (no File object when loading from URL)
+        if (project.audioUrl) {
+          setAudioFile({
+            url: project.audioUrl,
+            name: project.audioFileName || 'audio.mp3',
+            file: null,
+          });
+        }
+
+        // Set background image from Storage URL
+        if (project.backgroundUrl) {
+          setBgUrl(project.backgroundUrl);
+          setBgFileName(project.backgroundFileName || null);
+        }
+      } catch (err) {
+        console.error('Failed to load project:', err);
+      } finally {
+        setIsLoadingProject(false);
+      }
+    }
+
+    loadProject();
+  }, [projectId]);
 
   // Playback settings
   const [fps, setFps] = useState(30);
@@ -156,7 +204,7 @@ export default function App({ projectId }: AppProps) {
     if (!audioUrl && audioFile?.url) {
       URL.revokeObjectURL(audioFile.url);
     }
-    setAudioFile(audioUrl && file ? { url: audioUrl, name: fileName, file } : null);
+    setAudioFile(audioUrl ? { url: audioUrl, name: fileName, file: file || null } : null);
   };
 
   const handleImageUpload = (imageUrl: string, fileName: string, file?: File) => {
@@ -192,7 +240,7 @@ export default function App({ projectId }: AppProps) {
         syncAnchors: anchors,
         musicXmlContent: musicXMLFile.xml,
         musicXmlFilename: musicXMLFile.name,
-        audioFile: audioFile.file,
+        audioFile: audioFile.file!, // null when loaded from URL -- export requires local file
         bgImageFile: bgFile || undefined,
       }, backendUrl);
 
@@ -300,6 +348,7 @@ export default function App({ projectId }: AppProps) {
               </h2>
               <div className="p-3">
                 <UploadDropZone
+                  projectId={projectId}
                   onMusicXMLUpload={handleMusicXMLUpload}
                   onAudioUpload={handleAudioUpload}
                   onImageUpload={handleImageUpload}
@@ -667,7 +716,13 @@ export default function App({ projectId }: AppProps) {
 
         <section className="flex-1 flex flex-col bg-black">
           {/* Main content */}
-          {musicXMLFile ? (
+          {isLoadingProject ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-sm text-neutral-400">Loading project...</p>
+              </div>
+            </div>
+          ) : musicXMLFile ? (
             <>
               {/* Renderer view - always mounted, hidden when not active */}
               <div className="flex flex-col h-full" style={{ display: currentView === 'renderer' ? 'flex' : 'none' }}>
