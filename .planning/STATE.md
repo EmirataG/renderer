@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 25 of 26 (Firebase Storage & File Persistence)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing
-Last activity: 2026-02-11 -- Completed 25-01 (Storage infrastructure and file upload integration)
+Last activity: 2026-02-11 -- Completed 25-02 (File retrieval and editor integration)
 
-Progress: [##........] 20%
+Progress: [####......] 40%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 38
-- Average duration: 2.4 min
-- Total execution time: 96 min
+- Total plans completed: 39
+- Average duration: 2.5 min
+- Total execution time: 99 min
 
 **By Phase:**
 
@@ -50,7 +50,7 @@ Progress: [##........] 20%
 | 22.1 - Self-Contained Export Svc  | 2/2   | 9 min | 4.5 min  |
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
 | 24 - Project Dashboard & CRUD     | 3/3   | 10 min | 3.3 min |
-| 25 - Firebase Storage & File Pers | 1/3   | 2 min  | 2 min   |
+| 25 - Firebase Storage & File Pers | 2/3   | 5 min  | 2.5 min |
 
 _Updated after each plan completion_
 
@@ -82,6 +82,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 25-01: Storage singleton triggers adminAuth proxy access (same pattern as firestore.ts)
 - 25-01: File validation duplicated server-side to avoid importing browser-only fileValidation.ts
 - 25-01: Parallel file upload via Promise.all for score and audio
+- 25-02: Audio state type allows null File for URL-loaded projects (export uses non-null assertion)
+- 25-02: Background route deletes all existing background files by prefix before uploading replacement
+- 25-02: UploadDropZone restricts to image-only uploads when projectId is set (immutable score/audio)
 
 ### Roadmap Evolution
 
@@ -99,6 +102,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 25-01-PLAN.md
+Stopped at: Completed 25-02-PLAN.md
 Resume file: None
-Next: 25-02 (File retrieval and editor integration)
+Next: 25-03 (Auto-save and project settings persistence)
