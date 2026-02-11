@@ -315,7 +315,7 @@ export default memo(function RegularRenderer({
       cursor: default !important;
       user-select: none !important;
     }
-    ${hideLabels ? '.preview-score .label { display: none !important; }' : ''}
+    ${hideLabels ? '.preview-score .label, .preview-score .labelAbbr { display: none !important; }' : ''}
   `, [scoreColor, hideLabels]);
 
   /* ---------------- page virtualization helpers ---------------- */

@@ -328,7 +328,7 @@ export default function SingleLineRenderer({
     .section-continuation g.meterSig {
       display: none !important;
     }
-    ${hideLabels ? '.preview-score .label { display: none !important; }' : ''}
+    ${hideLabels ? '.preview-score .label, .preview-score .labelAbbr { display: none !important; }' : ''}
   `, [scoreColor, hideLabels]);
 
   /* ---------------- camera (horizontal) ---------------- */
