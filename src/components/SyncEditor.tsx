@@ -29,13 +29,14 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const scoreContainerRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
 
-  // Measure container width so Verovio fills available space
+  // Measure container width ONCE — Verovio must never re-render on resize
   const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     const el = scoreContainerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       setContainerWidth(Math.floor(entry.contentRect.width));
+      ro.disconnect();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -217,9 +218,6 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     });
   };
 
-  // Track previous selection to avoid clearing all events on every change
-  const prevSelectedIdRef = useRef<string | null>(null);
-
   // One-time setup: Create style element for hover effects
   useEffect(() => {
     if (!scoreRef.current) return;
@@ -242,62 +240,36 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     `;
   }, [svgPages]); // Only re-run when SVG pages change
 
-  // Apply anchor colors when anchors change (separate from selection)
+  // Unified coloring effect: applies ALL note colors from scratch.
+  // Runs after any state change that affects coloring (events, anchors, selection, SVG DOM).
+  // This replaces the previous separate anchor/selection effects which had timing bugs.
   useEffect(() => {
     if (!scoreRef.current || events.length === 0) return;
 
-    // Clear non-anchor, non-selected, non-playing events
-    events.forEach(evt => {
-      if (evt.id === selectedEventId) return; // Don't clear selected
-      if (anchors.has(evt.id)) return; // Don't clear anchors
-      if (playingSvgIdsRef.current.some(id => evt.svgIds.includes(id))) return; // Don't clear playing
-      clearNoteColor(evt.svgIds);
-    });
+    // 1. Clear all note colors
+    events.forEach(evt => clearNoteColor(evt.svgIds));
 
-    // Apply anchor colors (green)
+    // 2. Paint anchored notes green
     for (const [eventId] of anchors) {
-      if (eventId === selectedEventId) continue; // Selection overrides anchor
       const event = events.find(e => e.id === eventId);
       if (event) {
         applyNoteColor(event.svgIds, '#22c55e');
       }
     }
-  }, [events, anchors, anchorsKey]);
 
-  // Handle selection changes efficiently - only update changed events
-  useEffect(() => {
-    if (!scoreRef.current || events.length === 0) return;
-
-    const prevId = prevSelectedIdRef.current;
-    const newId = selectedEventId;
-
-    // Clear previous selection (restore to base color)
-    if (prevId && prevId !== newId) {
-      const prevEvent = events.find(e => e.id === prevId);
-      if (prevEvent) {
-        if (anchors.has(prevId)) {
-          applyNoteColor(prevEvent.svgIds, '#22c55e'); // Restore anchor color
-        } else {
-          clearNoteColor(prevEvent.svgIds); // Clear to default
-        }
-      }
-    }
-
-    // Apply new selection color (blue)
-    if (newId) {
-      const event = events.find(e => e.id === newId);
+    // 3. Paint selected note blue (overrides green if anchored)
+    if (selectedEventId) {
+      const event = events.find(e => e.id === selectedEventId);
       if (event) {
         applyNoteColor(event.svgIds, '#3b82f6');
       }
     }
 
-    // Re-apply playing color (orange) if needed
+    // 4. Re-apply playing note orange (overrides everything)
     if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
       applyNoteColor(playingSvgIdsRef.current, '#f59e0b');
     }
-
-    prevSelectedIdRef.current = newId;
-  }, [selectedEventId, events, anchors]);
+  }, [events, anchors, anchorsKey, selectedEventId, svgPages]);
 
   // Keyboard navigation for efficient sync workflow
   useEffect(() => {
