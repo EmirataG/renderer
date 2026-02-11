@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 22 of 26 (Next.js Scaffold & Migration)
-Plan: --
-Status: Ready to plan
-Last activity: 2026-02-11 -- Roadmap created for v2.0 milestone
+Plan: 1 of 2 complete
+Status: Executing
+Last activity: 2026-02-11 -- Completed 22-01 (Next.js scaffold and Vite migration)
 
-Progress: [..........] 0%
+Progress: [#.........] 10%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 29
+- Total plans completed: 30
 - Average duration: 2.3 min
-- Total execution time: 66 min
+- Total execution time: 69 min
 
 **By Phase:**
 
@@ -46,6 +46,7 @@ Progress: [..........] 0%
 | 18 - FFmpeg Encoding & Audio Mux  | 1/1   | 2 min | 2 min    |
 | 19 - Progress Streaming & DL      | 2/2   | 4 min | 2 min    |
 | 20 - Docker & Fly.io Deployment   | 1/2   | 1 min | 1 min    |
+| 22 - Next.js Scaffold & Migration | 1/2   | 3 min | 3 min    |
 
 _Updated after each plan completion_
 
@@ -54,7 +55,10 @@ _Updated after each plan completion_
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-No v2.0 decisions yet -- will accumulate during execution.
+
+- 22-01: Disabled noUncheckedSideEffectImports (Next.js lacks plain CSS type declarations)
+- 22-01: No webpack WASM config needed (verovio embeds WASM inline in JS)
+- 22-01: Single dynamic({ ssr: false }) boundary wraps entire App component
 
 ### Pending Todos
 
@@ -62,12 +66,12 @@ None.
 
 ### Blockers/Concerns
 
-- Turbopack + Verovio WASM interaction untested (must validate in Phase 22 before proceeding)
+- ~~Turbopack + Verovio WASM interaction untested~~ RESOLVED: Validated in 22-01, builds cleanly
 - Firestore offline persistence could conflict with auto-save debounce (investigate in Phase 26)
 
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Roadmap created for v2.0 milestone
+Stopped at: Completed 22-01-PLAN.md
 Resume file: None
-Next: Plan Phase 22 (Next.js Scaffold & Migration)
+Next: Execute 22-02-PLAN.md (RenderApp route and export migration)
