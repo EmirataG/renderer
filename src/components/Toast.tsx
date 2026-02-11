@@ -73,6 +73,18 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
     >
       <Icon className="w-5 h-5 flex-shrink-0" />
       <p className="flex-1 text-sm font-medium">{toast.message}</p>
+      {toast.action && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toast.action!.onClick();
+            onDismiss(toast.id);
+          }}
+          className="flex-shrink-0 px-2 py-0.5 text-sm font-semibold underline underline-offset-2 hover:no-underline transition-all"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         onClick={() => onDismiss(toast.id)}
         className="flex-shrink-0 p-1 hover:bg-white/20 rounded transition-colors"

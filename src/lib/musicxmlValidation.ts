@@ -51,19 +51,20 @@ export async function validateMusicXML(
   }
 }
 
+// Validates MusicXML and MEI formats (both supported by Verovio)
 /**
- * Quick validation that content appears to be MusicXML without full Verovio render
- * Useful for pre-flight checks before the full validation
+ * Quick validation that content appears to be MusicXML or MEI without full Verovio render.
+ * Useful for pre-flight checks before the full validation.
  */
 export function isLikelyMusicXML(content: string): boolean {
-  // Check for common MusicXML markers
   const trimmed = content.trim();
 
-  // Must start with XML declaration or root element
-  const hasXmlDeclaration = trimmed.startsWith("<?xml");
+  // MusicXML root elements
   const hasScorePartwise = trimmed.includes("<score-partwise");
   const hasScoreTimewise = trimmed.includes("<score-timewise");
 
-  // MusicXML must have one of these root elements
-  return hasXmlDeclaration && (hasScorePartwise || hasScoreTimewise);
+  // MEI root element
+  const hasMeiRoot = trimmed.includes("<mei");
+
+  return hasScorePartwise || hasScoreTimewise || hasMeiRoot;
 }
