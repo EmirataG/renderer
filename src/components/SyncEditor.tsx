@@ -605,7 +605,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         className="flex-1 min-h-0 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
-        <div ref={scoreRef} className="w-fit [&_svg]:max-w-none">
+        <div ref={scoreRef} style={containerWidth > 0 ? { width: containerWidth } : undefined}>
           {svgPages.map((svg, i) => (
             <div
               key={i}
