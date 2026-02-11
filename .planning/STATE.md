@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 24 of 26 (Project Dashboard & CRUD)
-Plan: 2 of 3 complete
-Status: In Progress
-Last activity: 2026-02-11 -- Completed 24-02 (Route Restructure, Toast Actions, MEI Validation)
+Plan: 3 of 3 complete
+Status: Verifying
+Last activity: 2026-02-11 -- Completed 24-03 (Dashboard UI, creation modal, delete with undo)
 
-Progress: [##........] 15%
+Progress: [##........] 20%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 36
+- Total plans completed: 37
 - Average duration: 2.4 min
-- Total execution time: 89 min
+- Total execution time: 94 min
 
 **By Phase:**
 
@@ -49,7 +49,7 @@ Progress: [##........] 15%
 | 22 - Next.js Scaffold & Migration | 2/2   | 6 min | 3 min    |
 | 22.1 - Self-Contained Export Svc  | 2/2   | 9 min | 4.5 min  |
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
-| 24 - Project Dashboard & CRUD     | 2/3   | 5 min | 2.5 min  |
+| 24 - Project Dashboard & CRUD     | 3/3   | 10 min | 3.3 min |
 
 _Updated after each plan completion_
 
@@ -75,6 +75,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 24-01: Audio file types narrowed to .mp3 and .wav only per user decision
 - 24-02: Toast action button dismissed after onClick (prevents double-action)
 - 24-02: Dropped XML declaration requirement from isLikelyMusicXML for broader format support
+- 24-03: Firestore structure changed to users/{uid}/projects/{id} subcollection (no composite index, inherent scoping)
+- 24-03: firebase-admin.ts fixed to reuse existing app instead of deleting all apps on init
+- 24-03: userId field removed from Project type (ownership implicit in Firestore path)
 
 ### Roadmap Evolution
 
@@ -92,6 +95,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 24-02-PLAN.md (Route Restructure, Toast Actions, MEI Validation)
+Stopped at: All Phase 24 plans complete, awaiting verification
 Resume file: None
-Next: 24-03-PLAN.md (Dashboard UI, creation modal, project cards)
+Next: Phase 24 verification, then Phase 25 (Firebase Storage & File Persistence)
