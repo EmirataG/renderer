@@ -9,11 +9,14 @@
     "start": "next start"
   },
   "dependencies": {
+    "firebase": "^12.9.0",
+    "firebase-admin": "^13.6.1",
     "next": "^16.1.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-rnd": "^10.5.2",
     "react-zoom-pan-pinch": "^3.7.0",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4.1.16",
     "verovio": "^6.0.1",
     "zustand": "^5.0.10"
