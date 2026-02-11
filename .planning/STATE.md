@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 
 ## Current Position
 
-Phase: 24 of 26 (Project Dashboard & CRUD)
-Plan: 3 of 3 complete
-Status: Verifying
-Last activity: 2026-02-11 -- Completed 24-03 (Dashboard UI, creation modal, delete with undo)
+Phase: 25 of 26 (Firebase Storage & File Persistence)
+Plan: 1 of 3 complete
+Status: Executing
+Last activity: 2026-02-11 -- Completed 25-01 (Storage infrastructure and file upload integration)
 
 Progress: [##........] 20%
 
@@ -20,9 +20,9 @@ Progress: [##........] 20%
 
 **Velocity:**
 
-- Total plans completed: 37
+- Total plans completed: 38
 - Average duration: 2.4 min
-- Total execution time: 94 min
+- Total execution time: 96 min
 
 **By Phase:**
 
@@ -50,6 +50,7 @@ Progress: [##........] 20%
 | 22.1 - Self-Contained Export Svc  | 2/2   | 9 min | 4.5 min  |
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
 | 24 - Project Dashboard & CRUD     | 3/3   | 10 min | 3.3 min |
+| 25 - Firebase Storage & File Pers | 1/3   | 2 min  | 2 min   |
 
 _Updated after each plan completion_
 
@@ -78,6 +79,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 24-03: Firestore structure changed to users/{uid}/projects/{id} subcollection (no composite index, inherent scoping)
 - 24-03: firebase-admin.ts fixed to reuse existing app instead of deleting all apps on init
 - 24-03: userId field removed from Project type (ownership implicit in Firestore path)
+- 25-01: Storage singleton triggers adminAuth proxy access (same pattern as firestore.ts)
+- 25-01: File validation duplicated server-side to avoid importing browser-only fileValidation.ts
+- 25-01: Parallel file upload via Promise.all for score and audio
 
 ### Roadmap Evolution
 
@@ -95,6 +99,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: All Phase 24 plans complete, awaiting verification
+Stopped at: Completed 25-01-PLAN.md
 Resume file: None
-Next: Phase 24 verification, then Phase 25 (Firebase Storage & File Persistence)
+Next: 25-02 (File retrieval and editor integration)
