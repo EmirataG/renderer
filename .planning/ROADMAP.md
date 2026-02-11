@@ -105,8 +105,8 @@ Backend export service with Puppeteer frame capture, FFmpeg encoding, WebSocket 
 **Plans:** 2 plans
 
 Plans:
-- [ ] 22-01-PLAN.md -- Scaffold Next.js App Router, migrate from Vite, verify dev server and build
-- [ ] 22-02-PLAN.md -- Create /render route for export service, human-verify full functional parity
+- [x] 22-01-PLAN.md -- Scaffold Next.js App Router, migrate from Vite, verify dev server and build
+- [x] 22-02-PLAN.md -- Create /render route for export service, human-verify full functional parity
 
 ### Phase 23: Firebase Authentication
 
@@ -179,7 +179,7 @@ Plans:
 
 | Phase | Status | Plans | Completion |
 |-------|--------|-------|------------|
-| 22 - Next.js Scaffold & Migration | Planned | 0/2 | 0% |
+| 22 - Next.js Scaffold & Migration | ✓ Complete (2026-02-11) | 2/2 | 100% |
 | 23 - Firebase Authentication | Not started | 0/? | 0% |
 | 24 - Project Dashboard & CRUD | Not started | 0/? | 0% |
 | 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |
