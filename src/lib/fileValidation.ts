@@ -16,8 +16,8 @@ const SIZE_LIMITS: Record<FileCategory, number> = {
 
 // Allowed extensions (lowercase, with leading dot)
 const ALLOWED_EXTENSIONS: Record<FileCategory, string[]> = {
-  musicxml: [".xml", ".musicxml"],
-  audio: [".mp3", ".wav", ".ogg", ".m4a"],
+  musicxml: [".xml", ".musicxml", ".mxl", ".mei"],
+  audio: [".mp3", ".wav"],
   image: [".jpg", ".jpeg", ".png", ".webp"],
 };
 
@@ -30,9 +30,9 @@ const MIME_TO_CATEGORY: Record<string, FileCategory> = {
   "audio/wav": "audio",
   "audio/wave": "audio",
   "audio/x-wav": "audio",
-  "audio/ogg": "audio",
-  "audio/mp4": "audio",
-  "audio/x-m4a": "audio",
+  "application/mei+xml": "musicxml",
+  "application/x-mei+xml": "musicxml",
+  "application/vnd.recordare.musicxml": "musicxml",
   "image/jpeg": "image",
   "image/png": "image",
   "image/webp": "image",

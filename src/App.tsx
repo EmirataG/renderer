@@ -13,7 +13,11 @@ import { requestExport } from "./lib/exportClient";
 import type { ExportSettings } from "./lib/exportClient";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
-export default function App() {
+interface AppProps {
+  projectId?: string;
+}
+
+export default function App({ projectId }: AppProps) {
   // Get sync anchors from store
   const { anchors } = useSyncStore();
 
