@@ -29,13 +29,15 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const scoreContainerRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
 
-  // Measure container width so Verovio fills available space
+  // Measure container width ONCE so Verovio renders at initial size
+  // (window resizing should never cause Verovio to re-render)
   const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     const el = scoreContainerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       setContainerWidth(Math.floor(entry.contentRect.width));
+      ro.disconnect(); // Measure once, then stop
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -262,7 +264,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         applyNoteColor(event.svgIds, '#22c55e');
       }
     }
-  }, [events, anchors, anchorsKey, selectedEventId]);
+  }, [events, anchors, anchorsKey, selectedEventId, svgPages]);
 
   // Handle selection changes efficiently - only update changed events
   useEffect(() => {
