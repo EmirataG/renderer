@@ -102,7 +102,11 @@ Backend export service with Puppeteer frame capture, FFmpeg encoding, WebSocket 
 4. Environment variables use NEXT_PUBLIC_ prefix and work in both dev and build
 5. Export service communicates with the Next.js app (HTTP/WebSocket integration functional)
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 22-01-PLAN.md -- Scaffold Next.js App Router, migrate from Vite, verify dev server and build
+- [ ] 22-02-PLAN.md -- Create /render route for export service, human-verify full functional parity
 
 ### Phase 23: Firebase Authentication
 
@@ -175,7 +179,7 @@ Backend export service with Puppeteer frame capture, FFmpeg encoding, WebSocket 
 
 | Phase | Status | Plans | Completion |
 |-------|--------|-------|------------|
-| 22 - Next.js Scaffold & Migration | Not started | 0/? | 0% |
+| 22 - Next.js Scaffold & Migration | Planned | 0/2 | 0% |
 | 23 - Firebase Authentication | Not started | 0/? | 0% |
 | 24 - Project Dashboard & CRUD | Not started | 0/? | 0% |
 | 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |
