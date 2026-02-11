@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { adminAuth } from '@/lib/firebase-admin';
 import { getDb } from '@/lib/firestore';
+import { deleteProjectFiles } from '@/lib/storage';
 
 async function getAuthenticatedUser() {
   const cookieStore = await cookies();
@@ -35,6 +36,8 @@ export async function DELETE(
     return Response.json({ error: 'Project not found' }, { status: 404 });
   }
 
+  // Delete all files in Firebase Storage before removing the Firestore document
+  await deleteProjectFiles(user.uid, id);
   await docRef.delete();
 
   return Response.json({ status: 'deleted' });

@@ -65,14 +65,19 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
   }, [showToast]);
 
   const handleCreate = useCallback(async () => {
-    if (!projectName.trim()) return;
+    if (!projectName.trim() || !scoreFile || !audioFile) return;
     setIsCreating(true);
 
     try {
+      const formData = new FormData();
+      formData.append('name', projectName.trim());
+      formData.append('score', scoreFile);
+      formData.append('audio', audioFile);
+
       const res = await fetch('/api/projects', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName.trim(), viewMode: 'page' }),
+        body: formData,
+        // NO Content-Type header -- browser sets multipart boundary automatically
       });
 
       if (!res.ok) {
@@ -97,7 +102,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
       showToast(err instanceof Error ? err.message : 'Failed to create project', 'error');
       setIsCreating(false);
     }
-  }, [projectName, onCreated, resetState, router, showToast]);
+  }, [projectName, scoreFile, audioFile, onCreated, resetState, router, showToast]);
 
   if (!isOpen) return null;
 
