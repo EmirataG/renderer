@@ -2,11 +2,19 @@ import 'server-only';
 import { getStorage, getDownloadURL } from 'firebase-admin/storage';
 import { adminAuth } from '@/lib/firebase-admin';
 
-// Trigger admin app initialization via proxy access (same pattern as firestore.ts)
-void adminAuth;
-
 const STORAGE_BUCKET = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!;
-export const bucket = getStorage().bucket(STORAGE_BUCKET);
+
+// Lazy singleton -- same pattern as firestore.ts getDb()
+let _bucket: ReturnType<ReturnType<typeof getStorage>['bucket']> | null = null;
+
+export function getBucket() {
+  if (!_bucket) {
+    // Access a property on adminAuth Proxy to trigger getAdminAuth() → initializeApp()
+    void adminAuth.app;
+    _bucket = getStorage().bucket(STORAGE_BUCKET);
+  }
+  return _bucket;
+}
 
 /**
  * Upload a file buffer to Firebase Storage and return the permanent download URL.
@@ -16,7 +24,7 @@ export async function uploadFile(
   buffer: Buffer,
   contentType: string
 ): Promise<string> {
-  const fileRef = bucket.file(storagePath);
+  const fileRef = getBucket().file(storagePath);
   await fileRef.save(buffer, { metadata: { contentType } });
   return await getDownloadURL(fileRef);
 }
@@ -26,5 +34,5 @@ export async function uploadFile(
  */
 export async function deleteProjectFiles(uid: string, projectId: string): Promise<void> {
   const prefix = `users/${uid}/projects/${projectId}/`;
-  await bucket.deleteFiles({ prefix });
+  await getBucket().deleteFiles({ prefix });
 }

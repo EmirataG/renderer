@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { adminAuth } from '@/lib/firebase-admin';
 import { getDb, FieldValue } from '@/lib/firestore';
-import { uploadFile, bucket } from '@/lib/storage';
+import { uploadFile, getBucket } from '@/lib/storage';
 
 async function getAuthenticatedUser() {
   const cookieStore = await cookies();
@@ -63,7 +63,7 @@ export async function PUT(
   const basePath = `users/${user.uid}/projects/${id}`;
 
   // Delete existing background files (any extension)
-  const [existingFiles] = await bucket.getFiles({ prefix: `${basePath}/background` });
+  const [existingFiles] = await getBucket().getFiles({ prefix: `${basePath}/background` });
   for (const f of existingFiles) await f.delete();
 
   // Upload new background
