@@ -175,7 +175,12 @@ Plans:
 4. Score and audio files cannot be changed or re-uploaded after project creation (immutable)
 5. Security rules prevent users from reading or writing other users' files and project documents
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 25-01-PLAN.md -- Storage singleton, Project type extension, FormData file uploads in project creation, cascade delete
+- [ ] 25-02-PLAN.md -- GET project endpoint, project loading in editor, background image upload/replace, immutable score/audio
+- [ ] 25-03-PLAN.md -- Firestore and Storage security rules, human-verify full end-to-end storage flow
 
 ### Phase 26: Auto-Save & Data Persistence
 
@@ -202,7 +207,7 @@ Plans:
 | 22.1 - Self-Contained Export Service | ✓ Complete (2026-02-11) | 2/2 | 100% |
 | 23 - Firebase Authentication | Planned | 0/2 | 0% |
 | 24 - Project Dashboard & CRUD | ✓ Complete (2026-02-11) | 3/3 | 100% |
-| 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |
+| 25 - Firebase Storage & File Persistence | Planned | 0/3 | 0% |
 | 26 - Auto-Save & Data Persistence | Not started | 0/? | 0% |
 
 **Milestone v2.0 Coverage:**
