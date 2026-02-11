@@ -14,6 +14,35 @@ async function getAuthenticatedUser() {
   }
 }
 
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getAuthenticatedUser();
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { id } = await params;
+  const db = getDb();
+  const doc = await db
+    .collection('users').doc(user.uid)
+    .collection('projects').doc(id)
+    .get();
+
+  if (!doc.exists) {
+    return Response.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const data = doc.data()!;
+  return Response.json({
+    project: {
+      id: doc.id,
+      ...data,
+      createdAt: data.createdAt?.toDate().toISOString(),
+      updatedAt: data.updatedAt?.toDate().toISOString(),
+    },
+  });
+}
+
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

@@ -6,7 +6,7 @@ import { adminAuth } from '@/lib/firebase-admin';
 void adminAuth;
 
 const STORAGE_BUCKET = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!;
-const bucket = getStorage().bucket(STORAGE_BUCKET);
+export const bucket = getStorage().bucket(STORAGE_BUCKET);
 
 /**
  * Upload a file buffer to Firebase Storage and return the permanent download URL.
