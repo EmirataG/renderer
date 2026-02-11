@@ -1,104 +1,124 @@
-# Requirements: Manuscript Renderer v1.4 Backend Video Export
+# Requirements: Manuscript Renderer v2.0
 
-**Defined:** 2026-02-09
+**Defined:** 2026-02-11
 **Core Value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
 
-## v1.4 Requirements
+## v2.0 Requirements
 
-### Backend Server
+Requirements for Next.js migration and Firebase integration. Each maps to roadmap phases.
 
-- [x] **SRV-01**: Export API accepts MusicXML + audio + all settings via multipart upload
-- [x] **SRV-02**: Settings validation rejects incomplete exports (missing audio, MusicXML, or sync anchors)
-- [ ] **SRV-03**: Multiple concurrent exports supported with controlled concurrency
-- [x] **SRV-04**: Temporary files cleaned up after export completion or failure
+### Migration
 
-### Render Mode
+- [ ] **MIG-01**: App runs on Next.js 16 App Router replacing Vite SPA
+- [ ] **MIG-02**: Verovio WASM loads correctly in client-only boundary (dynamic ssr:false)
+- [ ] **MIG-03**: All existing editor functionality preserved after migration (rendering, playback, animation, sync)
+- [ ] **MIG-04**: Environment variables migrated from import.meta.env to process.env/NEXT_PUBLIC_
+- [ ] **MIG-05**: Export service integration works from Next.js app
 
-- [ ] **RND-01**: Headless Chrome reproduces exact preview animation frame-for-frame
-- [x] **RND-02**: All settings transfer to render mode (score region, colors, fonts, animation params, sync anchors)
-- [x] **RND-03**: Page virtualization disabled in render mode (all pages mounted)
-- [x] **RND-04**: CSS transitions disabled in render mode for frame-accurate capture
+### Authentication
 
-### Video Encoding
+- [ ] **AUTH-01**: User can sign in with Google via Firebase Auth
+- [ ] **AUTH-02**: User session persists across browser refresh (httpOnly session cookie)
+- [ ] **AUTH-03**: Unauthenticated users are redirected to login page
+- [ ] **AUTH-04**: User can sign out
 
-- [ ] **VID-01**: FFmpeg encodes captured frames to H.264 MP4 with yuv420p pixel format
-- [ ] **VID-02**: Audio muxed into final MP4 with correct sync
-- [ ] **VID-03**: Output MP4 has faststart flag for streaming playback
+### Projects
 
-### Progress & Download
+- [ ] **PROJ-01**: User can create a new project by uploading score file (xml/musicxml/mxl/mei) and audio file (mp3/wav)
+- [ ] **PROJ-02**: Project creation modal shows view mode cards: "Page view" (active) and "Single line" (disabled, "coming soon")
+- [ ] **PROJ-03**: Score and audio files are immutable after project creation
+- [ ] **PROJ-04**: User sees a dashboard with grid of project cards showing background image thumbnail, project name, and last edited date
+- [ ] **PROJ-05**: User can open a project from dashboard to enter the editor
+- [ ] **PROJ-06**: User can delete a project from the dashboard
 
-- [ ] **PRG-01**: WebSocket streams real-time progress with frame count and percentage
-- [ ] **PRG-02**: User can download completed MP4 directly from browser
-- [ ] **PRG-03**: Export errors reported with clear message to user
-- [ ] **PRG-04**: User can cancel in-progress export
+### Storage
 
-### Configuration
+- [ ] **STOR-01**: Score files are uploaded to Firebase Storage on project creation
+- [ ] **STOR-02**: Audio files are uploaded to Firebase Storage on project creation
+- [ ] **STOR-03**: Background images are uploaded to Firebase Storage when set in inspector
+- [ ] **STOR-04**: Files are stored under user-scoped paths (users/{uid}/projects/{projectId}/...)
+- [ ] **STOR-05**: Firestore security rules enforce ownership (only owner can read/write own projects)
+- [ ] **STOR-06**: Storage security rules enforce ownership (only owner can read/write own files)
 
-- [ ] **CFG-01**: Configurable resolution with presets (720p, 1080p, 4K)
-- [ ] **CFG-02**: Configurable frame rate (30 or 60 fps)
+### Persistence
 
-### Deployment
+- [ ] **PERS-01**: All project settings persist to Firestore (score color, scale, font, border, animation options, score region)
+- [ ] **PERS-02**: Sync anchors (Map) persist correctly to Firestore via Object.fromEntries/Object.entries serialization
+- [ ] **PERS-03**: Changes auto-save with debounce (1500ms) on any project data change
+- [ ] **PERS-04**: Save status indicator shows current state (saving/saved/error)
+- [ ] **PERS-05**: Project loads all settings from Firestore when opened from dashboard
+- [ ] **PERS-06**: Background image URL persists in Firestore and loads on project open
 
-- [ ] **DEP-01**: Backend deployed on Fly.io with Docker (Chrome + FFmpeg)
-- [ ] **DEP-02**: Auto-stop/auto-start for cost efficiency when idle
+## Future Requirements
 
-### Frontend UI
+Deferred to future milestones. Tracked but not in current roadmap.
 
-- [ ] **UI-01**: Export button in browser triggers export with current settings
-- [ ] **UI-02**: Export progress displayed in browser during rendering
+### View Modes
 
-## Deferred to Future Milestones
+- **VIEW-01**: User can create a project with "Single line" view mode
+- **VIEW-02**: SingleLineRenderer works with Firebase persistence
 
-### Export Queue & History
+### Collaboration
 
-- **QUE-01**: Export queue with status tracking (needs BullMQ + Redis)
-- **QUE-02**: Export history with re-download capability (needs file storage + metadata DB)
+- **COLLAB-01**: User can share a project with other users
+- **COLLAB-02**: Multiple users can view the same project simultaneously
 
-### Format Options
+### Export Integration
 
-- **FMT-01**: Aspect ratio presets for 9:16 vertical (TikTok/Reels) and 1:1 square (Instagram)
+- **EXPORT-01**: Export service authenticates requests via Firebase Auth
+- **EXPORT-02**: Export service reads files from Firebase Storage directly
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Client-side video encoding | MediaRecorder produces WebM not MP4, audio sync unreliable, Canvas capture misses SVG details |
-| Real-time export preview | Users already have browser preview, adds complexity for zero value |
-| Pause/resume export | Puppeteer state expensive to serialize, easier to restart from scratch |
-| Browser-based FFmpeg (ffmpeg.wasm) | 10-50x slower than native, memory-constrained |
-| Export time estimation | Defer to v1.5 — requires calibration data from real exports |
+| Mobile support | Desktop-first, not in scope for any milestone |
+| Email/password auth | Google sign-in only per user requirement |
+| Real-time collaboration | High complexity, single-user editing is sufficient |
+| Project sharing | Not needed for v2.0, defer to future |
+| Offline mode | Firestore offline persistence disabled to keep save status clear |
+| Single line view mode | Deferred, shown as "coming soon" in creation modal |
+| Fly.io deployment | Deferred from v1.4, export service works locally |
 
 ## Traceability
 
+Which phases cover which requirements. Updated during roadmap creation.
+
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRV-01 | Phase 15 | ✓ Done |
-| SRV-02 | Phase 15 | ✓ Done |
-| SRV-03 | Phase 17 | Pending |
-| SRV-04 | Phase 15 | ✓ Done |
-| RND-01 | Phase 17 | Pending |
-| RND-02 | Phase 16 | ✓ Done |
-| RND-03 | Phase 16 | ✓ Done |
-| RND-04 | Phase 16 | ✓ Done |
-| VID-01 | Phase 18 | Pending |
-| VID-02 | Phase 18 | Pending |
-| VID-03 | Phase 18 | Pending |
-| PRG-01 | Phase 19 | Pending |
-| PRG-02 | Phase 19 | Pending |
-| PRG-03 | Phase 19 | Pending |
-| PRG-04 | Phase 19 | Pending |
-| CFG-01 | Phase 21 | Pending |
-| CFG-02 | Phase 21 | Pending |
-| DEP-01 | Phase 20 | Pending |
-| DEP-02 | Phase 20 | Pending |
-| UI-01 | Phase 21 | Pending |
-| UI-02 | Phase 21 | Pending |
+| MIG-01 | — | Pending |
+| MIG-02 | — | Pending |
+| MIG-03 | — | Pending |
+| MIG-04 | — | Pending |
+| MIG-05 | — | Pending |
+| AUTH-01 | — | Pending |
+| AUTH-02 | — | Pending |
+| AUTH-03 | — | Pending |
+| AUTH-04 | — | Pending |
+| PROJ-01 | — | Pending |
+| PROJ-02 | — | Pending |
+| PROJ-03 | — | Pending |
+| PROJ-04 | — | Pending |
+| PROJ-05 | — | Pending |
+| PROJ-06 | — | Pending |
+| STOR-01 | — | Pending |
+| STOR-02 | — | Pending |
+| STOR-03 | — | Pending |
+| STOR-04 | — | Pending |
+| STOR-05 | — | Pending |
+| STOR-06 | — | Pending |
+| PERS-01 | — | Pending |
+| PERS-02 | — | Pending |
+| PERS-03 | — | Pending |
+| PERS-04 | — | Pending |
+| PERS-05 | — | Pending |
+| PERS-06 | — | Pending |
 
 **Coverage:**
-- v1.4 requirements: 21 total
-- Mapped to phases: 21
-- Unmapped: 0
-- Coverage: 100%
+- v2.0 requirements: 27 total
+- Mapped to phases: 0
+- Unmapped: 27 (pending roadmap creation)
 
 ---
-*Requirements defined: 2026-02-09*
+*Requirements defined: 2026-02-11*
+*Last updated: 2026-02-11 after initial definition*
