@@ -1,13 +1,46 @@
+import { cookies } from 'next/headers';
+import { adminAuth } from '@/lib/firebase-admin';
+import { getDb } from '@/lib/firestore';
+import { Dashboard } from '@/components/Dashboard';
+import { ToastProvider } from '@/components/Toast';
+import type { Project } from '@/types/project';
+
 // Prevent static prerendering -- dashboard requires runtime auth check
 export const dynamic = 'force-dynamic';
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  let projects: Project[] = [];
+
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('__session')?.value;
+
+    if (session) {
+      const decoded = await adminAuth.verifySessionCookie(session, true);
+      const db = getDb();
+      const snapshot = await db
+        .collection('projects')
+        .where('userId', '==', decoded.uid)
+        .orderBy('updatedAt', 'desc')
+        .get();
+
+      projects = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        userId: doc.data().userId,
+        name: doc.data().name,
+        viewMode: doc.data().viewMode || 'page',
+        createdAt: doc.data().createdAt?.toDate().toISOString() ?? new Date().toISOString(),
+        updatedAt: doc.data().updatedAt?.toDate().toISOString() ?? new Date().toISOString(),
+      }));
+    }
+  } catch {
+    // Default to empty array on auth or Firestore errors
+    projects = [];
+  }
+
   return (
-    <main className="min-h-screen bg-black text-neutral-100 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold mb-2">Dashboard</h1>
-        <p className="text-neutral-500">Loading...</p>
-      </div>
-    </main>
+    <ToastProvider>
+      <Dashboard initialProjects={projects} />
+    </ToastProvider>
   );
 }
