@@ -569,7 +569,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
 
       {/* Header with view toggle and selected note info */}
-      <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-3 flex items-center gap-4">
+      <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-3 flex items-center gap-4 h-14">
         {/* View toggle */}
         <div className="flex gap-0">
           <button
@@ -634,11 +634,6 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
                   >
                     Remove Anchor
                   </button>
-                )}
-                {selectedEvent.isAnchor && (
-                  <span className="text-xs border border-white text-white px-2 py-0.5 font-bold uppercase tracking-wider">
-                    Anchor
-                  </span>
                 )}
               </div>
             </div>
