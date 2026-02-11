@@ -43,6 +43,7 @@ export const ExportSettingsSchema = Type.Object({
   activeNoteheadHoldMs: Type.Number({ minimum: 0, maximum: 1000 }),
   activeNoteheadExitMs: Type.Number({ minimum: 0, maximum: 1000 }),
   colorFullNote: Type.Boolean(),
+  hideLabels: Type.Boolean(),
   audioDuration: Type.Optional(Type.Number({ minimum: 0 })),
 });
 

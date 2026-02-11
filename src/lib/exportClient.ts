@@ -21,6 +21,7 @@ export interface ExportSettings {
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
   colorFullNote: boolean;
+  hideLabels: boolean;
   audioDuration?: number;
 }
 

@@ -63,6 +63,7 @@ export default function RenderApp() {
           activeNoteheadAnimationHoldMs={config.activeNoteheadHoldMs ?? 200}
           activeNoteheadAnimationExitMs={config.activeNoteheadExitMs ?? 200}
           colorFullNote={config.colorFullNote ?? false}
+          hideLabels={config.hideLabels ?? false}
           renderMode={true}
           audioDuration={config.audioDuration}
         />

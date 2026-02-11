@@ -80,6 +80,8 @@ interface Props {
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
   colorFullNote?: boolean;
+  // hide instrument labels (Verovio .label elements)
+  hideLabels?: boolean;
   // render mode for headless frame capture (disables virtualization + transitions)
   renderMode?: boolean;
   // audio duration override for render mode (no audio element needed)
@@ -106,6 +108,7 @@ export default memo(function RegularRenderer({
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
   colorFullNote = false,
+  hideLabels = false,
   // render mode for headless frame capture
   renderMode = false,
   audioDuration: propAudioDuration,
@@ -312,7 +315,8 @@ export default memo(function RegularRenderer({
       cursor: default !important;
       user-select: none !important;
     }
-  `, [scoreColor]);
+    ${hideLabels ? '.preview-score .label { display: none !important; }' : ''}
+  `, [scoreColor, hideLabels]);
 
   /* ---------------- page virtualization helpers ---------------- */
 

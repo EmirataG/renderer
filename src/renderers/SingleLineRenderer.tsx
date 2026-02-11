@@ -48,6 +48,8 @@ interface Props {
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
   colorFullNote?: boolean;
+  // hide instrument labels (Verovio .label elements)
+  hideLabels?: boolean;
 }
 
 export default function SingleLineRenderer({
@@ -68,6 +70,7 @@ export default function SingleLineRenderer({
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
   colorFullNote = false,
+  hideLabels = false,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
@@ -325,7 +328,8 @@ export default function SingleLineRenderer({
     .section-continuation g.meterSig {
       display: none !important;
     }
-  `, [scoreColor]);
+    ${hideLabels ? '.preview-score .label { display: none !important; }' : ''}
+  `, [scoreColor, hideLabels]);
 
   /* ---------------- camera (horizontal) ---------------- */
 

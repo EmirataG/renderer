@@ -94,6 +94,7 @@ export interface ExportConfig {
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
   colorFullNote: boolean;
+  hideLabels: boolean;
   bgUrl: string | null;
   viewportWidth: number;
   viewportHeight: number;
@@ -150,6 +151,7 @@ export async function buildExportConfig(job: {
     activeNoteheadHoldMs: job.settings.activeNoteheadHoldMs,
     activeNoteheadExitMs: job.settings.activeNoteheadExitMs,
     colorFullNote: job.settings.colorFullNote,
+    hideLabels: job.settings.hideLabels,
     bgUrl: bgInfo.dataUrl,
     viewportWidth: bgInfo.width,
     viewportHeight: bgInfo.height,
