@@ -166,23 +166,37 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Serialize anchors for proper dependency tracking (Maps don't trigger re-renders well)
   const anchorsKey = Array.from(anchors.entries()).map(([k, v]) => `${k}:${v}`).join(',');
 
-  // Selectors for all colorable note elements (noteheads, stems, dots)
-  const NOTE_COLOR_SELECTORS = 'g.notehead use, g.stem path, g.stem use, g.dots ellipse, g.dots use';
+  // CSS selectors for colorable SVG sub-elements within a note group
+  const NOTE_SUB_SELECTORS = 'g.notehead use, g.stem path, g.stem use, g.dots ellipse, g.dots use';
 
-  // Helper to apply color to note shapes (noteheads, stems, dots)
-  const applyNoteColor = (svgIds: string[], color: string) => {
+  // Helper to generate CSS color rule for a set of SVG IDs
+  const colorRule = (svgIds: string[], color: string): string => {
+    return svgIds.map(svgId => {
+      const e = CSS.escape(svgId);
+      // Target note sub-elements + parent chord stems (via :has)
+      return [
+        `#${e} g.notehead use`,
+        `#${e} g.stem path`,
+        `#${e} g.stem use`,
+        `#${e} g.dots ellipse`,
+        `#${e} g.dots use`,
+        `g.chord:has(#${e}) > g.stem path`,
+        `g.chord:has(#${e}) > g.stem use`,
+      ].join(', ');
+    }).join(', ') + ` { fill: ${color}; stroke: ${color}; }`;
+  };
+
+  // Helper to apply inline color to note shapes (used ONLY for playback animation)
+  const applyPlaybackColor = (svgIds: string[], color: string) => {
     if (!scoreRef.current) return;
     svgIds.forEach(svgId => {
       const noteGroup = scoreRef.current?.querySelector(`#${CSS.escape(svgId)}`);
       if (!noteGroup) return;
-      // Color noteheads, stems, and dots
-      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_COLOR_SELECTORS);
+      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_SUB_SELECTORS);
       shapes.forEach(shape => {
         shape.style.fill = color;
         shape.style.stroke = color;
-        shape.style.color = color;
       });
-      // Also check parent chord for shared stem
       const chordGroup = noteGroup.closest('g.chord');
       if (chordGroup) {
         const chordStems = chordGroup.querySelectorAll<SVGGraphicsElement>('g.stem path, g.stem use');
@@ -194,19 +208,17 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     });
   };
 
-  // Helper to clear color from note shapes
-  const clearNoteColor = (svgIds: string[]) => {
+  // Helper to clear inline playback color from note shapes
+  const clearPlaybackColor = (svgIds: string[]) => {
     if (!scoreRef.current) return;
     svgIds.forEach(svgId => {
       const noteGroup = scoreRef.current?.querySelector(`#${CSS.escape(svgId)}`);
       if (!noteGroup) return;
-      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_COLOR_SELECTORS);
+      const shapes = noteGroup.querySelectorAll<SVGGraphicsElement>(NOTE_SUB_SELECTORS);
       shapes.forEach(shape => {
         shape.style.removeProperty('fill');
         shape.style.removeProperty('stroke');
-        shape.style.removeProperty('color');
       });
-      // Also clear parent chord stem
       const chordGroup = noteGroup.closest('g.chord');
       if (chordGroup) {
         const chordStems = chordGroup.querySelectorAll<SVGGraphicsElement>('g.stem path, g.stem use');
@@ -218,7 +230,10 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     });
   };
 
-  // One-time setup: Create style element for hover effects
+  // CSS-based coloring: generates stylesheet rules for anchors + selection.
+  // CSS rules cascade into SVG elements regardless of when SVG DOM is created,
+  // so this is immune to the timing bugs that plagued inline style approaches.
+  // Playback (orange) uses inline styles which override CSS rules.
   useEffect(() => {
     if (!scoreRef.current) return;
 
@@ -227,48 +242,29 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
       scoreRef.current.appendChild(styleRef.current);
     }
 
-    styleRef.current.innerHTML = `
-      svg.definition-scale {
-        display: block;
-      }
-      g.note {
-        cursor: pointer;
-      }
-      g.note:hover g.notehead use {
-        filter: brightness(0.7);
-      }
+    let css = `
+      svg.definition-scale { display: block; }
+      g.note { cursor: pointer; }
+      g.note:hover g.notehead use { filter: brightness(0.7); }
     `;
-  }, [svgPages]); // Only re-run when SVG pages change
 
-  // Unified coloring effect: applies ALL note colors from scratch.
-  // Runs after any state change that affects coloring (events, anchors, selection, SVG DOM).
-  // This replaces the previous separate anchor/selection effects which had timing bugs.
-  useEffect(() => {
-    if (!scoreRef.current || events.length === 0) return;
-
-    // 1. Clear all note colors
-    events.forEach(evt => clearNoteColor(evt.svgIds));
-
-    // 2. Paint anchored notes green
+    // Anchor colors (green) — lower priority
     for (const [eventId] of anchors) {
       const event = events.find(e => e.id === eventId);
-      if (event) {
-        applyNoteColor(event.svgIds, '#22c55e');
+      if (event && event.svgIds.length > 0) {
+        css += colorRule(event.svgIds, '#22c55e') + '\n';
       }
     }
 
-    // 3. Paint selected note blue (overrides green if anchored)
+    // Selection color (blue) — higher priority (appears later in stylesheet)
     if (selectedEventId) {
       const event = events.find(e => e.id === selectedEventId);
-      if (event) {
-        applyNoteColor(event.svgIds, '#3b82f6');
+      if (event && event.svgIds.length > 0) {
+        css += colorRule(event.svgIds, '#3b82f6') + '\n';
       }
     }
 
-    // 4. Re-apply playing note orange (overrides everything)
-    if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
-      applyNoteColor(playingSvgIdsRef.current, '#f59e0b');
-    }
+    styleRef.current.innerHTML = css;
   }, [events, anchors, anchorsKey, selectedEventId, svgPages]);
 
   // Keyboard navigation for efficient sync workflow
@@ -340,12 +336,8 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Ref to track currently playing svgIds for cleanup
   const playingSvgIdsRef = useRef<string[]>([]);
 
-  // Helper to get base color for an event (anchor=green, selected=blue, otherwise null)
-  const getBaseColor = useCallback((eventId: string): string | null => {
-    if (eventId === selectedEventId) return '#3b82f6'; // blue for selected
-    if (anchors.has(eventId)) return '#22c55e'; // green for anchor
-    return null;
-  }, [selectedEventId, anchors]);
+  // No getBaseColor needed — anchor/selection colors are CSS-based.
+  // Playback just clears inline styles to let CSS rules show through.
 
   // Animation frame loop for syncing playback
   useEffect(() => {
@@ -374,23 +366,15 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
       // Update highlight if event changed
       if (newEventIndex !== currentEventIndexRef.current) {
-        // Restore previous event's base color
+        // Clear previous event's inline styles (CSS rule underneath shows through)
         if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
-          const prevEvent = interpolatedEvents[currentEventIndexRef.current];
-          if (prevEvent) {
-            const baseColor = getBaseColor(prevEvent.id);
-            if (baseColor) {
-              applyNoteColor(prevEvent.svgIds, baseColor);
-            } else {
-              clearNoteColor(prevEvent.svgIds);
-            }
-          }
+          clearPlaybackColor(playingSvgIdsRef.current);
         }
 
-        // Apply playing color (orange) to new event
+        // Apply playing color (orange) to new event via inline style (overrides CSS)
         if (newEventIndex >= 0) {
           const currentEvent = interpolatedEvents[newEventIndex];
-          applyNoteColor(currentEvent.svgIds, '#f59e0b');
+          applyPlaybackColor(currentEvent.svgIds, '#f59e0b');
           playingSvgIdsRef.current = currentEvent.svgIds;
         } else {
           playingSvgIdsRef.current = [];
@@ -398,8 +382,8 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
         currentEventIndexRef.current = newEventIndex;
       } else if (newEventIndex >= 0 && playingSvgIdsRef.current.length > 0) {
-        // Same event still playing - re-apply orange in case other effects cleared it
-        applyNoteColor(playingSvgIdsRef.current, '#f59e0b');
+        // Same event still playing - re-apply orange in case CSS update cleared it
+        applyPlaybackColor(playingSvgIdsRef.current, '#f59e0b');
       }
 
       animationRef.current = requestAnimationFrame(animate);
@@ -413,7 +397,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         animationRef.current = null;
       }
     };
-  }, [isPlaying, interpolatedEvents, getBaseColor]);
+  }, [isPlaying, interpolatedEvents]);
 
   // Update highlight on scrub (when not playing)
   const handleScrub = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -433,23 +417,15 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         }
       }
 
-      // Restore previous event's base color
+      // Clear previous event's inline styles (CSS rule underneath shows through)
       if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
-        const prevEvent = interpolatedEvents[currentEventIndexRef.current];
-        if (prevEvent) {
-          const baseColor = getBaseColor(prevEvent.id);
-          if (baseColor) {
-            applyNoteColor(prevEvent.svgIds, baseColor);
-          } else {
-            clearNoteColor(prevEvent.svgIds);
-          }
-        }
+        clearPlaybackColor(playingSvgIdsRef.current);
       }
 
-      // Apply playing color (orange) to new event
+      // Apply playing color (orange) to new event via inline style
       if (newEventIndex >= 0) {
         const currentEvent = interpolatedEvents[newEventIndex];
-        applyNoteColor(currentEvent.svgIds, '#f59e0b');
+        applyPlaybackColor(currentEvent.svgIds, '#f59e0b');
         playingSvgIdsRef.current = currentEvent.svgIds;
       } else {
         playingSvgIdsRef.current = [];
@@ -457,7 +433,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
 
       currentEventIndexRef.current = newEventIndex;
     }
-  }, [interpolatedEvents, getBaseColor]);
+  }, [interpolatedEvents]);
 
   // Playback controls
   const togglePlayback = useCallback(() => {
@@ -477,22 +453,14 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     setCurrentTime(0);
     setIsPlaying(false);
 
-    // Restore previous event's base color
-    if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
-      const prevEvent = interpolatedEvents[currentEventIndexRef.current];
-      if (prevEvent) {
-        const baseColor = getBaseColor(prevEvent.id);
-        if (baseColor) {
-          applyNoteColor(prevEvent.svgIds, baseColor);
-        } else {
-          clearNoteColor(prevEvent.svgIds);
-        }
-      }
+    // Clear inline playback styles (CSS rules show through)
+    if (playingSvgIdsRef.current.length > 0) {
+      clearPlaybackColor(playingSvgIdsRef.current);
     }
 
     currentEventIndexRef.current = -1;
     playingSvgIdsRef.current = [];
-  }, [interpolatedEvents, getBaseColor]);
+  }, [interpolatedEvents]);
 
   // Validate that a proposed anchor timestamp doesn't violate ordering
   // Returns true if valid, false if it would be out of order
@@ -637,7 +605,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         className="flex-1 min-h-0 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
-        <div ref={scoreRef}>
+        <div ref={scoreRef} className="[&_svg]:max-w-none">
           {svgPages.map((svg, i) => (
             <div
               key={i}
