@@ -156,9 +156,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 24-01-PLAN.md -- Data layer: Project types, Firestore singleton, file validation extensions, and CRUD API Route Handlers
-- [ ] 24-02-PLAN.md -- Route restructuring: dashboard at /, editor at /project/[id], Toast action support, MEI validation
-- [ ] 24-03-PLAN.md -- Dashboard UI: project grid, CreateProjectModal (two-step), ProjectCard, delete with undo, human-verify
+- [x] 24-01-PLAN.md -- Data layer: Project types, Firestore singleton, file validation extensions, and CRUD API Route Handlers
+- [x] 24-02-PLAN.md -- Route restructuring: dashboard at /, editor at /project/[id], Toast action support, MEI validation
+- [x] 24-03-PLAN.md -- Dashboard UI: project grid, CreateProjectModal (two-step), ProjectCard, delete with undo, human-verify
 
 ### Phase 25: Firebase Storage & File Persistence
 
@@ -201,7 +201,7 @@ Plans:
 | 22 - Next.js Scaffold & Migration | ✓ Complete (2026-02-11) | 2/2 | 100% |
 | 22.1 - Self-Contained Export Service | ✓ Complete (2026-02-11) | 2/2 | 100% |
 | 23 - Firebase Authentication | Planned | 0/2 | 0% |
-| 24 - Project Dashboard & CRUD | Not started | 0/? | 0% |
+| 24 - Project Dashboard & CRUD | ✓ Complete (2026-02-11) | 3/3 | 100% |
 | 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |
 | 26 - Auto-Save & Data Persistence | Not started | 0/? | 0% |
 
