@@ -63,7 +63,7 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const currentEventIndexRef = useRef(-1);
 
   // Zustand store
-  const { anchors, selectedEventId, setAnchor, selectEvent } = useSyncStore();
+  const { anchors, selectedEventId, setAnchor, removeAnchor, selectEvent } = useSyncStore();
 
   // Verovio hook - renders score to SVG at container width
   const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth || 800, 40);
@@ -522,12 +522,40 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
     playingSvgIdsRef.current = [];
   }, [interpolatedEvents, getBaseColor]);
 
+  // Validate that a proposed anchor timestamp doesn't violate ordering
+  // Returns true if valid, false if it would be out of order
+  const validateAnchorTimestamp = useCallback((eventId: string, proposedTime: number): boolean => {
+    // Find the event's position in the sorted interpolated events
+    const eventIndex = interpolatedEvents.findIndex(e => e.id === eventId);
+    if (eventIndex === -1) return false;
+
+    // Find previous anchored event (scanning backward from eventIndex)
+    for (let i = eventIndex - 1; i >= 0; i--) {
+      const prevAnchor = anchors.get(interpolatedEvents[i].id);
+      if (prevAnchor !== undefined) {
+        if (proposedTime <= prevAnchor) return false; // Must be strictly after previous anchor
+        break;
+      }
+    }
+
+    // Find next anchored event (scanning forward from eventIndex)
+    for (let i = eventIndex + 1; i < interpolatedEvents.length; i++) {
+      const nextAnchor = anchors.get(interpolatedEvents[i].id);
+      if (nextAnchor !== undefined) {
+        if (proposedTime >= nextAnchor) return false; // Must be strictly before next anchor
+        break;
+      }
+    }
+
+    return true;
+  }, [interpolatedEvents, anchors]);
+
   // Handle timestamp change for selected event
   const handleTimestampChange = useCallback((seconds: number) => {
-    if (selectedEventId) {
+    if (selectedEventId && validateAnchorTimestamp(selectedEventId, seconds)) {
       setAnchor(selectedEventId, seconds);
     }
-  }, [selectedEventId, setAnchor]);
+  }, [selectedEventId, setAnchor, validateAnchorTimestamp]);
 
   // Get current selected event info
   const selectedEvent = selectedEventId
@@ -574,6 +602,39 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
                   onChange={handleTimestampChange}
                   className="grunge-input w-28"
                 />
+                <button
+                  onClick={() => {
+                    if (selectedEventId) {
+                      const time = selectedAnchorTime ?? selectedEvent.computedTimestamp;
+                      if (validateAnchorTimestamp(selectedEventId, time)) {
+                        setAnchor(selectedEventId, time);
+                      }
+                    }
+                  }}
+                  className="grunge-btn grunge-btn-sm"
+                >
+                  Anchor
+                </button>
+                {audioUrl && !isPlaying && (
+                  <button
+                    onClick={() => {
+                      if (selectedEventId && validateAnchorTimestamp(selectedEventId, currentTime)) {
+                        setAnchor(selectedEventId, currentTime);
+                      }
+                    }}
+                    className="grunge-btn grunge-btn-sm"
+                  >
+                    Anchor to Playhead
+                  </button>
+                )}
+                {selectedEvent.isAnchor && selectedEventId && (
+                  <button
+                    onClick={() => removeAnchor(selectedEventId)}
+                    className="grunge-btn grunge-btn-sm text-red-400 border-red-400 hover:bg-red-400 hover:text-black"
+                  >
+                    Remove Anchor
+                  </button>
+                )}
                 {selectedEvent.isAnchor && (
                   <span className="text-xs border border-white text-white px-2 py-0.5 font-bold uppercase tracking-wider">
                     Anchor
