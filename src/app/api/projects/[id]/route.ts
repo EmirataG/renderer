@@ -24,15 +24,15 @@ export async function DELETE(
 
   const { id } = await params;
   const db = getDb();
-  const docRef = db.collection('projects').doc(id);
+  const docRef = db
+    .collection('users')
+    .doc(user.uid)
+    .collection('projects')
+    .doc(id);
   const doc = await docRef.get();
 
   if (!doc.exists) {
     return Response.json({ error: 'Project not found' }, { status: 404 });
-  }
-
-  if (doc.data()?.userId !== user.uid) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   await docRef.delete();

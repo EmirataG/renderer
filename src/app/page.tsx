@@ -19,22 +19,22 @@ export default async function DashboardPage() {
       const decoded = await adminAuth.verifySessionCookie(session, true);
       const db = getDb();
       const snapshot = await db
+        .collection('users')
+        .doc(decoded.uid)
         .collection('projects')
-        .where('userId', '==', decoded.uid)
         .orderBy('updatedAt', 'desc')
         .get();
 
       projects = snapshot.docs.map((doc) => ({
         id: doc.id,
-        userId: doc.data().userId,
         name: doc.data().name,
         viewMode: doc.data().viewMode || 'page',
         createdAt: doc.data().createdAt?.toDate().toISOString() ?? new Date().toISOString(),
         updatedAt: doc.data().updatedAt?.toDate().toISOString() ?? new Date().toISOString(),
       }));
     }
-  } catch {
-    // Default to empty array on auth or Firestore errors
+  } catch (error) {
+    console.error('Dashboard fetch failed:', error);
     projects = [];
   }
 

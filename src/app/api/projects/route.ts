@@ -8,7 +8,8 @@ async function getAuthenticatedUser() {
   if (!session) return null;
   try {
     return await adminAuth.verifySessionCookie(session, true);
-  } catch {
+  } catch (error) {
+    console.error('Session verification failed:', error);
     return null;
   }
 }
@@ -21,8 +22,9 @@ export async function GET() {
 
   const db = getDb();
   const snapshot = await db
+    .collection('users')
+    .doc(user.uid)
     .collection('projects')
-    .where('userId', '==', user.uid)
     .orderBy('updatedAt', 'desc')
     .get();
 
@@ -54,13 +56,17 @@ export async function POST(request: Request) {
   const db = getDb();
   const projectId = crypto.randomUUID();
 
-  await db.collection('projects').doc(projectId).set({
-    userId: user.uid,
-    name: name.trim(),
-    viewMode: viewMode || 'page',
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  await db
+    .collection('users')
+    .doc(user.uid)
+    .collection('projects')
+    .doc(projectId)
+    .set({
+      name: name.trim(),
+      viewMode: viewMode || 'page',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
   return Response.json({ id: projectId }, { status: 201 });
 }

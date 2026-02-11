@@ -84,7 +84,6 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
       const now = new Date().toISOString();
       const project: Project = {
         id,
-        userId: '', // Not needed client-side
         name: projectName.trim(),
         viewMode: 'page',
         createdAt: now,
