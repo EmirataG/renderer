@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 22 of 26 (Next.js Scaffold & Migration)
-Plan: 1 of 2 complete
-Status: Executing
-Last activity: 2026-02-11 -- Completed 22-01 (Next.js scaffold and Vite migration)
+Plan: 2 of 2 complete
+Status: Phase 22 Complete
+Last activity: 2026-02-11 -- Completed 22-02 (Render route and functional parity verification)
 
 Progress: [#.........] 10%
 
@@ -20,9 +20,9 @@ Progress: [#.........] 10%
 
 **Velocity:**
 
-- Total plans completed: 30
+- Total plans completed: 31
 - Average duration: 2.3 min
-- Total execution time: 69 min
+- Total execution time: 72 min
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [#.........] 10%
 | 18 - FFmpeg Encoding & Audio Mux  | 1/1   | 2 min | 2 min    |
 | 19 - Progress Streaming & DL      | 2/2   | 4 min | 2 min    |
 | 20 - Docker & Fly.io Deployment   | 1/2   | 1 min | 1 min    |
-| 22 - Next.js Scaffold & Migration | 1/2   | 3 min | 3 min    |
+| 22 - Next.js Scaffold & Migration | 2/2   | 6 min | 3 min    |
 
 _Updated after each plan completion_
 
@@ -59,6 +59,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 22-01: Disabled noUncheckedSideEffectImports (Next.js lacks plain CSS type declarations)
 - 22-01: No webpack WASM config needed (verovio embeds WASM inline in JS)
 - 22-01: Single dynamic({ ssr: false }) boundary wraps entire App component
+- 22-02: Dedicated /render route for Puppeteer uses same dynamic({ ssr: false }) pattern loading RenderApp
+- 22-02: Export service frontendUrl default changed to http://localhost:3000/render
 
 ### Pending Todos
 
@@ -72,6 +74,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 22-01-PLAN.md
+Stopped at: Completed 22-02-PLAN.md (Phase 22 complete)
 Resume file: None
-Next: Execute 22-02-PLAN.md (RenderApp route and export migration)
+Next: Phase 23+ (Firebase integration or next milestone phase)
