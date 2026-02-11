@@ -7,8 +7,8 @@ import { validateMusicXML, isLikelyMusicXML } from "../lib/musicxmlValidation";
 
 interface UploadDropZoneProps {
   onMusicXMLUpload: (xml: string, fileName: string, measureCount: number) => void;
-  onAudioUpload: (audioUrl: string, fileName: string) => void;
-  onImageUpload: (imageUrl: string, fileName: string) => void;
+  onAudioUpload: (audioUrl: string, fileName: string, file?: File) => void;
+  onImageUpload: (imageUrl: string, fileName: string, file?: File) => void;
   currentFiles: {
     musicxml?: { name: string; measureCount: number };
     audio?: { name: string };
@@ -75,7 +75,7 @@ export function UploadDropZone({
   const processAudio = useCallback(
     (file: File) => {
       const url = URL.createObjectURL(file);
-      onAudioUpload(url, file.name);
+      onAudioUpload(url, file.name, file);
       showToast(`Loaded audio: ${file.name}`, "success");
     },
     [showToast, onAudioUpload]
@@ -84,7 +84,7 @@ export function UploadDropZone({
   const processImage = useCallback(
     (file: File) => {
       const url = URL.createObjectURL(file);
-      onImageUpload(url, file.name);
+      onImageUpload(url, file.name, file);
       showToast(`Loaded background: ${file.name}`, "success");
     },
     [showToast, onImageUpload]

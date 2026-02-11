@@ -11,6 +11,7 @@ import { useSyncStore } from "./stores/syncStore";
 import type { ScoreRegion } from "./types/score";
 import { requestExport } from "./lib/exportClient";
 import type { ExportSettings } from "./lib/exportClient";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 export default function App() {
   // Get sync anchors from store
@@ -270,7 +271,7 @@ export default function App() {
   return (
     <ToastProvider>
       <main className="h-screen flex bg-black text-neutral-100">
-        <aside className="w-80 bg-black border-r border-neutral-800 flex flex-col overflow-hidden">
+        <aside className="w-80 bg-black border-r border-neutral-800 flex flex-col overflow-hidden" style={{ display: currentView === 'sync' ? 'none' : undefined }}>
           {/* Header */}
           <div className="px-5 py-4 border-b border-neutral-800">
             <div className="flex items-center justify-between">
@@ -672,6 +673,8 @@ export default function App() {
                 </div>
                 {/* Renderer content */}
                 <div className="flex-1 min-h-0 overflow-auto">
+                <TransformWrapper minScale={0.25} maxScale={5} panning={{ activationKeys: ["Alt"] }} doubleClick={{ mode: "reset" }}>
+                  <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
                   {/* Wrapper for RegularRenderer + overlay */}
                   <div className="relative m-auto w-fit">
                     {useSingleLineRenderer ? (
@@ -733,6 +736,8 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                  </TransformComponent>
+                </TransformWrapper>
                 </div>
                 {/* Transport bar portal target - always visible at bottom of preview */}
                 <div ref={setTransportEl} className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-3" />
