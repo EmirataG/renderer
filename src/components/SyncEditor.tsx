@@ -26,7 +26,20 @@ function formatTime(seconds: number): string {
 
 export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEditorProps) {
   const scoreRef = useRef<HTMLDivElement>(null);
+  const scoreContainerRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
+
+  // Measure container width so Verovio fills available space
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = scoreContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerWidth(Math.floor(entry.contentRect.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // SyncEditor maintains its own local events extracted from its own toolkit
   // (Verovio generates different IDs per toolkit instance, so we can't share with RegularRenderer)
@@ -36,8 +49,6 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const [interpolatedEvents, setInterpolatedEvents] = useState<
     (TimemapEvent & { computedTimestamp: number; isAnchor: boolean })[]
   >([]);
-  // Fixed width for score container - prevents re-renders on window resize
-  const FIXED_SCORE_WIDTH = 1200;
 
   // Detect render mode from URL parameters
   const isRenderMode = typeof window !== 'undefined' &&
@@ -54,8 +65,8 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   // Zustand store
   const { anchors, selectedEventId, setAnchor, selectEvent } = useSyncStore();
 
-  // Verovio hook - renders score to SVG at fixed width
-  const { svgPages, toolkit, isLoading } = useVerovio(xml, FIXED_SCORE_WIDTH, 40);
+  // Verovio hook - renders score to SVG at container width
+  const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth || 800, 40);
 
   // Extract events from SyncEditor's own toolkit when SVG is ready
   // (Verovio generates different random IDs per toolkit, so SyncEditor must use its own)
@@ -589,12 +600,13 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         </div>
       </div>
 
-      {/* Score display - fixed width with horizontal scroll */}
+      {/* Score display - full width */}
       <div
+        ref={scoreContainerRef}
         className="flex-1 min-h-0 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
-        <div ref={scoreRef} style={{ width: FIXED_SCORE_WIDTH, minWidth: FIXED_SCORE_WIDTH }}>
+        <div ref={scoreRef}>
           {svgPages.map((svg, i) => (
             <div
               key={i}
@@ -629,10 +641,10 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
             {/* Reset button */}
             <button
               onClick={resetPlayback}
-              className="grunge-btn grunge-btn-sm w-8 h-8 flex items-center justify-center"
+              className="grunge-btn w-12 h-12 flex items-center justify-center"
               title="Reset"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="4" y="4" width="16" height="16" rx="2" />
               </svg>
             </button>
