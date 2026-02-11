@@ -153,7 +153,12 @@ Plans:
 4. User can click a project card to open the editor with that project loaded
 5. User can delete a project from the dashboard and it is permanently removed
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 24-01-PLAN.md -- Data layer: Project types, Firestore singleton, file validation extensions, and CRUD API Route Handlers
+- [ ] 24-02-PLAN.md -- Route restructuring: dashboard at /, editor at /project/[id], Toast action support, MEI validation
+- [ ] 24-03-PLAN.md -- Dashboard UI: project grid, CreateProjectModal (two-step), ProjectCard, delete with undo, human-verify
 
 ### Phase 25: Firebase Storage & File Persistence
 
