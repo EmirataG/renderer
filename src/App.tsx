@@ -68,6 +68,9 @@ export default function App() {
   // Music font
   const [musicFont, setMusicFont] = useState<string>('Bravura');
 
+  // Hide instrument labels
+  const [hideLabels, setHideLabels] = useState(false);
+
   // Debounce scoreScale to avoid Verovio re-render on every slider tick
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -174,7 +177,7 @@ export default function App() {
         musicFont: musicFont as ExportSettings['musicFont'],
         activeNoteheadColor, activeNoteheadScale,
         activeNoteheadEntryMs, activeNoteheadHoldMs, activeNoteheadExitMs,
-        colorFullNote,
+        colorFullNote, hideLabels,
         audioDuration: audioRef.current?.duration,
       };
 
@@ -391,6 +394,20 @@ export default function App() {
                     <option value="Gootville">Gootville</option>
                     <option value="Leipzig">Leipzig</option>
                   </select>
+                </div>
+
+                <div className="pt-1 pb-2">
+                  <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={hideLabels}
+                      onChange={(e) => setHideLabels(e.target.checked)}
+                      className="grunge-checkbox"
+                    />
+                    <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
+                      Hide Instrument Labels
+                    </span>
+                  </label>
                 </div>
 
                 {/* Border Picker */}
@@ -695,6 +712,7 @@ export default function App() {
                         activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
                         activeNoteheadAnimationExitMs={activeNoteheadExitMs}
                         colorFullNote={colorFullNote}
+                        hideLabels={hideLabels}
                       />
                     ) : (
                       <RegularRenderer
@@ -715,6 +733,7 @@ export default function App() {
                         activeNoteheadAnimationHoldMs={activeNoteheadHoldMs}
                         activeNoteheadAnimationExitMs={activeNoteheadExitMs}
                         colorFullNote={colorFullNote}
+                        hideLabels={hideLabels}
                         transportPortalEl={transportEl}
                       />
                     )}
