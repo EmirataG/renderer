@@ -11,7 +11,7 @@ import { useSyncStore } from "./stores/syncStore";
 import type { ScoreRegion } from "./types/score";
 import { requestExport } from "./lib/exportClient";
 import type { ExportSettings } from "./lib/exportClient";
-import { TransformWrapper, TransformComponent, type ReactZoomPanPinchContentRef } from "react-zoom-pan-pinch";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 export default function App() {
   // Get sync anchors from store
@@ -52,12 +52,10 @@ export default function App() {
   // Transport bar portal target (play/pause/reset rendered here from RegularRenderer)
   const [transportEl, setTransportEl] = useState<HTMLDivElement | null>(null);
 
-  // Zoom/pan ref for disabling during region editing
-  const transformRef = useRef<ReactZoomPanPinchContentRef>(null);
-
   // Score region customization
   const [scoreRegion, setScoreRegion] = useState<ScoreRegion | null>(null);
   const [isEditingRegion, setIsEditingRegion] = useState(false);
+  const [zoomScale, setZoomScale] = useState(1);
   const [regionContainerDims, setRegionContainerDims] = useState<{ width: number; height: number } | null>(null);
 
   // Score border style
@@ -419,10 +417,7 @@ export default function App() {
                 {/* Score Region Editor Button */}
                 <div className="pt-2 border-t border-neutral-700">
                   <button
-                    onClick={() => {
-                      transformRef.current?.resetTransform(0);
-                      setIsEditingRegion(true);
-                    }}
+                    onClick={() => setIsEditingRegion(true)}
                     disabled={!bgUrl}
                     className="grunge-btn grunge-btn-sm w-full"
                   >
@@ -696,7 +691,7 @@ export default function App() {
                 </div>
                 {/* Renderer content */}
                 <div className="flex-1 min-h-0 overflow-auto">
-                <TransformWrapper ref={transformRef} disabled={isEditingRegion} minScale={0.25} maxScale={5} panning={{ activationKeys: ["Alt"] }} doubleClick={{ mode: "reset" }}>
+                <TransformWrapper onTransformed={(_, state) => setZoomScale(state.scale)} minScale={0.25} maxScale={5} panning={{ activationKeys: ["Alt"] }} doubleClick={{ mode: "reset" }}>
                   <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
                   {/* Wrapper for RegularRenderer + overlay */}
                   <div className="relative m-auto w-fit">
@@ -757,6 +752,7 @@ export default function App() {
                           initialRegion={scoreRegion}
                           onRegionChange={setScoreRegion}
                           onClose={() => setIsEditingRegion(false)}
+                          scale={zoomScale}
                         />
                       </div>
                     )}
