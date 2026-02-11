@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A browser-based MusicXML score renderer with animated playback, used to generate scrolling score videos. Powered by Verovio (WASM) for high-quality music engraving. The app renders scores with vertical camera scrolling, notehead animations, audio sync, and Puppeteer-based frame capture for video export. RegularRenderer uses page virtualization for memory-efficient rendering of long scores.
+A full-stack MusicXML score renderer with animated playback, used to generate scrolling score videos. Powered by Verovio (WASM) for high-quality music engraving. Users authenticate via Google, manage projects from a dashboard, and edit scores with vertical camera scrolling, notehead animations, and audio sync. Projects auto-save to Firebase. A backend export service captures frames via Puppeteer for video export.
 
 ## Core Value
 
@@ -50,23 +50,30 @@ Capabilities shipped and confirmed working:
 - ✓ GAP-02: Staff lines appear continuous across page boundaries — v1.3
 - ✓ VIRT-04: Fast initial load - only first 1-2 pages rendered on mount — v1.3
 - ✓ VIRT-05: No visible flash or jank during page mount/unmount — v1.3
+- ✓ EXP-01: Backend video export service with headless browser rendering — v1.4
+- ✓ EXP-02: Frame-by-frame capture matching exact preview output — v1.4
+- ✓ EXP-03: All settings transfer (score region, colors, fonts, animation params) — v1.4
+- ✓ EXP-04: WebSocket progress streaming during export — v1.4
+- ✓ EXP-05: Configurable resolution and framerate — v1.4
+- ✓ EXP-06: Multiple concurrent export support — v1.4
 
 ### Active
 
-- Backend video export service with headless browser rendering
-- Frame-by-frame capture matching exact preview output
-- All settings transfer (score region, colors, fonts, animation params)
-- WebSocket progress streaming during export
-- Configurable resolution and framerate
-- Multiple concurrent export support
-- Fly.io deployment
+- Next.js migration from Vite SPA
+- Firebase Auth with Google sign-in
+- Firestore database for project persistence
+- Firebase Storage for score/audio/image files
+- Project dashboard with grid layout and preview cards
+- Project creation modal with score + audio upload and view mode selection
+- Debounced auto-save on any project data change
+- Score and audio files immutable after project creation
 
 ### Out of Scope
 
 - hideUnplayedNotes feature — not currently implemented
 - smoothReveal feature — not currently implemented
 - BPM-based playback — permanently removed in v1.0
-- Server-side rendering of the SPA itself — remains a client-side SPA (backend is for video export only)
+- Fly.io deployment — deferred, export service works locally
 - Mobile support — not in scope
 - Canvas rendering — investigated, poor cost-benefit vs paginated SVG
 - Web Worker rendering — defer until profiling shows need
@@ -116,18 +123,19 @@ Capabilities shipped and confirmed working:
 | Short scores skip virtualization | <=3 pages mount all without overhead | ✓ Good |
 | Symmetric 1-page buffer | Equal above/below for smooth scrolling | ✓ Good |
 
-## Current Milestone: v1.4 Backend Video Export
+## Current Milestone: v2.0 Next.js Migration & Firebase
 
-**Goal:** Deploy a backend service that renders the exact preview animation in a headless browser, captures frames, and encodes to MP4 for download.
+**Goal:** Migrate from Vite SPA to Next.js, add Firebase authentication (Google sign-in), project persistence (Firestore + Storage), a project dashboard, and debounced auto-save.
 
 **Target features:**
-- Export button in browser UI sends all settings + data to backend
-- Headless Chromium replays animation frame-by-frame via existing animationController API
-- FFmpeg encodes frames to MP4 at user-configurable resolution/framerate
-- WebSocket streams real-time progress back to browser
-- Direct download when rendering completes
-- Multiple concurrent exports supported
-- Deployed on Fly.io with Docker (Chrome + FFmpeg)
+- Next.js app replacing Vite SPA (existing React components migrate)
+- Google sign-in via Firebase Auth
+- Project creation modal: upload score (xml/musicxml/mxl/mei) + audio (mp3/wav), choose "Page view" or "Single line" (disabled, coming soon)
+- Score and audio files immutable after project creation
+- Project dashboard: grid of cards with background image thumbnails, name, last edited
+- All project data persisted: settings in Firestore, files in Firebase Storage
+- Debounced auto-save on any change (anchors, bg image, font, colors, animation settings, score region)
+- Background image changeable anytime via inspector
 
 ---
-*Last updated: 2026-02-09 after v1.4 milestone start*
+*Last updated: 2026-02-11 after v2.0 milestone start*

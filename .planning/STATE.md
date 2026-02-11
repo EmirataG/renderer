@@ -2,19 +2,17 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-09)
+See: .planning/PROJECT.md (updated 2026-02-11)
 
 **Core value:** Scores render correctly and efficiently -- high-quality engraving with smooth playback, even on long scores.
-**Current focus:** v1.4 Backend Video Export
+**Current focus:** v2.0 Next.js Migration & Firebase
 
 ## Current Position
 
-Phase: 20 - Docker & Fly.io Deployment
-Plan: 1 of 2
-Status: In Progress
-Last activity: 2026-02-11 - Completed quick task 42: Revert quick-41, fix region glitch with Rnd scale prop
-
-Progress: [#####-----] 1/2 plans
+Phase: Not started (defining requirements)
+Plan: --
+Status: Defining requirements
+Last activity: 2026-02-11 -- Milestone v2.0 started
 
 ## Performance Metrics
 
@@ -101,9 +99,9 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed quick-42 (revert quick-41, fix region glitch with Rnd scale prop)
+Stopped at: Starting v2.0 milestone (Next.js migration + Firebase)
 Resume file: None
-Next: 20-02-PLAN.md (fly.toml and deployment)
+Next: Define requirements and create roadmap
 
 ### Quick Tasks Completed
 
