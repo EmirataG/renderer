@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 25 of 26 (Firebase Storage & File Persistence)
-Plan: 2 of 3 complete
-Status: Executing
-Last activity: 2026-02-11 -- Completed 25-02 (File retrieval and editor integration)
+Plan: 3 of 3 complete
+Status: Phase Complete
+Last activity: 2026-02-11 -- Completed 25-03 (Security rules and end-to-end verification)
 
 Progress: [####......] 40%
 
@@ -20,9 +20,9 @@ Progress: [####......] 40%
 
 **Velocity:**
 
-- Total plans completed: 39
-- Average duration: 2.5 min
-- Total execution time: 99 min
+- Total plans completed: 40
+- Average duration: 2.7 min
+- Total execution time: 107 min
 
 **By Phase:**
 
@@ -50,7 +50,7 @@ Progress: [####......] 40%
 | 22.1 - Self-Contained Export Svc  | 2/2   | 9 min | 4.5 min  |
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
 | 24 - Project Dashboard & CRUD     | 3/3   | 10 min | 3.3 min |
-| 25 - Firebase Storage & File Pers | 2/3   | 5 min  | 2.5 min |
+| 25 - Firebase Storage & File Pers | 3/3   | 13 min | 4.3 min |
 
 _Updated after each plan completion_
 
@@ -85,6 +85,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 25-02: Audio state type allows null File for URL-loaded projects (export uses non-null assertion)
 - 25-02: Background route deletes all existing background files by prefix before uploading replacement
 - 25-02: UploadDropZone restricts to image-only uploads when projectId is set (immutable score/audio)
+- 25-03: Lazy getBucket() singleton replaces module-level bucket export (Firebase Admin init race fix)
+- 25-03: Score and audio served through API proxy endpoints instead of direct Storage URLs (CORS)
+- 25-03: Background route updated to use getBucket() for consistency with lazy init pattern
 
 ### Roadmap Evolution
 
@@ -102,6 +105,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 25-02-PLAN.md
+Stopped at: Completed 25-03-PLAN.md (Phase 25 complete)
 Resume file: None
-Next: 25-03 (Auto-save and project settings persistence)
+Next: Phase 26 (if planned)
