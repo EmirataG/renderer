@@ -602,38 +602,41 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
                   onChange={handleTimestampChange}
                   className="grunge-input w-28"
                 />
-                <button
-                  onClick={() => {
-                    if (selectedEventId) {
-                      const time = selectedAnchorTime ?? selectedEvent.computedTimestamp;
-                      if (validateAnchorTimestamp(selectedEventId, time)) {
-                        setAnchor(selectedEventId, time);
-                      }
-                    }
-                  }}
-                  className="grunge-btn grunge-btn-sm"
-                >
-                  Anchor
-                </button>
-                {audioUrl && !isPlaying && (
-                  <button
-                    onClick={() => {
-                      if (selectedEventId && validateAnchorTimestamp(selectedEventId, currentTime)) {
-                        setAnchor(selectedEventId, currentTime);
-                      }
-                    }}
-                    className="grunge-btn grunge-btn-sm"
-                  >
-                    Anchor to Playhead
-                  </button>
-                )}
-                {selectedEvent.isAnchor && selectedEventId && (
+                {selectedEvent.isAnchor && selectedEventId ? (
                   <button
                     onClick={() => removeAnchor(selectedEventId)}
                     className="grunge-btn grunge-btn-sm text-red-400 border-red-400 hover:bg-red-400 hover:text-black"
                   >
                     Remove Anchor
                   </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => {
+                        if (selectedEventId) {
+                          const time = selectedAnchorTime ?? selectedEvent.computedTimestamp;
+                          if (validateAnchorTimestamp(selectedEventId, time)) {
+                            setAnchor(selectedEventId, time);
+                          }
+                        }
+                      }}
+                      className="grunge-btn grunge-btn-sm"
+                    >
+                      Anchor
+                    </button>
+                    {audioUrl && !isPlaying && (
+                      <button
+                        onClick={() => {
+                          if (selectedEventId && validateAnchorTimestamp(selectedEventId, currentTime)) {
+                            setAnchor(selectedEventId, currentTime);
+                          }
+                        }}
+                        className="grunge-btn grunge-btn-sm"
+                      >
+                        Anchor to Playhead
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -735,34 +738,6 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
         </div>
       )}
 
-      {/* Event list (optional - shows anchor status) */}
-      <div className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-2 max-h-40 overflow-auto grunge-scrollbar">
-        <div className="flex flex-wrap gap-1">
-          {interpolatedEvents.slice(0, 50).map((evt) => (
-            <button
-              key={evt.id}
-              onClick={() => selectEvent(evt.id)}
-              className={`
-                text-xs px-2 py-1 font-mono border
-                ${evt.id === selectedEventId
-                  ? 'bg-white text-black border-white font-bold'
-                  : evt.isAnchor
-                    ? 'bg-transparent text-white border-white'
-                    : 'bg-transparent text-neutral-400 border-neutral-700 hover:border-neutral-500'
-                }
-              `}
-              title={`Beat: ${evt.beatOnset.toFixed(2)} | Time: ${evt.computedTimestamp.toFixed(3)}s`}
-            >
-              {evt.id.replace('evt-', '')}
-            </button>
-          ))}
-          {interpolatedEvents.length > 50 && (
-            <span className="text-xs text-neutral-500 px-2 py-1">
-              +{interpolatedEvents.length - 50} more
-            </span>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
