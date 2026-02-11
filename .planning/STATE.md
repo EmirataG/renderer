@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-09)
 Phase: 20 - Docker & Fly.io Deployment
 Plan: 1 of 2
 Status: In Progress
-Last activity: 2026-02-11 - Completed quick task 33: Fix anchor notes not staying green
+Last activity: 2026-02-11 - Completed quick task 34: Fix anchor coloring on load, constant container width
 
 Progress: [#####-----] 1/2 plans
 
@@ -135,3 +135,4 @@ Next: 20-02-PLAN.md (fly.toml and deployment)
 - quick-031: Fix sync header -- remove legacy anchor label, constant h-14 height
 - quick-032: Remove event boxes from sync view, show only Remove Anchor when anchored
 - quick-033: Fix anchor notes not staying green -- add selectedEventId to anchor effect deps
+- quick-034: Fix anchor coloring on load + constant container width (measure-once ResizeObserver)
