@@ -86,39 +86,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MIG-01 | — | Pending |
-| MIG-02 | — | Pending |
-| MIG-03 | — | Pending |
-| MIG-04 | — | Pending |
-| MIG-05 | — | Pending |
-| AUTH-01 | — | Pending |
-| AUTH-02 | — | Pending |
-| AUTH-03 | — | Pending |
-| AUTH-04 | — | Pending |
-| PROJ-01 | — | Pending |
-| PROJ-02 | — | Pending |
-| PROJ-03 | — | Pending |
-| PROJ-04 | — | Pending |
-| PROJ-05 | — | Pending |
-| PROJ-06 | — | Pending |
-| STOR-01 | — | Pending |
-| STOR-02 | — | Pending |
-| STOR-03 | — | Pending |
-| STOR-04 | — | Pending |
-| STOR-05 | — | Pending |
-| STOR-06 | — | Pending |
-| PERS-01 | — | Pending |
-| PERS-02 | — | Pending |
-| PERS-03 | — | Pending |
-| PERS-04 | — | Pending |
-| PERS-05 | — | Pending |
-| PERS-06 | — | Pending |
+| MIG-01 | Phase 22 | Pending |
+| MIG-02 | Phase 22 | Pending |
+| MIG-03 | Phase 22 | Pending |
+| MIG-04 | Phase 22 | Pending |
+| MIG-05 | Phase 22 | Pending |
+| AUTH-01 | Phase 23 | Pending |
+| AUTH-02 | Phase 23 | Pending |
+| AUTH-03 | Phase 23 | Pending |
+| AUTH-04 | Phase 23 | Pending |
+| PROJ-01 | Phase 24 | Pending |
+| PROJ-02 | Phase 24 | Pending |
+| PROJ-03 | Phase 25 | Pending |
+| PROJ-04 | Phase 24 | Pending |
+| PROJ-05 | Phase 24 | Pending |
+| PROJ-06 | Phase 24 | Pending |
+| STOR-01 | Phase 25 | Pending |
+| STOR-02 | Phase 25 | Pending |
+| STOR-03 | Phase 25 | Pending |
+| STOR-04 | Phase 25 | Pending |
+| STOR-05 | Phase 25 | Pending |
+| STOR-06 | Phase 25 | Pending |
+| PERS-01 | Phase 26 | Pending |
+| PERS-02 | Phase 26 | Pending |
+| PERS-03 | Phase 26 | Pending |
+| PERS-04 | Phase 26 | Pending |
+| PERS-05 | Phase 26 | Pending |
+| PERS-06 | Phase 26 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 27 total
-- Mapped to phases: 0
-- Unmapped: 27 (pending roadmap creation)
+- Mapped to phases: 27
+- Unmapped: 0
+- Coverage: 100%
 
 ---
 *Requirements defined: 2026-02-11*
-*Last updated: 2026-02-11 after initial definition*
+*Last updated: 2026-02-11 after roadmap creation*

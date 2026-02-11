@@ -6,7 +6,8 @@
 - **v1.1 Efficiency** - Phases 6-9 (shipped 2015-02-05)
 - **v1.2 SingleLineRenderer** - Phases 10-13 (paused)
 - **v1.3 Performance & Polish** - Phase 14 (shipped 2026-02-09)
-- **v1.4 Backend Video Export** - Phases 15-21 (in progress)
+- **v1.4 Backend Video Export** - Phases 15-21 (shipped 2026-02-11)
+- **v2.0 Next.js Migration & Firebase** - Phases 22-26 (in progress)
 
 ## Phases
 
@@ -58,168 +59,130 @@ Page virtualization for RegularRenderer: only visible pages + buffer mounted in 
 
 </details>
 
-## v1.4 Backend Video Export (In Progress)
+<details>
+<summary>v1.4 Backend Video Export (Phases 15-21) - SHIPPED 2026-02-11</summary>
 
-**Milestone Goal:** Deploy a backend service that renders the exact preview animation in a headless browser, captures frames, and encodes to MP4 for download.
+Backend export service with Puppeteer frame capture, FFmpeg encoding, WebSocket progress streaming, and Docker deployment. Configurable resolution and framerate with browser UX.
+
+- [x] Phase 15: Backend Foundation & Settings Transfer (3 plans)
+- [x] Phase 16: Frontend Render Mode (1 plan)
+- [x] Phase 17: Puppeteer Integration & Frame Capture (2 plans)
+- [x] Phase 18: FFmpeg Encoding & Audio Mux (1 plan)
+- [x] Phase 19: Progress Streaming & Download (2 plans)
+- [x] Phase 20: Docker Image & Fly.io Deployment (2 plans)
+- [x] Phase 21: Resolution Presets & Enhanced UX (1 plan)
+
+</details>
+
+## v2.0 Next.js Migration & Firebase (In Progress)
+
+**Milestone Goal:** Migrate from Vite SPA to Next.js, add Firebase authentication (Google sign-in), project persistence (Firestore + Storage), a project dashboard, and debounced auto-save. Existing editor functionality preserved unchanged.
 
 **Target features:**
-- Export button in browser UI sends all settings + data to backend
-- Headless Chromium replays animation frame-by-frame via existing animationController API
-- FFmpeg encodes frames to MP4 at user-configurable resolution/framerate
-- WebSocket streams real-time progress back to browser
-- Direct download when rendering completes
-- Multiple concurrent exports supported
-- Deployed on Fly.io with Docker (Chrome + FFmpeg)
+- Next.js 16 App Router replacing Vite SPA (existing React components migrate)
+- Google sign-in via Firebase Auth with httpOnly session cookies
+- Project creation modal: upload score + audio, choose view mode
+- Project dashboard: grid of cards with thumbnails, name, last edited
+- All project data persisted: settings in Firestore, files in Firebase Storage
+- Debounced auto-save on any change
+- Score and audio files immutable after creation; background image changeable anytime
 
-### Phase 15: Backend Foundation & Settings Transfer
+### Phase 22: Next.js Scaffold & Migration
 
-**Goal:** Backend server accepts export requests with complete settings transfer from frontend.
+**Goal:** App runs on Next.js 16 App Router with all existing editor functionality preserved.
 
-**Dependencies:** None (first phase)
+**Dependencies:** None (foundation phase)
 
-**Requirements:** SRV-01, SRV-02, SRV-04
+**Requirements:** MIG-01, MIG-02, MIG-03, MIG-04, MIG-05
 
-**Plans:** 3 plans
+**Success Criteria** (what must be TRUE):
+1. App loads in browser via Next.js dev server with Turbopack bundler
+2. Verovio WASM loads and renders MusicXML to SVG inside a client-only boundary (no SSR crashes)
+3. All existing editor features work identically to the Vite SPA (rendering, playback, animation, sync, camera, score region)
+4. Environment variables use NEXT_PUBLIC_ prefix and work in both dev and build
+5. Export service communicates with the Next.js app (HTTP/WebSocket integration functional)
 
-Plans:
-- [x] 15-01-PLAN.md -- Scaffold export-service project with TypeBox schema, validation, and shared types
-- [x] 15-02-PLAN.md -- Fastify server, multipart export route, job manager, temp file lifecycle
-- [x] 15-03-PLAN.md -- Frontend export client utility and end-to-end contract verification
+**Plans:** TBD
 
-**Success Criteria:**
-1. User can trigger export from browser, backend receives MusicXML + audio + all settings via multipart upload
-2. Backend validates settings (schema, Map serialization, missing fields) and rejects incomplete exports with clear error message
-3. Backend creates unique jobId and stores uploaded files to temporary directory
-4. Backend cleans up temporary files after export completion or failure
+### Phase 23: Firebase Authentication
 
-### Phase 16: Frontend Render Mode
+**Goal:** Users can securely sign in with Google and access protected pages.
 
-**Goal:** Frontend can run in headless Chrome with all virtualization and transitions disabled for frame capture.
+**Dependencies:** Phase 22 (needs Next.js app running)
 
-**Dependencies:** Phase 15 (needs settings schema from backend)
+**Requirements:** AUTH-01, AUTH-02, AUTH-03, AUTH-04
 
-**Requirements:** RND-02, RND-03, RND-04
+**Success Criteria** (what must be TRUE):
+1. User can sign in with their Google account from a login page
+2. User session persists across browser refresh without re-authentication (httpOnly session cookie)
+3. Unauthenticated users visiting any editor or dashboard page are redirected to the login page
+4. User can sign out and is returned to the login page
 
-**Plans:** 1 plan
+**Plans:** TBD
 
-Plans:
-- [x] 16-01-PLAN.md -- RenderApp component, renderMode prop, config injection, virtualization bypass, readiness signal
+### Phase 24: Project Dashboard & CRUD
 
-**Success Criteria:**
-1. Frontend reads `window.__EXPORT_CONFIG__` and injects all settings (score region, colors, fonts, animation params, sync anchors) into application state
-2. Frontend disables page virtualization in render mode (all pages mounted for complete score visibility)
-3. Frontend disables CSS transitions in render mode (camera moves instantly without animation)
-4. Frontend exposes `window.rendererReady` signal that backend can poll before starting frame capture
+**Goal:** Users can create, browse, open, and delete projects from a dashboard.
 
-### Phase 17: Puppeteer Integration & Frame Capture
+**Dependencies:** Phase 23 (needs authenticated user identity for project ownership)
 
-**Goal:** Backend captures animation frames using headless Chrome with exact preview output.
+**Requirements:** PROJ-01, PROJ-02, PROJ-04, PROJ-05, PROJ-06
 
-**Dependencies:** Phase 16 (needs render mode frontend)
+**Success Criteria** (what must be TRUE):
+1. User can create a new project by uploading a score file and audio file through a creation modal
+2. Creation modal shows "Page view" as active and "Single line" as disabled with "coming soon" label
+3. User sees a dashboard with a grid of project cards showing background image thumbnail, project name, and last edited date
+4. User can click a project card to open the editor with that project loaded
+5. User can delete a project from the dashboard and it is permanently removed
 
-**Requirements:** SRV-03, RND-01
+**Plans:** TBD
 
-**Plans:** 2 plans
+### Phase 25: Firebase Storage & File Persistence
 
-Plans:
-- [x] 17-01-PLAN.md -- Install Puppeteer/generic-pool, create browser pool, serve frontend via @fastify/static, wire pool shutdown
-- [x] 17-02-PLAN.md -- Page setup (config injection, readiness wait), frame capture async generator, renderJob orchestrator, export route wiring
+**Goal:** All project files persist in Firebase Storage with user-scoped security.
 
-**Success Criteria:**
-1. Backend launches headless Chrome with browser pool managing concurrent exports (max 2-3 concurrent)
-2. Backend injects export config via `evaluateOnNewDocument`, waits for `rendererReady` signal, verifies event count > 0
-3. Backend captures each frame by calling `setFrame(n, fps)` then `page.screenshot()`, producing PNG buffers matching preview exactly
-4. Backend closes browser/page in finally blocks to prevent process leaks on error
+**Dependencies:** Phase 24 (needs project documents in Firestore to store file URLs)
 
-### Phase 18: FFmpeg Encoding & Audio Mux
+**Requirements:** STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, STOR-06, PROJ-03
 
-**Goal:** Backend encodes captured frames to H.264 MP4 with synced audio.
+**Success Criteria** (what must be TRUE):
+1. Score and audio files upload to Firebase Storage during project creation and are retrievable across sessions
+2. Background images upload to Firebase Storage when set in the inspector and persist across sessions
+3. All files are stored under user-scoped paths (users/{uid}/projects/{projectId}/...)
+4. Score and audio files cannot be changed or re-uploaded after project creation (immutable)
+5. Security rules prevent users from reading or writing other users' files and project documents
 
-**Dependencies:** Phase 17 (needs frame capture buffers)
+**Plans:** TBD
 
-**Requirements:** VID-01, VID-02, VID-03
+### Phase 26: Auto-Save & Data Persistence
 
-**Plans:** 1 plan
+**Goal:** All project data auto-saves seamlessly and loads completely when reopened.
 
-Plans:
-- [ ] 18-01-PLAN.md -- FFmpeg encoding modules, audio muxing, renderJob refactor to pipe frames
+**Dependencies:** Phase 25 (file URLs must be stored before save payload is complete)
 
-**Success Criteria:**
-1. Backend spawns FFmpeg process reading PNG frames from stdin, encoding to H.264 MP4 with yuv420p pixel format
-2. Backend muxes original audio file into MP4 with correct sync (duration matches video)
-3. Backend writes MP4 with faststart flag enabled for streaming playback
-4. Backend handles FFmpeg backpressure with drain-aware stdin writes to prevent memory bloat
+**Requirements:** PERS-01, PERS-02, PERS-03, PERS-04, PERS-05, PERS-06
 
-### Phase 19: Progress Streaming & Download
+**Success Criteria** (what must be TRUE):
+1. Changing any project setting (color, scale, font, border, animation options, score region) auto-saves to Firestore after a brief pause
+2. Sync anchors (sparse Map data) persist correctly and restore with the same values when reopened
+3. Save status indicator shows "Saving...", "Saved", or "Error" reflecting the current save state
+4. Opening a project from the dashboard loads all settings, anchors, and background image exactly as last saved
+5. Background image URL persists in Firestore and the image loads visually when the project is reopened
 
-**Goal:** User sees real-time export progress and downloads completed MP4.
-
-**Dependencies:** Phases 17-18 (needs frame capture and encoding pipeline)
-
-**Requirements:** PRG-01, PRG-02, PRG-03, PRG-04
-
-**Plans:** 2 plans
-
-Plans:
-- [ ] 19-01-PLAN.md -- Backend infrastructure: EventEmitter on JobManager, progress emission, AbortController cancellation, signal-aware capture/encode
-- [ ] 19-02-PLAN.md -- WebSocket progress route, MP4 download route, server registration with @fastify/websocket
-
-**Success Criteria:**
-1. User connects to WebSocket and receives real-time progress updates (frame count, percentage, stage labels)
-2. User can download completed MP4 directly from browser via download endpoint
-3. User sees clear error message in browser when export fails (Chrome crash, FFmpeg error, validation failure)
-4. User can cancel in-progress export, backend stops frame capture and cleans up resources
-5. WebSocket supports reconnection with state sync if connection drops mid-export
-
-### Phase 20: Docker Image & Fly.io Deployment
-
-**Goal:** Backend service deployed on Fly.io with full production infrastructure.
-
-**Dependencies:** All backend phases (15, 17-19)
-
-**Requirements:** DEP-01, DEP-02
-
-**Plans:** 2 plans
-
-Plans:
-- [ ] 20-01-PLAN.md -- Dockerfile, .dockerignore, env PORT config, SIGTERM graceful shutdown
-- [ ] 20-02-PLAN.md -- fly.toml configuration, Fly.io deployment, production verification
-
-**Success Criteria:**
-1. Docker image builds successfully based on Puppeteer base image with FFmpeg and fonts installed
-2. Backend deploys to Fly.io with auto-stop/auto-start enabled for cost efficiency when idle
-3. Backend survives cold starts with acceptable latency (< 30s from idle to first frame capture)
-4. Backend successfully exports video end-to-end in production environment (upload -> capture -> encode -> download)
-
-### Phase 21: Resolution Presets & Enhanced UX
-
-**Goal:** Users can configure export resolution and framerate with time estimation.
-
-**Dependencies:** Phase 20 (needs working production export)
-
-**Requirements:** CFG-01, CFG-02, UI-01, UI-02
-
-**Success Criteria:**
-1. User selects resolution preset (720p, 1080p, 4K) before export, backend applies correct viewport dimensions
-2. User selects frame rate (30 or 60 fps), backend captures at specified rate
-3. User sees estimated export time before starting based on frame count and calibrated performance data
-4. User sees export button in browser that triggers export with current settings
-5. User sees progress displayed in browser during rendering with percentage and stage information
+**Plans:** TBD
 
 ## Progress
 
-| Phase | Status | Plans | Tasks | Completion |
-|-------|--------|-------|-------|------------|
-| 15 - Backend Foundation & Settings Transfer | ✓ Complete | 3/3 | 6/6 | 100% |
-| 16 - Frontend Render Mode | ✓ Complete | 1/1 | 2/2 | 100% |
-| 17 - Puppeteer Integration & Frame Capture | ✓ Complete | 2/2 | 4/4 | 100% |
-| 18 - FFmpeg Encoding & Audio Mux | ✓ Complete | 1/1 | 2/2 | 100% |
-| 19 - Progress Streaming & Download | Planned | 0/2 | 0/4 | 0% |
-| 20 - Docker Image & Fly.io Deployment | Planned | 0/2 | 0/4 | 0% |
-| 21 - Resolution Presets & Enhanced UX | Pending | 0/? | 0/? | 0% |
+| Phase | Status | Plans | Completion |
+|-------|--------|-------|------------|
+| 22 - Next.js Scaffold & Migration | Not started | 0/? | 0% |
+| 23 - Firebase Authentication | Not started | 0/? | 0% |
+| 24 - Project Dashboard & CRUD | Not started | 0/? | 0% |
+| 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |
+| 26 - Auto-Save & Data Persistence | Not started | 0/? | 0% |
 
-**Milestone v1.4 Coverage:**
-- Total requirements: 21
-- Mapped to phases: 21
+**Milestone v2.0 Coverage:**
+- Total requirements: 27
+- Mapped to phases: 27
 - Unmapped: 0
 - Coverage: 100%
