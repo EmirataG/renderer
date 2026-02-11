@@ -1,5 +1,3 @@
-import { join } from 'node:path';
-
 export const config = {
   /** HTTP server port */
   port: parseInt(process.env.PORT ?? '3001', 10),
@@ -36,9 +34,6 @@ export const config = {
 
   /** Idle browsers are destroyed after this duration (2 min) */
   browserIdleTimeoutMs: 120_000,
-
-  /** Path to the frontend dist directory. Not used in dev (Next.js serves its own files), but may be relevant for production static export in the future. */
-  frontendDistPath: join(import.meta.dirname, '../../../dist'),
 
   /** Timeout for waiting for renderer to become ready (30s) */
   pageReadyTimeoutMs: 30_000,

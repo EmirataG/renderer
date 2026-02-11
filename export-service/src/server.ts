@@ -29,18 +29,10 @@ async function main() {
     },
   });
 
-  // Legacy: Serve the Vite-built frontend dist (may be removed in the future)
-  await server.register(fastifyStatic, {
-    root: config.frontendDistPath,
-    prefix: '/',
-    decorateReply: false,
-  });
-
   // Serve standalone render page assets (animation bundle + verovio WASM)
   await server.register(fastifyStatic, {
     root: join(import.meta.dirname, '../standalone-dist'),
     prefix: '/static/',
-    decorateReply: false,
   });
 
   // Standalone render page route (served to Puppeteer for frame capture)
