@@ -1,510 +1,358 @@
-# Technology Stack - Backend Video Export Service
+# Technology Stack
 
-**Project:** Manuscript Renderer - v1.4 Backend Video Export
-**Researched:** 2026-02-09
+**Project:** Manuscript Renderer -- Next.js Migration + Firebase Backend
+**Researched:** 2026-02-11
 **Confidence:** HIGH
-
-## Executive Summary
-
-The backend video export service needs five new capabilities: an HTTP server, headless browser control, video encoding, real-time progress communication, and containerized deployment. The recommended stack is Fastify (HTTP + WebSocket), Puppeteer (headless Chrome), FFmpeg via child_process.spawn (frame encoding), and Docker on Fly.io (deployment).
-
-Key design principle: the frontend already exposes `window.animationController.setFrame(frameNumber, fps)` as a synchronous API. The backend capture loop is therefore straightforward -- call `page.evaluate()` to set a frame, then `page.screenshot()` to capture it, and pipe the PNG buffer directly to FFmpeg's stdin. No wrapper library is needed for FFmpeg; direct `child_process.spawn` with `image2pipe` input is simpler, more debuggable, and avoids the deprecated fluent-ffmpeg.
-
-**Zero new frontend dependencies.** All additions are backend-only in a separate `server/` directory.
-
----
 
 ## Recommended Stack
 
-### Runtime
+### Core Framework
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| Node.js | 22.x LTS (Jod) | Server runtime | Current LTS, supported until 2027-04-30, required by Puppeteer 24 (Node 18+) |
-| TypeScript | ~5.9.x | Type safety | Already used in the frontend; consistent tooling |
+| Next.js | ^16.1.x | Full-stack React framework | Current stable (released Oct 2025). Turbopack default bundler, React 19.2, App Router stable, proxy.ts for auth guards. Aligns with React 19 already in use. |
+| React | 19.2.x | UI library | Ships with Next.js 16. Already on React 19 in existing app -- minimal migration pain. React Compiler 1.0 available (opt-in later). |
+| TypeScript | ~5.9.x | Type safety | Already at 5.9.3 in existing project. Next.js 16 requires >=5.1. No change needed. |
+| Tailwind CSS | 4.x | Styling | Already at 4.1.16. Next.js 16 scaffolds with Tailwind by default. PostCSS config carries over as-is. |
 
-**Confidence:** HIGH -- Node.js 22.22.0 is latest LTS per [nodejs.org releases](https://nodejs.org/en/about/previous-releases). Puppeteer 24 requires Node 18+ per [Puppeteer system requirements](https://pptr.dev/guides/system-requirements).
-
-### HTTP Server
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| fastify | ^5.7.4 | HTTP server framework | 3-4x faster than Express, built-in TypeScript, Pino logger included, official WebSocket plugin |
-
-**Why Fastify over Express:**
-- 70k-80k req/s vs Express's 20k-30k req/s in benchmarks
-- First-class TypeScript support (written in TypeScript)
-- Built-in JSON schema validation for request/response
-- Pino structured logging included by default
-- Official plugin ecosystem: `@fastify/websocket`, `@fastify/cors`, `@fastify/multipart`, `@fastify/static`
-- Fastify v5 is the current major, actively maintained by the OpenJS Foundation
-
-**Confidence:** HIGH -- v5.7.4 verified via [npm](https://www.npmjs.com/package/fastify) and [GitHub releases](https://github.com/fastify/fastify/releases).
-
-### Fastify Plugins
-
-| Plugin | Version | Purpose | Why |
-|--------|---------|---------|-----|
-| @fastify/websocket | ^11.2.0 | WebSocket for progress streaming | Official plugin, uses `ws` under the hood, routes share auth/hooks |
-| @fastify/cors | ^11.2.0 | CORS for cross-origin requests | Frontend (different port/domain) needs to call backend |
-| @fastify/multipart | ^9.4.0 | File upload (MusicXML + audio) | Stream-based upload, configurable limits, official Fastify plugin |
-| @fastify/static | ^9.0.0 | Serve built frontend in production | Serve the Vite build output from the same server |
-
-**Why @fastify/websocket over raw ws:**
-- Route integration: WebSocket endpoints share Fastify's hook pipeline (auth, validation, error handling)
-- Encapsulation: WebSocket routes respect Fastify plugin scoping
-- Uses `ws` (v8.19.0) under the hood -- the most battle-tested WebSocket library for Node.js
-- Built-in TypeScript types (also install `@types/ws` for underlying types)
-
-**Confidence:** HIGH -- all versions verified via npm. @fastify/websocket last published 5 months ago, actively maintained.
-
-### Headless Browser
+### Authentication and Backend
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| puppeteer | ^24.37.2 | Headless Chrome for frame capture | Industry standard, bundles Chrome for Testing, frame-by-frame control via page.evaluate() |
+| firebase | ^12.9.0 | Client SDK (Auth, Firestore, Storage) | Latest modular SDK. Tree-shakeable imports reduce bundle by up to 80% vs compat mode. Single package for all three Firebase services. |
+| firebase-admin | ^13.6.1 | Server SDK (session verification, Firestore admin ops) | Required for server-side auth verification in Next.js server components, API routes, and proxy.ts. Runs only on the server. |
 
-**Why Puppeteer (not Playwright):**
-- Only need Chrome (not Firefox/Safari) -- Puppeteer is simpler for single-browser use
-- Official Docker image available at `ghcr.io/puppeteer/puppeteer`
-- `page.evaluate()` directly calls `window.animationController.setFrame()` -- synchronous, no timing issues
-- `page.screenshot({ encoding: 'binary', optimizeForSpeed: true })` returns a Buffer for direct pipe to FFmpeg
-- Deeply integrated with Chrome DevTools Protocol for precise control
-
-**Critical API details for this project:**
-```typescript
-// Set viewport to match target resolution
-await page.setViewport({ width: 1920, height: 1080 });
-
-// Navigate to built frontend served by Fastify
-await page.goto('http://localhost:PORT/render?...', { waitUntil: 'networkidle0' });
-
-// Frame-by-frame capture loop (synchronous per frame)
-for (let frame = 0; frame < totalFrames; frame++) {
-  await page.evaluate((f, fps) => {
-    window.animationController.setFrame(f, fps);
-  }, frame, fps);
-
-  const buffer = await page.screenshot({
-    encoding: 'binary',
-    type: 'png',
-    optimizeForSpeed: true,  // Faster PNG encoding
-  });
-
-  ffmpegProcess.stdin.write(buffer);
-}
-```
-
-**Screenshot performance notes:**
-- `optimizeForSpeed: true` enables faster PNG encoding in Chrome (available since Puppeteer v24)
-- Binary encoding returns a Buffer directly, avoiding base64 encode/decode overhead
-- PNG is required for `image2pipe` input to FFmpeg (lossless, no compression artifacts between frames)
-- At 1920x1080, expect ~20-50ms per screenshot depending on page complexity
-
-**Confidence:** HIGH -- v24.37.2 verified via [npm](https://www.npmjs.com/package/puppeteer). Screenshot options verified via [Puppeteer docs v24.37.2](https://pptr.dev/api/puppeteer.screenshotoptions).
-
-### Video Encoding
+### State Management
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| FFmpeg (system binary) | 6.x+ | Encode PNG frames to H.264 MP4 | Industry standard, pipe-based input, no Node.js wrapper needed |
-| child_process.spawn | (built-in) | Spawn FFmpeg process | Node.js native, stream stdin/stdout, no library overhead |
+| zustand | ^5.0.10 | Client state | Already in use. Keeps local UI state (score settings, playback controls). No migration needed. Zustand works identically in Next.js client components. |
 
-**Why direct child_process.spawn, NOT fluent-ffmpeg:**
-- fluent-ffmpeg is [being phased out / archived](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg/issues/1324) by its maintainer
-- For this project, FFmpeg always does the same operation: read PNG frames from stdin, encode to H.264 MP4
-- One FFmpeg command, written once, is simpler and more debuggable than a wrapper library
-- Direct access to FFmpeg's stdin stream for piping screenshot buffers
+### Supporting Libraries
 
-**FFmpeg command for this project:**
-```bash
-ffmpeg -y \
-  -f image2pipe -framerate 30 -i pipe:0 \
-  -c:v libx264 -preset medium -crf 18 \
-  -pix_fmt yuv420p \
-  -movflags +faststart \
-  output.mp4
-```
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| use-debounce | ^10.1.0 | Debounced auto-save to Firestore | Replace hand-rolled setTimeout debounce patterns. useDebouncedCallback for auto-save triggers after 1500ms of inactivity. |
+| verovio | ^6.0.1 | MusicXML rendering (WASM) | Already in use. Client-only -- must use `'use client'` + next/dynamic with `ssr: false` in Next.js. |
+| react-rnd | ^10.5.2 | Drag/resize UI | Already in use. No changes needed. |
+| react-zoom-pan-pinch | ^3.7.0 | Pan/zoom for score preview | Already in use. No changes needed. |
 
-**Command breakdown:**
-- `-f image2pipe -i pipe:0`: Read PNG images from stdin
-- `-framerate 30`: Input framerate (configurable, matches Puppeteer capture FPS)
-- `-c:v libx264`: H.264 codec (universal browser/device playback)
-- `-preset medium`: Balance of encoding speed vs compression (use `fast` for quicker exports)
-- `-crf 18`: High quality (range 0-51, lower = better; 18 is visually lossless for most content)
-- `-pix_fmt yuv420p`: Required for broad compatibility (Apple devices, web players)
-- `-movflags +faststart`: Move moov atom to start of file for streaming playback
-
-**Node.js spawn pattern:**
-```typescript
-import { spawn } from 'child_process';
-
-const ffmpeg = spawn('ffmpeg', [
-  '-y',
-  '-f', 'image2pipe',
-  '-framerate', String(fps),
-  '-i', 'pipe:0',
-  '-c:v', 'libx264',
-  '-preset', 'medium',
-  '-crf', '18',
-  '-pix_fmt', 'yuv420p',
-  '-movflags', '+faststart',
-  outputPath,
-]);
-
-// Pipe each screenshot buffer
-ffmpeg.stdin.write(screenshotBuffer);
-
-// When all frames captured, signal end
-ffmpeg.stdin.end();
-```
-
-**Confidence:** HIGH -- FFmpeg image2pipe with stdin is a well-documented, widely-used pattern. fluent-ffmpeg deprecation confirmed via [GitHub issue](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg/issues/1324).
-
-### Unique IDs
+### Infrastructure and Tooling
 
 | Technology | Version | Purpose | Why |
 |------------|---------|---------|-----|
-| crypto.randomUUID() | (built-in) | Export job IDs | Built into Node.js since v14.17, 4x faster than nanoid, 12x faster than uuid, zero dependencies |
-
-**Why not nanoid or uuid:**
-- `crypto.randomUUID()` is native to Node.js -- zero bundle size, zero dependency risk
-- 4x faster than nanoid, 12x faster than the uuid package
-- Generates RFC 4122 v4 UUIDs, which is all we need for job tracking
-- Available since Node.js 14.17, well within our Node 22 target
-
-**Confidence:** HIGH -- verified via [Node.js crypto docs](https://nodejs.org/api/crypto.html#cryptorandomuuidoptions) and [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID).
-
----
-
-## Docker Configuration
-
-### Base Image Strategy
-
-**Use the official Puppeteer Docker image as the base**, then add FFmpeg on top.
-
-| Layer | Image/Package | Purpose |
-|-------|---------------|---------|
-| Base | `ghcr.io/puppeteer/puppeteer:24` | Node.js + Chrome for Testing + system deps + fonts |
-| Added | `ffmpeg` (apt-get) | Video encoding |
-| Added | Application code | The export server |
-
-**Why `ghcr.io/puppeteer/puppeteer` over building from scratch:**
-- Maintained by the Puppeteer team, always matches the bundled Chrome version
-- Includes all required system dependencies (fonts for CJK, dbus, etc.)
-- Includes Chrome for Testing binary -- no need to install Chrome separately
-- Sets `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD` implicitly (Chrome already present)
-- Non-root user (`pptruser`) configured for security
-- Based on Node.js on Debian Bookworm
-
-**Dockerfile outline:**
-```dockerfile
-FROM ghcr.io/puppeteer/puppeteer:24
-
-# Switch to root to install FFmpeg
-USER root
-
-# Install FFmpeg
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app directory
-WORKDIR /app
-
-# Copy package files and install dependencies
-COPY --chown=pptruser:pptruser package*.json ./
-RUN npm ci --production
-
-# Copy application code
-COPY --chown=pptruser:pptruser . .
-
-# Copy built frontend (from Vite build)
-COPY --chown=pptruser:pptruser dist/ ./dist/
-
-# Switch back to non-root user
-USER pptruser
-
-# Expose port
-EXPOSE 3000
-
-# Start server
-CMD ["node", "server/index.js"]
-```
-
-**Chrome launch args for Docker:**
-```typescript
-const browser = await puppeteer.launch({
-  headless: true,
-  args: [
-    '--no-sandbox',           // Required in Docker (running as non-root with SYS_ADMIN)
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage', // Use /tmp instead of /dev/shm (Docker default is 64MB)
-    '--disable-gpu',           // No GPU in Docker
-    '--no-first-run',
-    '--no-zygote',
-    '--single-process',        // Reduce memory footprint
-  ],
-});
-```
-
-**Confidence:** HIGH -- Puppeteer Docker image verified via [pptr.dev/guides/docker](https://pptr.dev/guides/docker) and [GitHub Container Registry](https://github.com/orgs/puppeteer/packages/container/package/puppeteer).
-
----
-
-## Fly.io Deployment
-
-### Machine Configuration
-
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| Machine size | `performance-2x` | 2 vCPU, 4GB RAM -- Chrome needs ~1GB, FFmpeg needs ~512MB, Node needs ~256MB, headroom for concurrent ops |
-| Region | `iad` (or nearest) | US East, low latency to most users |
-| auto_stop_machines | `"stop"` | Stop when idle to save costs |
-| auto_start_machines | `true` | Auto-start on incoming request |
-| min_machines_running | `0` | Scale to zero when no exports |
-
-**fly.toml outline:**
-```toml
-app = "manuscript-export"
-primary_region = "iad"
-
-[build]
-  dockerfile = "Dockerfile"
-
-[http_service]
-  internal_port = 3000
-  force_https = true
-  auto_stop_machines = "stop"
-  auto_start_machines = true
-  min_machines_running = 0
-
-[[vm]]
-  size = "performance-2x"
-  memory = "4gb"
-```
-
-**Cost estimate:** performance-2x at ~$0.0621/hr. With auto-stop, cost is only while actively rendering. A 3-minute export costs ~$0.003.
-
-**Confidence:** MEDIUM -- Fly.io pricing and machine sizes verified via [fly.io/pricing](https://fly.io/pricing/) and [machine sizing docs](https://fly.io/docs/machines/guides-examples/machine-sizing/). Exact pricing may vary; estimate is approximate.
-
----
-
-## Complete Dependency List
-
-### Backend Production Dependencies
-
-```bash
-npm install \
-  fastify@^5.7.4 \
-  @fastify/websocket@^11.2.0 \
-  @fastify/cors@^11.2.0 \
-  @fastify/multipart@^9.4.0 \
-  @fastify/static@^9.0.0 \
-  puppeteer@^24.37.2
-```
-
-### Backend Dev Dependencies
-
-```bash
-npm install -D \
-  @types/ws@^8.5.0 \
-  @types/node@^22.0.0 \
-  tsx@^4.0.0
-```
-
-**Total new npm packages: 6 production + 3 dev.**
-
-### System Dependencies (Docker only)
-
-| Package | Purpose |
-|---------|---------|
-| ffmpeg | Video encoding (apt-get in Dockerfile) |
-| Chrome for Testing | Headless browser (included in Puppeteer Docker image) |
-| fonts-* | CJK/Arabic/Thai font support (included in Puppeteer Docker image) |
-| dbus | Chrome IPC (included in Puppeteer Docker image) |
-
----
+| Turbopack | (bundled with Next.js 16) | Dev and build bundler | Default in Next.js 16. 2-5x faster production builds, up to 10x faster Fast Refresh. Client-side WASM imports work (GitHub issue #84972 closed as "not a bug"). |
+| Node.js | >=20.9.0 | Runtime | Next.js 16 minimum requirement. Current LTS is 22.x. |
 
 ## What NOT to Add
 
-| Library | Why NOT |
+| Library | Why Not |
 |---------|---------|
-| express | Fastify is faster, has better TypeScript support, and includes Pino logging |
-| fluent-ffmpeg | Archived/deprecated. Direct child_process.spawn is simpler for our single-command use case |
-| playwright | Overkill -- we only need Chrome, Puppeteer is simpler and has official Docker image |
-| socket.io | Heavy abstraction over WebSocket. @fastify/websocket with raw `ws` is simpler for progress streaming |
-| bull / bullmq | Job queue overkill for MVP. In-memory Map of active jobs is sufficient initially |
-| redis | Not needed yet. Job state lives in memory. Add only if scaling to multiple machines |
-| nanoid / uuid | crypto.randomUUID() is built-in, faster, zero dependencies |
-| puppeteer-core | Use full `puppeteer` which bundles Chrome for Testing -- simpler Docker setup |
-| sharp / canvas | No image processing needed -- Puppeteer screenshots are the raw frames |
-| pino | Already included with Fastify -- do not install separately |
-| ffmpeg-static | Not needed in Docker -- install ffmpeg via apt-get in the Dockerfile |
+| NextAuth.js / Auth.js | Adds unnecessary abstraction when fully committed to Firebase. Firebase Auth direct with httpOnly session cookies is simpler, avoids adapter/provider indirection, and is the pattern recommended in Firebase's official Next.js codelab. |
+| react-firebase-hooks | Last published 3+ years ago (v5.1.1). Stale and unmaintained. Write thin custom hooks around Firebase modular SDK instead -- 10-20 lines each. |
+| reactfire | Google's own React-Firebase bindings. Adds Context Provider overhead and abstraction. For this app's scope (auth + a few Firestore collections + storage), direct SDK calls in custom hooks are simpler and more transparent. |
+| next-firebase-auth | npm package designed for older Next.js patterns. Not updated for App Router or Next.js 16 proxy.ts. |
+| @tanstack/react-query | Unnecessary. Firestore's onSnapshot provides real-time sync natively. Adding React Query creates two competing caching layers. Zustand handles local state fine. |
+| lodash or lodash.debounce | use-debounce is 3KB vs lodash.debounce at 5.5KB, purpose-built for React hooks with proper cleanup on unmount. |
+| babel-plugin-react-compiler | Optional optimization. Do NOT enable during migration -- adds build time via Babel. Enable only after the migration is stable and profiled. |
+| Clerk / Supabase Auth | Paid service or wrong ecosystem. Firebase Auth free tier covers 50K MAU. Single-vendor simplicity with Firestore and Storage. |
 
----
+## App Router vs Pages Router Decision
 
-## Integration Architecture
+**Use App Router.** Rationale:
 
-### How Backend Connects to Frontend
+1. **Next.js 16 defaults to App Router.** Pages Router is legacy and receives no new features.
+2. **Server Components** allow firebase-admin calls directly in page components (verify session, fetch project list from Firestore) without separate API routes.
+3. **Layouts** naturally express the dashboard shell (sidebar + content) with nested routing that preserves state across navigation.
+4. **The entire score renderer is client-only** (`'use client'`), so the server component model does not conflict -- the editor page simply uses a client component boundary.
+5. **`proxy.ts`** (formerly middleware.ts in Next.js 15) handles auth guards at the network layer, redirecting unauthenticated users to the sign-in page.
+
+## Turbopack vs Webpack for This Project
+
+**Use Turbopack (the default) with `--webpack` as an escape hatch.**
+
+Turbopack is the default bundler in Next.js 16. For Verovio's client-side WASM loading, Turbopack supports direct WASM imports -- GitHub issue #84972 was closed as "not a bug" (the reporter was using WASM incorrectly). The patterns that work in Turbopack:
+
+1. **Direct import** -- Turbopack handles `import` of `.wasm` modules and returns instantiated modules.
+2. **`new URL("module.wasm", import.meta.url)`** -- copies WASM to the static folder, provides a URL for manual instantiation.
+
+Since Verovio uses `import createVerovioModule from 'verovio/wasm'` which internally handles WASM instantiation, and the component is wrapped in `'use client'` + `dynamic({ ssr: false })`, this should work with Turbopack. If any edge case arises during implementation, fall back to `next build --webpack` for production while keeping Turbopack for dev speed.
+
+## Firebase Auth Strategy
+
+**Use Firebase Auth direct (not NextAuth), with httpOnly session cookies.** This is the pattern recommended in Firebase's official Next.js codelab.
+
+Flow:
+
+1. Client signs in via `signInWithPopup(auth, googleProvider)` in a `'use client'` component.
+2. On auth state change, call `getIdToken()` and POST it to a Next.js Route Handler (e.g., `/api/auth/session`).
+3. Route Handler uses `firebase-admin` to verify the ID token, then creates an httpOnly, secure `__session` cookie.
+4. `proxy.ts` reads the `__session` cookie on every request to protect routes. Unauthenticated requests to `/editor/*` or `/dashboard` redirect to `/login`.
+5. Server Components read the cookie via `await cookies()` and verify it with firebase-admin to get the current user for data fetching.
+
+Why this approach over alternatives:
+- No service worker complexity (service worker approach is harder to maintain and debug).
+- httpOnly cookies are immune to XSS attacks (JavaScript cannot read them).
+- Works natively with Next.js server components and proxy.ts.
+- Firebase's official codelab recommends exactly this pattern.
+- No vendor lock-in beyond Firebase (session cookies are a standard pattern).
+
+## Auto-Save Strategy
+
+**Zustand store subscription + `useDebouncedCallback` from use-debounce + Firestore `setDoc` with merge.**
+
+Flow:
+
+1. Zustand store holds project state (all inspector settings, sync anchors, file references).
+2. A `useAutoSave` hook subscribes to relevant store slices.
+3. On any change, `useDebouncedCallback` fires after 1500ms of inactivity.
+4. The debounced callback writes changed fields to `projects/{projectId}` using `setDoc(docRef, data, { merge: true })`.
+5. An `onSnapshot` listener on the document provides real-time sync for multi-tab usage.
+6. A "saving..." / "saved" indicator in the UI reflects write status.
+
+Why not Zustand `persist` middleware:
+- `persist` targets localStorage/sessionStorage/IndexedDB. We need Firestore as the persistence layer.
+- A custom `subscribe` + debounced write is more explicit and supports Firestore's `merge` semantics.
+- `onSnapshot` for reads + debounced `setDoc` for writes gives bidirectional real-time sync.
+
+## Verovio WASM Migration Strategy
+
+The existing Verovio loading pattern (`import createVerovioModule from 'verovio/wasm'`) must be wrapped in a client-only boundary in Next.js to prevent any server-side execution:
+
+```typescript
+// app/editor/[id]/page.tsx (server component)
+import dynamic from 'next/dynamic';
+
+const EditorClient = dynamic(() => import('./EditorClient'), { ssr: false });
+
+export default async function EditorPage({ params }: PageProps<'/editor/[id]'>) {
+  const { id } = await params;
+  // Optionally fetch initial project data server-side here
+  return <EditorClient projectId={id} />;
+}
+```
+
+```typescript
+// app/editor/[id]/EditorClient.tsx
+'use client';
+// ALL existing Verovio + renderer code lives here
+// verovioService.ts import works unchanged since this is client-only
+```
+
+The existing `verovioService.ts` requires ZERO changes. The `'use client'` directive + `dynamic({ ssr: false })` ensures WASM never attempts to load server-side. All existing hooks (useVerovio, useSingleLineVerovio) and stores (syncStore, eventStore) work as-is inside the client boundary.
+
+## File Storage Strategy
+
+**Firebase Storage with uid-scoped paths.**
 
 ```
-Browser (client)                  Backend (server)
-  |                                  |
-  |-- POST /api/export ------------->|  Upload MusicXML + audio + settings
-  |                                  |  Returns { jobId, wsUrl }
-  |                                  |
-  |<-- WebSocket connection -------->|  Connect for progress updates
-  |                                  |
-  |                                  |  [Server internally:]
-  |                                  |  1. Serve built frontend via @fastify/static
-  |                                  |  2. Launch headless Chrome (Puppeteer)
-  |                                  |  3. Navigate to /render?jobId=xxx
-  |                                  |  4. Frontend loads in headless Chrome
-  |                                  |  5. Wait for animationController on window
-  |                                  |  6. Spawn FFmpeg with image2pipe
-  |                                  |  7. Loop: setFrame() -> screenshot() -> pipe to FFmpeg
-  |                                  |  8. Stream progress via WebSocket
-  |                                  |  9. FFmpeg produces MP4
-  |                                  |
-  |<-- WS: { progress: 0.45 } ------|  Progress updates
-  |<-- WS: { progress: 1.0, url }---|  Complete with download URL
-  |                                  |
-  |-- GET /api/export/:jobId/download|  Download MP4 file
-  |                                  |
+users/{uid}/projects/{projectId}/musicxml/{filename}
+users/{uid}/projects/{projectId}/audio/{filename}
+users/{uid}/projects/{projectId}/background/{filename}
+users/{uid}/projects/{projectId}/exports/{filename}
 ```
 
-### Key Integration Points
+Upload pattern: `uploadBytesResumable()` for progress tracking on large audio files, `getDownloadURL()` for retrieval. Firestore document stores the download URL references.
 
-1. **Frontend animationController API** (already exists):
-   - `window.animationController.setFrame(frameNumber, fps)` -- synchronous, updates DOM immediately
-   - `window.animationController.getDuration()` -- returns audio duration in seconds
-   - `window.animationController.getFps()` -- returns default FPS (30)
+Security rules restrict access: `request.auth.uid == uid` in storage rules. Each user can only access their own files.
 
-2. **Frontend render mode** (needs minor addition):
-   - Backend serves the built frontend with a `/render` route
-   - Render page loads MusicXML + settings from backend API (not file upload)
-   - Disables page virtualization (all pages mounted for screenshots)
-   - Scales score to fill viewport at target resolution
+## Firestore Data Model
 
-3. **Settings transfer**:
-   - All settings (score region, colors, zoom, animation params) serialized as JSON
-   - Sent in POST /api/export body alongside MusicXML and audio files
-   - Render page reads settings from backend API and applies them
+```
+users/{uid}
+  displayName: string
+  email: string
+  photoURL: string
+  createdAt: timestamp
+  updatedAt: timestamp
 
----
+projects/{projectId}
+  ownerId: string (uid)
+  name: string
+  createdAt: timestamp
+  updatedAt: timestamp
 
-## Version Compatibility Matrix
+  // File references (Firebase Storage download URLs)
+  musicXmlUrl: string | null
+  musicXmlFilename: string | null
+  audioUrl: string | null
+  audioFilename: string | null
+  backgroundUrl: string | null
+  backgroundFilename: string | null
 
-| Package | Min Node | TypeScript | Fastify Compat | Notes |
-|---------|----------|------------|----------------|-------|
-| fastify 5.7.x | 20+ | Built-in | N/A | Requires Node 20+ for v5 |
-| @fastify/websocket 11.x | 20+ | @types/ws | Fastify 5 | Compatible with Fastify v5 |
-| @fastify/cors 11.x | 20+ | Built-in | Fastify 5 | Compatible with Fastify v5 |
-| @fastify/multipart 9.x | 20+ | Built-in | Fastify 5 | Compatible with Fastify v5 |
-| @fastify/static 9.x | 20+ | Built-in | Fastify 5 | Compatible with Fastify v5 |
-| puppeteer 24.x | 18+ | Built-in | N/A | Bundles Chrome for Testing |
+  // Score settings (all the inspector state)
+  fps: number
+  scoreColor: string
+  scoreShadowDistance: number
+  hideUnplayedNotes: boolean
+  smoothReveal: boolean
+  scoreScale: number
+  musicFont: string
+  hideLabels: boolean
+  scoreBorder: string
+  scoreRegion: { x, y, width, height } | null
 
-**Node.js 22 LTS satisfies all requirements.** All Fastify v5 plugins require Node 20+, which Node 22 exceeds.
+  // Note animation settings
+  activeNoteheadColor: string | null
+  activeNoteheadScale: number
+  activeNoteheadEntryMs: number
+  activeNoteheadHoldMs: number
+  activeNoteheadExitMs: number
+  colorFullNote: boolean
 
----
+  // Sync anchors (Map serialized as object)
+  syncAnchors: Record<string, number>
+```
+
+Why a flat structure instead of subcollections:
+- All project data fits in a single Firestore document (well under 1MB limit).
+- Single `setDoc` with merge for auto-save is simpler than multi-document transactions.
+- Single `onSnapshot` for real-time sync across all project state.
+- Dashboard list query: `query(collection(db, 'projects'), where('ownerId', '==', uid), orderBy('updatedAt', 'desc'))`.
 
 ## Alternatives Considered
 
 | Category | Recommended | Alternative | Why Not |
 |----------|-------------|-------------|---------|
-| HTTP Server | Fastify 5 | Express 5 | Express is 3-4x slower, lacks built-in TypeScript, no bundled logger |
-| HTTP Server | Fastify 5 | Hono | Newer, less ecosystem, fewer official plugins |
-| WebSocket | @fastify/websocket | socket.io | Heavy abstraction, auto-reconnect/rooms not needed for progress streaming |
-| WebSocket | @fastify/websocket | SSE (Server-Sent Events) | One-directional only; may want client-to-server cancel later |
-| Browser | Puppeteer 24 | Playwright | Multi-browser support unneeded; Puppeteer simpler for Chrome-only |
-| Browser | Puppeteer 24 | CDP direct | Low-level, Puppeteer adds critical abstractions (page lifecycle, screenshot) |
-| Video Encoding | FFmpeg via spawn | fluent-ffmpeg | Deprecated/archived, unnecessary abstraction for single command |
-| Video Encoding | FFmpeg via spawn | ffmpeg.wasm | WASM FFmpeg is 10-50x slower than native binary, memory-constrained |
-| Job IDs | crypto.randomUUID | nanoid | Built-in is faster and zero-dependency |
-| Job Queue | In-memory Map | BullMQ + Redis | Overkill for MVP; add when scaling to multi-machine |
-| Deployment | Fly.io | Railway | Fly.io has better Docker support, machine auto-stop, established Puppeteer patterns |
-| Deployment | Fly.io | AWS ECS | More complex setup, higher operational overhead for small service |
+| Framework | Next.js 16 | Next.js 15 | 15 is previous-gen. 16 has Turbopack stable, React 19.2, proxy.ts, better routing. Starting fresh on latest avoids future re-migration. |
+| Auth | Firebase Auth direct | NextAuth.js v5 | Unnecessary abstraction when fully committed to Firebase. Adds adapter complexity for zero benefit. |
+| Auth | Firebase Auth direct | Clerk | Paid service. Firebase Auth free tier covers 50K MAU -- more than sufficient. |
+| Database | Firestore | Supabase Postgres | Already choosing Firebase for auth + storage. Firestore's real-time sync + offline persistence is ideal for auto-save. Single vendor reduces complexity. |
+| Database | Firestore | PlanetScale / Neon | Relational DB is overkill for key-value project settings. Firestore's document model maps 1:1 to the existing state shape. |
+| State sync | Custom Zustand subscribe | Zustand persist middleware | persist targets localStorage, not Firestore. Custom subscribe gives merge control and bidirectional sync via onSnapshot. |
+| Debounce | use-debounce | lodash.debounce | use-debounce is React-hook-native with proper cleanup, smaller, purpose-built for this exact use case. |
+| WASM bundling | Turbopack (default) | Webpack (--webpack flag) | Turbopack is 2-5x faster. Client-side WASM works. Keep webpack only as escape hatch. |
+| File hooks | Custom hooks | react-firebase-hooks | Unmaintained (3 years stale). 10-20 lines of custom code is more reliable than a dead dependency. |
 
----
+## Installation
+
+```bash
+# Core framework (replaces vite, @vitejs/plugin-react, vite-plugin-wasm, vite-plugin-top-level-await)
+npm install next@latest react@latest react-dom@latest
+
+# Firebase (NEW)
+npm install firebase firebase-admin
+
+# Auto-save debounce (NEW)
+npm install use-debounce
+
+# Dev dependencies (update types for Next.js)
+npm install -D @types/react@latest @types/react-dom@latest typescript
+
+# REMOVE these Vite-specific packages (no longer needed with Next.js)
+npm uninstall vite @vitejs/plugin-react vite-plugin-wasm vite-plugin-top-level-await @tailwindcss/postcss
+```
+
+**Total new production dependencies: 3** (next, firebase, use-debounce)
+**Total removed production dependencies: 0** (existing deps carry over)
+**Total removed dev dependencies: 4** (vite ecosystem)
+
+## Key Configuration
+
+### next.config.ts
+
+```typescript
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  // Turbopack is the default -- no explicit bundler config needed
+
+  // If Verovio WASM causes issues with Turbopack, uncomment:
+  // turbopack: {
+  //   resolveAlias: {
+  //     // Add alias overrides if needed for WASM resolution
+  //   },
+  // },
+
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'firebasestorage.googleapis.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com', // Google profile photos
+      },
+    ],
+  },
+};
+
+export default nextConfig;
+```
+
+### proxy.ts (auth guard, replaces middleware.ts)
+
+```typescript
+import { NextRequest, NextResponse } from 'next/server';
+
+export function proxy(request: NextRequest) {
+  const session = request.cookies.get('__session');
+  const isAuthPage = request.nextUrl.pathname === '/login';
+  const isProtectedRoute = request.nextUrl.pathname.startsWith('/editor') ||
+                           request.nextUrl.pathname.startsWith('/dashboard');
+
+  if (isProtectedRoute && !session) {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  if (isAuthPage && session) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ['/dashboard/:path*', '/editor/:path*', '/login'],
+};
+```
+
+## Environment Variables
+
+```bash
+# .env.local
+
+# Client-accessible (prefixed with NEXT_PUBLIC_)
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
+NEXT_PUBLIC_FIREBASE_APP_ID=...
+
+# Server-only (no NEXT_PUBLIC_ prefix -- never exposed to client)
+FIREBASE_ADMIN_PROJECT_ID=...
+FIREBASE_ADMIN_CLIENT_EMAIL=...
+FIREBASE_ADMIN_PRIVATE_KEY=...
+```
+
+## Version Compatibility Matrix
+
+| Package | Min Node | TypeScript | Notes |
+|---------|----------|------------|-------|
+| Next.js 16.1.x | 20.9+ | 5.1+ | Turbopack default, React 19.2 |
+| firebase 12.9.x | 20+ | Built-in | ES2020 target, modular tree-shaking |
+| firebase-admin 13.6.x | 20+ | Built-in | Server-only, ESM support |
+| zustand 5.0.x | 18+ | Built-in | No changes from current setup |
+| use-debounce 10.1.x | 16+ | Built-in | React 18+ peer dependency |
+| verovio 6.0.x | N/A | @types/verovio | Client-only WASM, browser runtime |
+
+**Node.js 20.9+ LTS satisfies all requirements.**
 
 ## Sources
 
-### Primary (HIGH confidence)
-- [Puppeteer npm](https://www.npmjs.com/package/puppeteer) -- v24.37.2, latest
-- [Puppeteer Docker Guide](https://pptr.dev/guides/docker) -- Official Docker image and configuration
-- [Puppeteer System Requirements](https://pptr.dev/guides/system-requirements) -- Node 18+, platform support
-- [Puppeteer ScreenshotOptions](https://pptr.dev/api/puppeteer.screenshotoptions) -- optimizeForSpeed, encoding options (v24.37.2 docs)
-- [Puppeteer JavaScript Execution](https://pptr.dev/guides/javascript-execution) -- page.evaluate() behavior
-- [Fastify npm](https://www.npmjs.com/package/fastify) -- v5.7.4, latest
-- [Fastify Official Site](https://fastify.dev/) -- v5 documentation, plugin ecosystem
-- [Fastify Logging Docs](https://fastify.dev/docs/latest/Reference/Logging/) -- Built-in Pino integration
-- [@fastify/websocket npm](https://www.npmjs.com/package/@fastify/websocket) -- v11.2.0
-- [@fastify/cors npm](https://www.npmjs.com/package/@fastify/cors) -- v11.2.0
-- [@fastify/multipart npm](https://www.npmjs.com/package/@fastify/multipart) -- v9.4.0
-- [@fastify/static npm](https://www.npmjs.com/package/@fastify/static) -- v9.0.0
-- [ws npm](https://www.npmjs.com/package/ws) -- v8.19.0, underlying WebSocket lib
-- [Node.js Releases](https://nodejs.org/en/about/previous-releases) -- v22.22.0 LTS (Jod)
-- [Node.js crypto.randomUUID](https://nodejs.org/api/crypto.html#cryptorandomuuidoptions) -- Built-in UUID generation
-- [fluent-ffmpeg deprecation](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg/issues/1324) -- Phasing out announcement
-
-### Secondary (MEDIUM confidence)
-- [Fly.io Puppeteer Guide](https://fly.io/docs/app-guides/puppeteer-js-renderer/) -- Deployment patterns (marked obsolete, but Docker patterns still valid)
-- [Fly.io Machine Sizing](https://fly.io/docs/machines/guides-examples/machine-sizing/) -- performance-2x specs
-- [Fly.io Pricing](https://fly.io/docs/about/pricing/) -- Per-second billing
-- [Fly.io Autostop/Autostart](https://fly.io/docs/launch/autostop-autostart/) -- Scale-to-zero configuration
-- [Run Puppeteer with Docker on Fly.io](https://macarthur.me/posts/puppeteer-with-docker/) -- Working Dockerfile example
-- [Puppeteer Screenshot Performance Tips](https://www.bannerbear.com/blog/ways-to-speed-up-puppeteer-screenshots/) -- optimizeForSpeed, binary encoding
-- [Screenshot Speed Optimization](https://screenshotone.com/blog/optimize-for-speed-when-rendering-screenshots-in-puppeteer-and-chrome-devtools-protocol/) -- CDP-level optimization
-- [FFmpeg Image Sequence to H.264](https://avpres.net/FFmpeg/sq_H264.html) -- image2pipe with libx264
-- [Fastify vs Express Comparison 2026](https://www.index.dev/skill-vs-skill/backend-nestjs-vs-expressjs-vs-fastify) -- Performance benchmarks
-
-### Tertiary (LOW confidence)
-- [Fly.io Community: Puppeteer in Docker](https://community.fly.io/t/issue-running-puppeteer-in-docker-with-fly-and-nodejs/18302) -- Community troubleshooting
-- [FFmpeg Piping with Node.js](https://ofarukcaki.medium.com/producing-real-time-video-with-node-js-and-ffmpeg-a59ac27461a1) -- stdin piping pattern
-
----
-
-## Confidence Assessment
-
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Fastify + plugins | HIGH | All versions verified on npm, official Fastify ecosystem |
-| Puppeteer | HIGH | Version and API verified against official docs (v24.37.2) |
-| FFmpeg via spawn | HIGH | Well-established pattern, no library dependency risk |
-| Docker configuration | HIGH | Official Puppeteer Docker image, straightforward FFmpeg addition |
-| Fly.io deployment | MEDIUM | Verified docs/pricing, but exact machine behavior needs testing |
-| Integration with animationController | HIGH | API reviewed in source code -- setFrame is synchronous, compatible with evaluate/screenshot loop |
-
-**Overall confidence:** HIGH
-
-All core technology choices are verified against official documentation and current npm versions. The only MEDIUM area (Fly.io specifics) is operational configuration that can be tuned during deployment.
-
----
-
-## Open Questions
-
-### Browser Pool vs Single Instance
-**What we know:** Each export needs a Puppeteer browser instance. Multiple concurrent exports need multiple browsers.
-**What is unclear:** Whether to launch one browser per export or maintain a browser pool.
-**Recommendation:** Start with one browser per export (simplest). Profile memory usage. Add pooling only if startup latency (~2-3s) becomes a bottleneck.
-
-### Audio in MP4
-**What we know:** FFmpeg can mux audio into MP4 alongside the video stream.
-**What is unclear:** Whether audio should be included in the MP4 or kept separate.
-**Recommendation:** Include audio muxing from the start. Users expect a complete video with sound. Add `-i audio.mp3 -c:a aac -b:a 192k` to the FFmpeg command.
-
-### Temp File Cleanup
-**What we know:** MP4 output files and uploaded assets need cleanup after download.
-**What is unclear:** Optimal cleanup timing (immediate after download? TTL-based?).
-**Recommendation:** Delete output file after successful download. Use a 1-hour TTL cleanup sweep for abandoned jobs.
-
-### Fastify Node Version
-**What we know:** Fastify v5 requires Node 20+. We target Node 22.
-**What is unclear:** Whether the official Puppeteer Docker image (currently Node 24 based) will cause issues.
-**Recommendation:** If the Puppeteer image uses Node 24, that exceeds our minimum. Verify Fastify v5 compatibility with Node 24 during setup. If needed, build a custom image with Node 22 and install Chrome manually.
-
----
-
-**Research Complete:** 2026-02-09
-**Valid Until:** 60 days (Puppeteer releases frequently; verify major version before starting implementation)
+- [Next.js 16 Release Blog](https://nextjs.org/blog/next-16) -- HIGH confidence. Verified: Turbopack default, React 19.2, proxy.ts, breaking changes.
+- [Next.js 16 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-16) -- HIGH confidence. Verified: async params, proxy.ts migration, Turbopack config.
+- [Firebase JS SDK npm](https://www.npmjs.com/package/firebase) -- HIGH confidence. v12.9.0 confirmed, last published 6 days ago.
+- [Firebase Admin npm](https://www.npmjs.com/package/firebase-admin) -- HIGH confidence. v13.6.1 confirmed, last published 6 days ago.
+- [Firebase Next.js Codelab](https://firebase.google.com/codelabs/firebase-nextjs) -- HIGH confidence. Official Google pattern for Auth + App Router + session cookies.
+- [Firebase Modular SDK Upgrade Guide](https://firebase.google.com/docs/web/modular-upgrade) -- HIGH confidence. Tree-shaking, modular imports.
+- [Firebase Storage Upload Docs](https://firebase.google.com/docs/storage/web/upload-files) -- HIGH confidence. uploadBytesResumable, getDownloadURL.
+- [Turbopack WASM Issue #84972](https://github.com/vercel/next.js/issues/84972) -- HIGH confidence. Closed as "not a bug", WASM works with correct patterns.
+- [Verovio Reference Book - JS/WASM](https://book.verovio.org/installing-or-building-from-sources/javascript-and-webassembly.html) -- HIGH confidence. ESM import pattern.
+- [use-debounce npm](https://www.npmjs.com/package/use-debounce) -- HIGH confidence. v10.1.0 confirmed.
+- [Firebase Session Cookies](https://firebase.google.com/docs/auth/admin/manage-cookies) -- HIGH confidence. httpOnly cookie pattern with Admin SDK.
+- [Zustand + Firebase Discussion](https://github.com/pmndrs/zustand/discussions/477) -- MEDIUM confidence. Community patterns for Zustand + Firestore integration.
+- [WASM in Next.js Turbopack Workaround](https://codenote.net/en/posts/resolve-wasm-module-turbopack-nextjs-vercel/) -- MEDIUM confidence. Server-side WASM resolution; client-side is simpler.
+- [Firebase Auth Best Practices for Redirect](https://firebase.google.com/docs/auth/web/redirect-best-practices) -- MEDIUM confidence. signInWithPopup vs signInWithRedirect tradeoffs.

@@ -1,54 +1,76 @@
-# Architecture: Backend Video Export Service
+# Architecture: Next.js Migration + Firebase Backend
 
-**Domain:** Headless Chrome frame capture + FFmpeg encoding service for MusicXML score animation
-**Researched:** 2026-02-09
+**Domain:** Full-stack migration from Vite SPA to Next.js App Router with Firebase Auth, Firestore, and Storage
+**Researched:** 2026-02-11
 **Confidence:** HIGH
-
----
-
-## Executive Summary
-
-The backend video export service captures the existing browser-based score renderer frame-by-frame in headless Chrome and encodes the frames into MP4 via FFmpeg. The architecture is a **monorepo sibling package** that builds and serves the frontend, opens it in Puppeteer, injects all user settings via `evaluateOnNewDocument`, then loops through `window.animationController.setFrame(n, fps)` piping each screenshot buffer to FFmpeg's stdin.
-
-The critical insight from codebase analysis: the frontend already has a synchronous, stateless `setTimestamp()` function in `RegularRenderer` (lines 526-668) that computes exact animation state mathematically -- no CSS transitions, no timeouts, forces reflow before returning. This means each Puppeteer screenshot captures a pixel-perfect frame with zero timing dependencies. The backend simply needs to call this function, screenshot, and pipe.
 
 ---
 
 ## Recommended Architecture
 
+### Directory Structure
+
 ```
-Manuscript/
-  renderer/              (existing frontend SPA)
-  export-service/        (NEW: Node.js backend)
-    src/
-      server.ts          Entry point: HTTP + WebSocket server
-      routes/
-        export.ts        POST /api/export -- initiates export job
-        status.ts        GET  /api/export/:jobId -- job status
-        download.ts      GET  /api/export/:jobId/download -- serve MP4
-      jobs/
-        jobManager.ts    Job queue, state machine, cleanup
-        renderJob.ts     Orchestrates Puppeteer + FFmpeg pipeline
-      pipeline/
-        browser.ts       Puppeteer lifecycle (launch, page, inject, close)
-        captureLoop.ts   Frame-by-frame capture loop
-        encoder.ts       FFmpeg child_process spawn + stdin pipe
-      ws/
-        progress.ts      WebSocket handler for real-time progress
-      shared/
-        types.ts         ExportRequest, ExportSettings, JobStatus
-        config.ts        Server configuration (ports, paths, limits)
+renderer/
+  app/                          # Next.js App Router
+    layout.tsx                  # Root layout (html, body, AuthProvider)
+    page.tsx                    # Landing/marketing page (or redirect to /dashboard)
+    login/
+      page.tsx                  # Sign-in page (server component shell)
+      LoginClient.tsx           # 'use client' -- Firebase signInWithPopup
+    dashboard/
+      layout.tsx                # Dashboard layout (nav, sidebar)
+      page.tsx                  # Project list (server component -- Firestore query)
+      DashboardClient.tsx       # 'use client' -- project cards, create modal
+    editor/
+      [id]/
+        page.tsx                # Editor page (server component shell -- fetch project)
+        EditorClient.tsx        # 'use client' -- entire existing App.tsx lives here
+    api/
+      auth/
+        session/
+          route.ts              # POST: create session cookie from ID token
+          DELETE route.ts       # DELETE: clear session cookie (sign out)
+  lib/
+    firebase/
+      client.ts                 # Firebase client SDK initialization
+      admin.ts                  # Firebase Admin SDK initialization (server-only)
+      auth.ts                   # Auth helpers (signIn, signOut, onAuthStateChanged)
+      firestore.ts              # Firestore helpers (getProject, saveProject, etc.)
+      storage.ts                # Storage helpers (uploadFile, getDownloadUrl)
+    hooks/
+      useAuth.ts                # Auth state hook (wraps onAuthStateChanged)
+      useAutoSave.ts            # Debounced auto-save to Firestore
+      useProject.ts             # Load project from Firestore into Zustand
+    verovioService.ts           # UNCHANGED -- client-only WASM loading
+  components/                   # Shared UI components
+    AuthProvider.tsx             # React context for auth state
+    SaveIndicator.tsx            # "Saving..." / "Saved" UI
+    ProjectCard.tsx              # Dashboard project card
+    CreateProjectModal.tsx       # New project creation form
+  stores/                       # Zustand stores (UNCHANGED)
+    syncStore.ts
+    eventStore.ts
+    projectStore.ts             # NEW -- project settings state for auto-save
+  renderers/                    # UNCHANGED
+    RegularRenderer.tsx
+    SingleLineRenderer.tsx
+  proxy.ts                      # Auth guard (replaces middleware.ts)
+  next.config.ts
+  export-service/               # UNCHANGED -- separate Fastify service
 ```
 
-### Why Monorepo Sibling (Not Separate Repo, Not Same Package)
+### Why This Structure
 
-1. **Shared types:** `ExportSettings` mirrors the frontend's props interface exactly. Keeping them in the same repo ensures they stay in sync. A separate repo would drift.
+1. **Server components for data fetching.** Dashboard page fetches project list from Firestore server-side using firebase-admin. No loading spinners for the initial project list.
 
-2. **Frontend build access:** The backend needs to `vite build` the frontend and serve the `dist/` output. A sibling package in the same repo makes this a workspace script.
+2. **Client boundaries at the page level.** Each page has a thin server component shell that fetches data, then passes it to a `'use client'` component. The editor page is entirely client-rendered because of Verovio WASM.
 
-3. **Independent deployment:** The backend has completely different dependencies (Puppeteer, FFmpeg) and runs on a server, not in the browser. It should NOT be in the frontend's `package.json`.
+3. **Firebase SDKs in lib/.** Client SDK (`firebase/client.ts`) and Admin SDK (`firebase/admin.ts`) are separate files. The Admin SDK must NEVER be imported in client code -- it contains credentials and runs only on the server.
 
-4. **Not pnpm workspaces (yet):** The existing project uses npm (`package-lock.json` exists, no `pnpm-workspace.yaml`). Adding a sibling directory with its own `package.json` is the simplest approach. Workspace tooling can be added later if needed.
+4. **Existing code migrates with minimal changes.** The current `App.tsx` becomes `EditorClient.tsx` with a `'use client'` directive. The renderer components, hooks, stores, and utilities move as-is into the new structure.
+
+5. **Export service stays independent.** The Fastify export service is not migrated to Next.js. It continues as a separate process. The Next.js app communicates with it the same way it does now (HTTP + WebSocket).
 
 ---
 
@@ -56,681 +78,358 @@ Manuscript/
 
 | Component | Responsibility | Communicates With |
 |-----------|---------------|-------------------|
-| **HTTP Server** | Accept export requests, serve files, CORS | Routes, JobManager |
-| **WebSocket Server** | Stream progress events to client | JobManager events |
-| **JobManager** | Job queue, lifecycle, cleanup, concurrency | RenderJob, Progress |
-| **RenderJob** | Orchestrate single export job | Browser, CaptureLoop, Encoder |
-| **Browser** | Puppeteer lifecycle, page setup, state injection | Puppeteer API |
-| **CaptureLoop** | Frame iteration, screenshot capture | Browser (page), Encoder (stdin) |
-| **Encoder** | FFmpeg spawn, stdin pipe, output file | child_process, filesystem |
-| **Frontend (modified)** | Render mode: no UI, no virtualization, full viewport | window.animationController |
+| **proxy.ts** | Auth guard: check __session cookie, redirect unauthenticated users | Next.js router, cookies |
+| **AuthProvider** | React context providing { user, loading } to all client components | Firebase Auth SDK, children components |
+| **LoginClient** | Google sign-in UI, popup flow, POST token to session API | Firebase Auth, /api/auth/session |
+| **Session Route Handler** | Verify ID token, set/clear httpOnly __session cookie | firebase-admin, cookies |
+| **Dashboard page** | Server-side Firestore query for project list | firebase-admin, DashboardClient |
+| **DashboardClient** | Render project cards, create/delete/rename projects | Firestore client SDK, Firebase Storage |
+| **Editor page** | Server-side project data fetch, render EditorClient | firebase-admin, EditorClient |
+| **EditorClient** | All existing App.tsx functionality + auto-save | Zustand stores, Verovio, Firestore |
+| **useAutoSave hook** | Subscribe to Zustand, debounce writes to Firestore | Zustand stores, Firestore client SDK |
+| **useProject hook** | Load project from Firestore into Zustand on mount | Firestore client SDK, Zustand stores |
+| **projectStore** | Hold all saveable project state | useAutoSave, EditorClient |
 
 ---
 
 ## Data Flow
 
-### 1. Export Request Flow
+### 1. Authentication Flow
 
 ```
-Browser (user clicks "Export Video")
-  |
-  | POST /api/export
-  | Body: { musicXml, audioFile, syncAnchors, settings, resolution, fps }
+User clicks "Sign in with Google"
   |
   v
-HTTP Server
+LoginClient: signInWithPopup(auth, googleProvider)
   |
-  | Validate request, create jobId
-  | Store uploaded files to temp directory
+  | Returns: UserCredential with idToken
+  v
+LoginClient: POST /api/auth/session { idToken }
   |
   v
-JobManager.enqueue(job)
-  |
-  | Queue job, enforce concurrency limit (1 active)
-  | Return jobId to client immediately
+Session Route Handler:
+  1. admin.auth().verifyIdToken(idToken)
+  2. admin.auth().createSessionCookie(idToken, { expiresIn: 14 days })
+  3. Set httpOnly cookie: __session = sessionCookie
+  4. Return 200 OK
   |
   v
-Client opens WebSocket: ws://host/ws?jobId=xxx
+LoginClient: router.push('/dashboard')
   |
-  | Receives: { type: 'progress', frame, totalFrames, percent }
-  | Receives: { type: 'complete', downloadUrl }
-  | Receives: { type: 'error', message }
+  v
+proxy.ts: sees __session cookie -> allows request through
+  |
+  v
+Dashboard page renders
 ```
 
-### 2. Render Pipeline Flow (Inside RenderJob)
+### 2. Project Load Flow
 
 ```
-RenderJob.execute()
+User clicks project card in dashboard
   |
-  +-- 1. Browser.launch()
-  |     Puppeteer.launch({ headless: true, args: [...] })
+  v
+Navigate to /editor/{projectId}
   |
-  +-- 2. Browser.setupPage(settings, resolution)
-  |     page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 })
-  |     page.evaluateOnNewDocument(injectSettings, settings)
-  |     page.goto(frontendUrl + '?render=true')
+  v
+Editor page.tsx (server component):
+  1. Read __session cookie via await cookies()
+  2. Verify session with firebase-admin -> get uid
+  3. Fetch project doc from Firestore (admin SDK)
+  4. Pass project data as props to EditorClient
   |
-  +-- 3. Browser.waitForReady()
-  |     page.waitForFunction('window.animationController !== undefined')
-  |     page.waitForFunction('window.animationController.getDuration() > 0')
-  |
-  +-- 4. Encoder.start(outputPath, fps, resolution)
-  |     spawn('ffmpeg', ['-f','image2pipe','-framerate',fps,'-i','-',
-  |       '-c:v','libx264','-pix_fmt','yuv420p','-crf','18',
-  |       '-preset','medium', outputPath])
-  |
-  +-- 5. CaptureLoop.run(page, ffmpegStdin, totalFrames, fps)
-  |     for frame = 0 to totalFrames:
-  |       page.evaluate(f => window.animationController.setFrame(f, fps), frame)
-  |       buffer = page.screenshot({ type: 'png', optimizeForSpeed: true })
-  |       ffmpegStdin.write(buffer)
-  |       emit('progress', { frame, totalFrames })
-  |
-  +-- 6. Encoder.finish()
-  |     ffmpegStdin.end()
-  |     await ffmpegProcess exit
-  |
-  +-- 7. Browser.close()
-  |
-  +-- 8. emit('complete', { downloadUrl })
+  v
+EditorClient (client component):
+  1. Hydrate projectStore with server-provided data
+  2. Fetch file download URLs from Firestore
+  3. Load MusicXML content from Storage URL
+  4. Load audio URL into state
+  5. Restore all settings from project data
+  6. Restore sync anchors: new Map(Object.entries(data.syncAnchors))
+  7. Initialize useAutoSave(projectId)
+  8. Render existing App UI (renderers, inspector, sync editor)
 ```
 
-### 3. State Injection Detail
+### 3. Auto-Save Flow
 
-The frontend App reads all settings from React useState. For render mode, the backend injects a `window.__EXPORT_CONFIG__` object BEFORE React loads. The App checks for this object and uses it instead of useState defaults.
-
-```typescript
-// Backend: browser.ts
-await page.evaluateOnNewDocument((config) => {
-  window.__EXPORT_CONFIG__ = config;
-}, {
-  musicXml: xmlContent,
-  syncAnchors: Object.fromEntries(anchorsMap),  // Map -> plain object
-  audioDuration: durationSeconds,                 // No audio element needed
-  fps: 30,
-  scoreColor: '#000000',
-  scoreScale: 1.0,
-  musicFont: 'Bravura',
-  scoreRegion: null,
-  scoreBorder: 'none',
-  scoreShadowDistance: 0,
-  hideUnplayedNotes: true,
-  smoothReveal: true,
-  activeNoteheadColor: '#000000',
-  activeNoteheadScale: 1.2,
-  activeNoteheadEntryMs: 50,
-  activeNoteheadHoldMs: 200,
-  activeNoteheadExitMs: 500,
-  colorFullNote: false,
-  bgUrl: null,  // Or base64 data URL
-});
+```
+User adjusts slider in Inspector
+  |
+  v
+Zustand projectStore updates immediately
+  |
+  v
+useAutoSave detects change via store.subscribe()
+  |
+  | Resets 1500ms debounce timer
+  |
+  v [1500ms with no further changes]
+  |
+  v
+useAutoSave: setDoc(doc(db, 'projects', projectId), {
+  ...changedFields,
+  updatedAt: serverTimestamp(),
+}, { merge: true })
+  |
+  +-- saveStatus = 'saving'
+  |
+  v [Firestore write completes]
+  |
+  +-- saveStatus = 'saved'
+  |
+  v
+SaveIndicator shows "Saved" with checkmark
 ```
 
-```typescript
-// Frontend: App.tsx (modified)
-const exportConfig = (window as any).__EXPORT_CONFIG__;
-const isRenderMode = !!exportConfig;
+### 4. File Upload Flow (Project Creation)
 
-// Use export config or interactive defaults
-const [fps, setFps] = useState(exportConfig?.fps ?? 60);
-const [scoreColor, setScoreColor] = useState(exportConfig?.scoreColor ?? '#000000');
-// ... etc for all settings
 ```
-
-### 4. Sync Anchors Injection
-
-Sync anchors are a `Map<string, number>` in the frontend. Maps cannot be serialized to JSON. The backend serializes as a plain object, and the frontend reconstructs the Map.
-
-```typescript
-// Backend sends:
-{ syncAnchors: { "evt-0": 0.0, "evt-5": 1.234, "evt-100": 45.678 } }
-
-// Frontend reconstructs:
-const anchorsMap = new Map(Object.entries(exportConfig.syncAnchors));
-useSyncStore.setState({ anchors: anchorsMap });
+User fills in Create Project modal
+  |
+  v
+CreateProjectModal: uploadBytesResumable(
+  ref(storage, `users/${uid}/projects/${newId}/score.xml`),
+  musicXmlFile
+)
+  |
+  | Shows upload progress bar
+  v
+On upload complete: getDownloadURL(uploadRef)
+  |
+  v
+Repeat for audio file and optional background image
+  |
+  v
+All uploads complete:
+  setDoc(doc(db, 'projects', newId), {
+    ownerId: uid,
+    name: projectName,
+    musicXmlUrl: musicXmlDownloadUrl,
+    musicXmlFilename: file.name,
+    audioUrl: audioDownloadUrl,
+    ...defaultSettings,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+  |
+  v
+router.push(`/editor/${newId}`)
 ```
-
-### 5. MusicXML Content Injection
-
-Two options for getting the MusicXML content to the page:
-
-**Option A (recommended): Inject as string via evaluateOnNewDocument.**
-The MusicXML is set on `window.__EXPORT_CONFIG__.musicXml`. The App reads it and sets state directly, bypassing the file upload UI.
-
-**Option B: Serve the file and fetch it.**
-Backend serves the file at `/api/files/:jobId/score.xml`. Frontend fetches on load. Adds an unnecessary network round-trip for data the backend already has.
-
-Option A is simpler and eliminates latency. MusicXML files are typically 50KB-2MB, well within what `evaluateOnNewDocument` can handle.
-
-### 6. Background Image Injection
-
-Background images are binary files. Options:
-
-**Option A (recommended for small images): Base64 data URL.**
-Convert the uploaded image to a base64 data URL and inject via `window.__EXPORT_CONFIG__.bgUrl = 'data:image/png;base64,...'`. Works for images up to ~5MB.
-
-**Option B (for large images): Serve via HTTP.**
-Backend serves at `/api/files/:jobId/bg.png`. Pass URL to frontend. Better for very large images.
-
-Start with Option A. If performance suffers, switch to B.
-
----
-
-## Frontend Modifications for Render Mode
-
-### New: Render Mode Detection
-
-```typescript
-// App.tsx or a new useRenderMode hook
-const exportConfig = typeof window !== 'undefined'
-  ? (window as any).__EXPORT_CONFIG__
-  : null;
-const isRenderMode = !!exportConfig;
-```
-
-### Modified: App.tsx
-
-When `isRenderMode` is true:
-
-1. **Skip UI:** Do not render sidebar, transport bar, tabs, upload zone
-2. **Auto-load data:** Use `exportConfig.musicXml` directly instead of waiting for file upload
-3. **Inject anchors:** Call `useSyncStore.setState({ anchors: new Map(...) })` on mount
-4. **Set all settings from config:** Override every useState default with config values
-5. **Render only the score viewport:** Full-screen RegularRenderer, no chrome
-
-### Modified: RegularRenderer.tsx
-
-When render mode is detected:
-
-1. **Disable page virtualization:** Mount ALL pages. The existing `extractionDoneRef.current` gate already handles this -- pages mount for extraction, then virtualize. In render mode, skip the virtualization step entirely.
-
-2. **Disable camera CSS transition:** Remove `transition: "transform 200ms ease-out"` from the camera div. Frame capture requires instant state, not animated transitions.
-
-3. **Set viewport dimensions from export resolution:** The container should be sized to match the Puppeteer viewport exactly (e.g., 1920x1080), not the preview WIDTH constant of 980px.
-
-4. **No audio element:** The `setTimestamp()` function already works without audio. It reads from `interpolatedEvents` and applies animation state mathematically. The `getDuration()` function returns `audioDuration` from state, which the backend injects via config.
-
-5. **Expose readiness signal:** The existing `window.animationController` exposure already signals readiness. Add a more explicit signal:
-   ```typescript
-   (window as any).__EXPORT_READY__ = true;
-   ```
-
-### What Does NOT Need to Change
-
-- `setTimestamp()` logic -- already stateless, synchronous, reflow-forcing
-- `interpolateTimestamps()` -- pure function, works with any input
-- `useVerovio` hook -- works the same, just with different container width
-- `noteAnimation.ts` -- not used in render mode (setTimestamp does its own animation math)
-- `getEvents.ts` -- extraction works identically
-- `eventStore` / `syncStore` -- Zustand stores work fine in headless Chrome
 
 ---
 
 ## Patterns to Follow
 
-### Pattern 1: Job State Machine
+### Pattern 1: Firebase Client SDK Singleton
 
-Jobs follow a strict lifecycle. No state skipping. Cleanup on every terminal state.
-
-```
-QUEUED -> PREPARING -> RENDERING -> ENCODING -> COMPLETE
-                  \        \          \
-                   \        \          +-> ERROR
-                    \        +----------> ERROR
-                     +-----------------> ERROR
-```
+**What:** Initialize Firebase client SDK once, export the instances.
 
 ```typescript
-interface ExportJob {
-  id: string;
-  status: 'queued' | 'preparing' | 'rendering' | 'encoding' | 'complete' | 'error';
-  progress: { frame: number; totalFrames: number; percent: number };
-  createdAt: number;
-  completedAt?: number;
-  outputPath?: string;
-  error?: string;
-  tempDir: string;  // Cleaned up on terminal states
+// lib/firebase/client.ts
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+
+// Prevent re-initialization in hot reload
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+```
+
+**When:** Every file that needs Firebase client SDK imports from this single module.
+
+### Pattern 2: Firebase Admin SDK Singleton (Server-Only)
+
+**What:** Initialize Admin SDK for server-side operations.
+
+```typescript
+// lib/firebase/admin.ts
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
+
+const app = getApps().length === 0
+  ? initializeApp({
+      credential: cert({
+        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    })
+  : getApps()[0];
+
+export const adminAuth = getAuth(app);
+export const adminDb = getFirestore(app);
+```
+
+**When:** Server components, Route Handlers, and proxy.ts. NEVER import this in client code.
+
+### Pattern 3: Thin Server Component + Fat Client Component
+
+**What:** Server components fetch data and pass it as props. Client components own all interactivity.
+
+```typescript
+// app/editor/[id]/page.tsx (server component)
+import { cookies } from 'next/headers';
+import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import dynamic from 'next/dynamic';
+
+const EditorClient = dynamic(() => import('./EditorClient'), { ssr: false });
+
+export default async function EditorPage({ params }: PageProps<'/editor/[id]'>) {
+  const { id } = await params;
+  const session = (await cookies()).get('__session')?.value;
+
+  if (!session) redirect('/login');
+
+  const decoded = await adminAuth.verifySessionCookie(session);
+  const projectSnap = await adminDb.collection('projects').doc(id).get();
+  const project = projectSnap.data();
+
+  if (!project || project.ownerId !== decoded.uid) notFound();
+
+  return <EditorClient projectId={id} initialData={project} />;
 }
 ```
 
-### Pattern 2: Puppeteer Screenshot to FFmpeg stdin Pipe
+**When:** Every page that needs authenticated data fetching.
 
-The core capture pattern. No intermediate files. Screenshots flow directly from Chrome to FFmpeg.
+### Pattern 4: Zustand Store for Project State
 
-```typescript
-// encoder.ts
-import { spawn } from 'child_process';
-
-function startEncoder(outputPath: string, fps: number, width: number, height: number) {
-  const ffmpeg = spawn('ffmpeg', [
-    '-y',                       // Overwrite output
-    '-f', 'image2pipe',         // Read images from stdin
-    '-framerate', String(fps),  // Input frame rate
-    '-i', '-',                  // Read from stdin
-    '-c:v', 'libx264',         // H.264 codec
-    '-pix_fmt', 'yuv420p',     // Compatibility pixel format
-    '-crf', '18',               // High quality (0=lossless, 23=default, 51=worst)
-    '-preset', 'medium',        // Encoding speed/quality tradeoff
-    '-vf', `scale=${width}:${height}`,  // Ensure exact resolution
-    '-movflags', '+faststart',  // Web-optimized MP4
-    outputPath,
-  ]);
-
-  return ffmpeg;
-}
-
-// captureLoop.ts
-async function captureFrames(
-  page: Page,
-  ffmpegStdin: Writable,
-  totalFrames: number,
-  fps: number,
-  onProgress: (frame: number) => void,
-) {
-  for (let frame = 0; frame <= totalFrames; frame++) {
-    await page.evaluate(
-      (f, r) => (window as any).animationController.setFrame(f, r),
-      frame, fps,
-    );
-
-    const buffer = await page.screenshot({
-      type: 'png',
-      optimizeForSpeed: true,  // Faster PNG encoding (zlib q1)
-      encoding: 'binary',
-    });
-
-    ffmpegStdin.write(buffer);
-    onProgress(frame);
-  }
-
-  ffmpegStdin.end();
-}
-```
-
-**Why PNG, not JPEG:** PNG is lossless. Music notation has thin lines (staff lines, stems) and sharp edges that JPEG compression visibly degrades. The file size difference is irrelevant since frames are piped to FFmpeg's stdin, not written to disk.
-
-**Why `optimizeForSpeed: true`:** Reduces PNG compression from zlib default to level 1 (RLE encoding). For piped frames that are immediately consumed by FFmpeg, compression ratio is irrelevant -- encoding speed matters.
-
-### Pattern 3: WebSocket Progress Protocol
-
-Simple JSON messages over WebSocket. Client connects with job ID after initiating export.
+**What:** A dedicated Zustand store for all saveable project fields, separate from ephemeral UI state.
 
 ```typescript
-// Messages from server to client
-type ProgressMessage =
-  | { type: 'queued'; position: number }
-  | { type: 'preparing'; message: string }
-  | { type: 'rendering'; frame: number; totalFrames: number; percent: number; eta: number }
-  | { type: 'encoding'; message: string }
-  | { type: 'complete'; downloadUrl: string; duration: number; fileSize: number }
-  | { type: 'error'; message: string; code: string };
-```
+// stores/projectStore.ts
+import { create } from 'zustand';
 
-ETA calculation: Track time per frame over a rolling window of 30 frames. Multiply by remaining frames.
+interface ProjectState {
+  // Saveable fields (synced with Firestore)
+  fps: number;
+  scoreColor: string;
+  scoreScale: number;
+  musicFont: string;
+  // ... all other settings
+  syncAnchors: Map<string, number>;
 
-### Pattern 4: Frontend Render Mode Wrapper
-
-Instead of scattering render-mode checks throughout App.tsx, create a dedicated wrapper component.
-
-```typescript
-// RenderApp.tsx (new)
-export default function RenderApp() {
-  const config = (window as any).__EXPORT_CONFIG__;
-
-  // Inject sync anchors into Zustand store
-  useEffect(() => {
-    const anchorsMap = new Map(
-      Object.entries(config.syncAnchors).map(([k, v]) => [k, v as number])
-    );
-    useSyncStore.setState({ anchors: anchorsMap });
-  }, []);
-
-  return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      <RegularRenderer
-        xml={config.musicXml}
-        bgUrl={config.bgUrl}
-        fps={config.fps}
-        scoreColor={config.scoreColor}
-        syncAnchors={/* from store */}
-        scoreRegion={config.scoreRegion}
-        scoreBorder={config.scoreBorder}
-        scoreScale={config.scoreScale}
-        musicFont={config.musicFont}
-        activeNoteheadColor={config.activeNoteheadColor}
-        activeNoteheadScale={config.activeNoteheadScale}
-        activeNoteheadAnimationEntryMs={config.activeNoteheadEntryMs}
-        activeNoteheadAnimationHoldMs={config.activeNoteheadHoldMs}
-        activeNoteheadAnimationExitMs={config.activeNoteheadExitMs}
-        colorFullNote={config.colorFullNote}
-        renderMode={true}  // New prop: disables virtualization, transitions
-      />
-    </div>
-  );
+  // Actions
+  setFps: (fps: number) => void;
+  setScoreColor: (color: string) => void;
+  // ... setters for each field
+  hydrate: (data: Record<string, any>) => void;
+  getSnapshot: () => Record<string, any>;
 }
 
-// main.tsx (modified)
-const exportConfig = (window as any).__EXPORT_CONFIG__;
-const RootComponent = exportConfig ? RenderApp : App;
+export const useProjectStore = create<ProjectState>((set, get) => ({
+  fps: 30,
+  scoreColor: '#000000',
+  // ... defaults
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <RootComponent />
-  </StrictMode>,
-);
+  setFps: (fps) => set({ fps }),
+  setScoreColor: (scoreColor) => set({ scoreColor }),
+
+  hydrate: (data) => set({
+    fps: data.fps ?? 30,
+    scoreColor: data.scoreColor ?? '#000000',
+    syncAnchors: new Map(Object.entries(data.syncAnchors ?? {})),
+    // ...
+  }),
+
+  getSnapshot: () => {
+    const state = get();
+    return {
+      fps: state.fps,
+      scoreColor: state.scoreColor,
+      syncAnchors: Object.fromEntries(state.syncAnchors),
+      // ...
+    };
+  },
+}));
 ```
+
+**When:** Any component that reads or writes project settings.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Real-Time Capture (Recording Screen)
+### Anti-Pattern 1: Importing firebase-admin in Client Code
 
-**What:** Using screen recording or CDP `Page.startScreencast` to capture video in real-time.
-**Why bad:** Animation timing depends on browser performance. Frames may be dropped. Output will be inconsistent across hardware. At 30fps with 1080p, each frame only has 33ms -- not enough for Verovio rendering + screenshot.
-**Instead:** Frame-by-frame capture with `setFrame()`. Each frame waits for the previous to complete. Deterministic, reproducible output regardless of hardware speed.
+**What:** Importing `firebase-admin` or `lib/firebase/admin.ts` in any file with `'use client'`.
+**Why bad:** firebase-admin contains server credentials. Next.js will attempt to bundle it for the client, exposing the private key. Also, firebase-admin depends on Node.js APIs (fs, net, http2) that do not exist in the browser.
+**Instead:** Use the client SDK (`firebase`) for all client-side operations. Use firebase-admin only in server components, Route Handlers, and proxy.ts.
 
-### Anti-Pattern 2: Writing Frame PNGs to Disk Then Encoding
+### Anti-Pattern 2: SSR Rendering the Editor
 
-**What:** Save each screenshot as `frame_0001.png`, then run `ffmpeg -i frame_%04d.png`.
-**Why bad:** For a 3-minute video at 30fps = 5,400 frames. At ~2MB per 1080p PNG = 10.8GB of temp disk. Slow disk I/O. Cleanup complexity.
-**Instead:** Pipe each PNG buffer directly to FFmpeg's stdin via `image2pipe`. Zero disk for frames.
+**What:** Attempting to server-side render the score editor page.
+**Why bad:** Verovio's WASM module, react-rnd, react-zoom-pan-pinch, and the existing renderer components all depend on browser APIs (DOM, window, Web Audio). SSR will fail or produce hydration mismatches.
+**Instead:** Use `dynamic(() => import('./EditorClient'), { ssr: false })` to ensure the entire editor is client-only. The server component just fetches project data and renders a loading shell.
 
-### Anti-Pattern 3: Loading Frontend via file:// Protocol
+### Anti-Pattern 3: Storing Files in Firestore Documents
 
-**What:** `page.goto('file:///path/to/dist/index.html')`.
-**Why bad:** WASM loading fails due to CORS restrictions on file:// URLs. Verovio's WASM module requires proper HTTP serving.
-**Instead:** Serve the built frontend via a local HTTP server (e.g., `express.static(distPath)`). Navigate to `http://localhost:PORT`.
+**What:** Storing MusicXML content or audio data directly in Firestore documents as base64 strings.
+**Why bad:** Firestore documents are limited to 1MB. A MusicXML file can be 50KB-2MB. Audio files are 1-50MB. Reads of the project document would download the entire file content on every load.
+**Instead:** Store files in Firebase Storage. Store only the download URL and filename in the Firestore document.
 
-### Anti-Pattern 4: Injecting Settings via URL Query Parameters
+### Anti-Pattern 4: Multiple onSnapshot Listeners Per Project
 
-**What:** Encoding all settings as URL params: `?scoreColor=%23000000&fps=30&musicFont=Bravura&...`.
-**Why bad:** URL length limits (~2000 chars). MusicXML content is 50KB-2MB. Sync anchors can have hundreds of entries. Cannot encode binary data (background images).
-**Instead:** `evaluateOnNewDocument` with a config object. No size limits. Supports any data type.
+**What:** Creating separate onSnapshot listeners for different parts of the project document.
+**Why bad:** Each listener is a separate Firestore connection with separate reads. For a single document, one listener is sufficient.
+**Instead:** One `onSnapshot` listener per project document. Distribute updates to relevant Zustand store slices from a single listener callback.
 
-### Anti-Pattern 5: Using fluent-ffmpeg
+### Anti-Pattern 5: Using Pages Router for New Features
 
-**What:** Using the `fluent-ffmpeg` npm package for FFmpeg integration.
-**Why bad:** The fluent-ffmpeg repository was **archived by the owner on May 22, 2025** and is now read-only. No further maintenance, bug fixes, or security patches. It wraps `child_process.spawn` anyway.
-**Instead:** Use `child_process.spawn('ffmpeg', [...args])` directly. Full control over arguments. No abandoned dependency.
-
----
-
-## Integration Points: New vs Modified
-
-### New Components (Backend: export-service/)
-
-| Component | File(s) | Purpose |
-|-----------|---------|---------|
-| HTTP Server | `server.ts` | Express server, routes, static file serving |
-| Export Route | `routes/export.ts` | Accept export request, validate, enqueue job |
-| Download Route | `routes/download.ts` | Serve completed MP4 files |
-| Job Manager | `jobs/jobManager.ts` | Job queue, state machine, cleanup, concurrency |
-| Render Job | `jobs/renderJob.ts` | Orchestrate single export pipeline |
-| Browser Manager | `pipeline/browser.ts` | Puppeteer launch, page setup, state injection |
-| Capture Loop | `pipeline/captureLoop.ts` | Frame-by-frame screenshot loop |
-| FFmpeg Encoder | `pipeline/encoder.ts` | Spawn FFmpeg, pipe stdin, handle exit |
-| WebSocket Progress | `ws/progress.ts` | Broadcast job progress to connected clients |
-| Shared Types | `shared/types.ts` | ExportRequest, ExportSettings, JobStatus |
-
-### Modified Components (Frontend: renderer/src/)
-
-| Component | File | Change |
-|-----------|------|--------|
-| Entry Point | `main.tsx` | Detect `__EXPORT_CONFIG__`, render `RenderApp` or `App` |
-| Render App | `RenderApp.tsx` (NEW) | Minimal wrapper for render mode |
-| RegularRenderer | `renderers/RegularRenderer.tsx` | Add `renderMode` prop: skip virtualization, skip camera transition, size to viewport |
-| Global Types | `types/global.d.ts` | Add `__EXPORT_CONFIG__` and `__EXPORT_READY__` to Window interface |
-
-### Unchanged Components
-
-| Component | Why Unchanged |
-|-----------|---------------|
-| `useVerovio.ts` | Works with any container width; no render-mode-specific logic needed |
-| `interpolation.ts` | Pure function, works identically |
-| `getEvents.ts` | Event extraction is render-mode-agnostic |
-| `syncStore.ts` | Zustand store works in headless Chrome; state set programmatically |
-| `eventStore.ts` | Caching works the same |
-| `noteAnimation.ts` | Not used in render mode (setTimestamp computes inline) |
-| `animationController.ts` | Module used only for internal state; window API exposed by RegularRenderer |
-| `borders/` | Border components render SVG, work in headless Chrome |
-| `SyncEditor.tsx` | Not rendered in render mode |
-| `App.tsx` | Not rendered in render mode (RenderApp replaces it) |
+**What:** Adding new pages in the `pages/` directory instead of `app/`.
+**Why bad:** Pages Router is legacy in Next.js 16. It does not support server components, layouts, or proxy.ts. Mixing App Router and Pages Router in the same project creates confusing routing behavior.
+**Instead:** All new pages go in `app/`. The entire migration uses App Router exclusively.
 
 ---
 
-## File Upload and Serving Strategy
+## Integration with Export Service
 
-### Upload Flow
+The existing Fastify export service (`export-service/`) continues to run independently. The integration strategy:
 
-```
-Client                              Backend
-  |                                    |
-  |  POST /api/export                  |
-  |  Content-Type: multipart/form-data |
-  |  Fields:                           |
-  |    musicXml (string)               |
-  |    audioFile (binary, optional)    |
-  |    bgImage (binary, optional)      |
-  |    settings (JSON string)          |
-  |    syncAnchors (JSON string)       |
-  |                                    |
-  v                                    v
-                                  Create temp dir: /tmp/manuscript-export-{jobId}/
-                                  Write musicXml to score.xml
-                                  Write audioFile to audio.{ext}
-                                  Write bgImage to bg.{ext}
-                                  Parse settings JSON
-                                  Compute audio duration (ffprobe)
-                                  Enqueue job
-                                  Return { jobId }
-```
+**Development:** Next.js dev server runs on port 3000. Export service runs on port 3001 (as today). The editor communicates with the export service via direct HTTP/WebSocket to `localhost:3001`.
 
-### Audio Duration Without Audio Element
+**Production:** Two deployment options:
+1. **Same origin (recommended):** Next.js rewrites `/api/export/*` to the export service URL. No CORS needed.
+2. **Separate origins:** Export service has its own domain. CORS configured on the Fastify server (already done via @fastify/cors).
 
-The frontend uses `audioRef.current.duration` for duration. In render mode, there is no `<audio>` element. Two approaches:
-
-**Use ffprobe (recommended):** The backend runs `ffprobe -v quiet -print_format json -show_format audioFile` to get duration. Inject as `exportConfig.audioDuration`.
-
-**Client sends duration:** The frontend already knows the audio duration from the `<audio>` element. Include it in the export request.
-
-Use both: client sends duration as a hint, backend verifies with ffprobe.
-
-### Serving the Frontend App
-
-The backend needs to serve the built frontend for Puppeteer to navigate to.
-
-```typescript
-// server.ts
-import express from 'express';
-import path from 'path';
-
-const app = express();
-
-// Serve the built frontend SPA
-const frontendDist = path.resolve(__dirname, '../../renderer/dist');
-app.use('/app', express.static(frontendDist));
-
-// Serve job-specific files (background images)
-app.use('/api/files', express.static(tempDir));
-```
-
-The backend builds the frontend at startup or uses a pre-built dist:
-
-```bash
-# In export-service/package.json scripts
-"prebuild": "cd ../renderer && npm run build"
-```
+The `exportClient.ts` migration requires replacing `import.meta.env.DEV` (Vite-specific) with `process.env.NODE_ENV === 'development'` (Next.js standard).
 
 ---
 
 ## Scalability Considerations
 
-| Concern | At 1 user | At 10 users | At 100+ users |
-|---------|-----------|-------------|---------------|
-| **Concurrency** | 1 job at a time | Queue with 1-2 parallel jobs | Worker pool or separate machines |
-| **Memory** | 1 Chrome instance (~300MB) | 2 instances (~600MB) | Need horizontal scaling |
-| **Disk** | Temp files cleaned per-job | Same, no accumulation | Same |
-| **CPU** | FFmpeg uses 1-2 cores per job | Need 4-8 cores | Offload to dedicated encoding server |
-| **Latency** | Frame capture: ~50-100ms/frame at 1080p | Same per-job | Parallel workers reduce queue wait |
-| **Total time** | 3min video at 30fps = 5400 frames * 80ms = ~7min | Same per-job, queued | Parallel workers |
-
-### Export Time Estimation
-
-For a 3-minute song at 30fps:
-- Total frames: 3 * 60 * 30 = 5,400
-- Per-frame: ~50ms setFrame + ~50ms screenshot = ~100ms
-- Total capture: ~540 seconds (9 minutes)
-- FFmpeg encoding: overlaps with capture (piped), adds ~30s finalization
-- **Total: ~10 minutes for a 3-minute video at 30fps, 1080p**
-
-This is acceptable for an async job. User sees progress via WebSocket.
-
-### Optimization Opportunities (Future)
-
-1. **Lower resolution for preview exports:** 720p cuts frame count and screenshot time
-2. **JPEG screenshots for draft quality:** 3-5x faster than PNG, acceptable for preview
-3. **Parallel frame capture:** Multiple browser tabs, each capturing a range of frames, merging afterward. Complex but potentially 4x faster.
-4. **Hardware encoding:** `libx264` -> `h264_videotoolbox` (macOS) or `h264_nvenc` (NVIDIA). Significantly faster encoding.
-
----
-
-## Puppeteer Launch Configuration
-
-```typescript
-const browser = await puppeteer.launch({
-  headless: true,
-  args: [
-    '--no-sandbox',              // Required in Docker/CI
-    '--disable-setuid-sandbox',  // Required in Docker/CI
-    '--disable-dev-shm-usage',   // Use /tmp instead of /dev/shm (prevents OOM)
-    '--disable-gpu',             // No GPU needed for 2D rendering
-    '--disable-extensions',      // No browser extensions
-    '--disable-background-timer-throttling',  // Prevent timer throttling
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
-    '--font-render-hinting=none',  // Consistent font rendering
-    `--window-size=${width},${height}`,
-  ],
-  defaultViewport: {
-    width: 1920,
-    height: 1080,
-    deviceScaleFactor: 1,  // 1 = exact pixel match; 2 = 2x retina
-  },
-});
-```
-
----
-
-## WebSocket Protocol Detail
-
-### Connection
-
-```
-Client: ws://host:3001/ws?jobId=abc123
-Server: Accept, register listener for jobId
-```
-
-### Messages (Server to Client)
-
-```typescript
-// Queued (waiting for other jobs to finish)
-{ "type": "queued", "position": 2 }
-
-// Preparing (launching browser, loading frontend)
-{ "type": "preparing", "message": "Loading score..." }
-
-// Rendering (frame capture in progress)
-{ "type": "rendering", "frame": 150, "totalFrames": 5400, "percent": 2.78, "eta": 485 }
-
-// Encoding finalization
-{ "type": "encoding", "message": "Finalizing video..." }
-
-// Complete
-{ "type": "complete", "downloadUrl": "/api/export/abc123/download", "fileSize": 52428800 }
-
-// Error
-{ "type": "error", "message": "FFmpeg exited with code 1", "code": "ENCODER_FAILED" }
-```
-
-### Heartbeat
-
-Server sends `{ "type": "ping" }` every 30s. Client responds with `{ "type": "pong" }`. Disconnect on 3 missed pongs.
-
----
-
-## Error Handling Strategy
-
-| Error | Detection | Recovery |
-|-------|-----------|----------|
-| Puppeteer launch fails | try/catch on `puppeteer.launch()` | Retry once, then fail job |
-| Page navigation fails | `page.goto()` timeout | Rebuild frontend, retry once |
-| `animationController` never appears | `waitForFunction` timeout (30s) | Fail job with "Renderer failed to initialize" |
-| Screenshot fails | try/catch on `page.screenshot()` | Retry frame 3x, then fail job |
-| FFmpeg exits non-zero | `ffmpeg.on('exit', code)` | Fail job with FFmpeg stderr |
-| FFmpeg stdin backpressure | `write()` returns false | `await` drain event before next frame |
-| Temp disk full | `write` ENOSPC error | Fail job, clean temp directory |
-| Client disconnects WebSocket | `ws.on('close')` | Job continues (result downloadable later) |
-
-### FFmpeg Backpressure Handling
-
-Critical: FFmpeg may not consume frames as fast as Puppeteer produces them. The Node.js writable stream `write()` returns `false` when the internal buffer is full. Must respect this:
-
-```typescript
-async function writeFrame(stdin: Writable, buffer: Buffer): Promise<void> {
-  const canContinue = stdin.write(buffer);
-  if (!canContinue) {
-    await new Promise<void>(resolve => stdin.once('drain', resolve));
-  }
-}
-```
-
----
-
-## Temp File Management
-
-```
-/tmp/manuscript-export-{jobId}/
-  score.xml           # Uploaded MusicXML
-  audio.mp3           # Uploaded audio (optional)
-  bg.png              # Uploaded background (optional)
-  output.mp4          # Final encoded video
-```
-
-### Cleanup Rules
-
-1. **On job complete:** Keep `output.mp4` for download. Delete source files after 1 hour.
-2. **On job error:** Delete entire temp directory immediately.
-3. **On server startup:** Scan `/tmp/manuscript-export-*`, delete directories older than 2 hours.
-4. **On download:** After first download, schedule deletion in 10 minutes.
+| Concern | At 10 users | At 1K users | At 100K users |
+|---------|------------|-------------|---------------|
+| **Auth sessions** | Firebase free tier | Firebase free tier (50K MAU) | Firebase Blaze plan (~$275/month at 100K MAU) |
+| **Firestore reads** | Negligible cost | ~$0.06/100K reads | Monitor read counts; consider caching project lists |
+| **Firestore writes** | Negligible cost | ~$0.18/100K writes | Debounce is critical; 1500ms prevents write storms |
+| **Storage** | Firebase free tier (5GB) | ~$0.026/GB/month | Audio files dominate; consider compression |
+| **Next.js hosting** | Vercel free tier | Vercel Pro (~$20/month) | Consider self-hosting or Vercel Enterprise |
+| **Real-time sync** | No concern | Firestore handles concurrent listeners well | Consider limiting onSnapshot to active projects only |
 
 ---
 
 ## Sources
 
-### HIGH Confidence
-- **Codebase analysis:** `RegularRenderer.tsx` lines 526-668 (setTimestamp stateless implementation), lines 670-715 (window.animationController exposure)
-- **Codebase analysis:** `animationController.ts` lines 125-128 (setFrame/setTimestamp synchronous design)
-- **Codebase analysis:** `SingleLineRenderer.tsx` lines 163-167 (existing render mode detection pattern via URL params)
-- [Puppeteer ScreenshotOptions API](https://pptr.dev/api/puppeteer.screenshotoptions) - optimizeForSpeed, encoding, type options
-- [Puppeteer page.evaluateOnNewDocument](https://pptr.dev/api/puppeteer.page.evaluateonnewdocument) - Inject code before page scripts run
-- [Puppeteer page.setViewport](https://pptr.dev/api/puppeteer.page.setviewport) - Viewport configuration with deviceScaleFactor
-
-### MEDIUM Confidence
-- [HTML5 slideshow to video with Puppeteer + FFmpeg](https://robinz.in/convert-an-html5-slideshow-to-a-video/) - Screenshot-to-stdin pipe pattern
-- [Node.js real-time video with FFmpeg](https://ofarukcaki.medium.com/producing-real-time-video-with-node-js-and-ffmpeg-a59ac27461a1) - stdin.write() + stdin.end() pattern
-- [timecut: Node.js web page video recorder](https://github.com/tungs/timecut) - Frame-by-frame capture architecture reference
-- [Puppeteer screenshot speed optimization](https://www.bannerbear.com/blog/ways-to-speed-up-puppeteer-screenshots/) - optimizeForSpeed flag, PNG vs JPEG performance
-- [Optimize screenshots with CDP](https://screenshotone.com/blog/optimize-for-speed-when-rendering-screenshots-in-puppeteer-and-chrome-devtools-protocol/) - optimizeForSpeed uses zlib q1 encoding
-- [fluent-ffmpeg archived May 2025](https://github.com/fluent-ffmpeg/node-fluent-ffmpeg) - Repository archived, use child_process.spawn directly
-- [pnpm workspaces](https://pnpm.io/workspaces) - Monorepo workspace configuration
-
-### LOW Confidence
-- [WebSocket streaming patterns 2025](https://www.videosdk.live/developer-hub/websocket/websocket-streaming) - General WebSocket architecture patterns
-- [Puppeteer issue #1034: Create video with screenshot](https://github.com/puppeteer/puppeteer/issues/1034) - Community approaches to video creation
-
----
-
-*Architecture research completed: 2026-02-09*
-*Domain: Backend video export service for Manuscript score renderer*
-*Focus: Integration with existing React SPA, headless Chrome pipeline, FFmpeg encoding*
+- [Next.js 16 App Router Docs](https://nextjs.org/docs/app) -- HIGH confidence. Route structure, server components, layouts.
+- [Next.js 16 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-16) -- HIGH confidence. proxy.ts, async params.
+- [Firebase Next.js Codelab](https://firebase.google.com/codelabs/firebase-nextjs) -- HIGH confidence. Session cookie pattern, FirebaseServerApp.
+- [Firebase Auth Admin SDK](https://firebase.google.com/docs/auth/admin/manage-cookies) -- HIGH confidence. Session cookie creation/verification.
+- [Firestore Data Model](https://firebase.google.com/docs/firestore/data-model) -- HIGH confidence. Document structure, limits.
+- [Firebase Storage Web](https://firebase.google.com/docs/storage/web/upload-files) -- HIGH confidence. Upload/download patterns.
+- [Zustand Documentation](https://zustand.docs.pmnd.rs/) -- HIGH confidence. subscribe API, middleware patterns.
+- Codebase analysis: `src/App.tsx`, `src/stores/syncStore.ts`, `src/lib/verovioService.ts`, `src/main.tsx` -- Direct verification of migration compatibility.

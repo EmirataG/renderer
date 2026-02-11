@@ -1,1200 +1,623 @@
-# Domain Pitfalls: Backend Video Export Service
+# Domain Pitfalls: Next.js Migration + Firebase Backend
 
-**Domain:** Headless browser video export for browser-based music notation renderer
-**Researched:** 2026-02-09
-**Confidence:** HIGH (based on codebase analysis, official Puppeteer/FFmpeg documentation, and community post-mortems)
-
----
-
-## Context
-
-This pitfalls research focuses on adding a **backend video export service** to an existing browser-based MusicXML score renderer. The service must:
-
-1. Run headless Chrome in Docker on Fly.io
-2. Load the existing React SPA with all user settings (score region, colors, fonts, animation params)
-3. Drive frame-by-frame rendering via the existing `window.animationController.setFrame()` API
-4. Pipe screenshots to FFmpeg for H.264 encoding
-5. Mux with user-uploaded audio for final MP4
-6. Stream progress back to the browser via WebSocket
-7. Handle multiple concurrent export requests
-
-**Existing codebase context:**
-- `window.animationController.setFrame(frameNumber, fps)` -- synchronous, deterministic frame rendering
-- `setTimestamp(seconds)` -- binary-searches interpolated events, applies camera + animation state, forces reflow
-- Page virtualization active: only visible pages + 1-page buffer are mounted in DOM
-- Verovio WASM renders MusicXML to SVG (async initialization)
-- Music fonts (Bravura, Petaluma, Leland, Gootville, Leipzig) loaded via Verovio's `fontLoadAll: true`
-- Background images loaded via `<img>` element with `onload` callback
+**Domain:** Full-stack migration from Vite SPA to Next.js App Router with Firebase Auth, Firestore, and Storage
+**Researched:** 2026-02-11
+**Confidence:** HIGH
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause completely broken exports, corrupted video, or service outages.
+Mistakes that cause build failures, security vulnerabilities, data loss, or full rewrites.
 
 ---
 
-### Pitfall 1: Page Virtualization Hides Notes During Frame Capture
+### Pitfall 1: Verovio WASM Executes Server-Side and Crashes the Build
 
 **What goes wrong:**
-The RegularRenderer virtualizes pages after event extraction (`extractionDoneRef.current = true`). Only visible pages + 1-page buffer are mounted in DOM (line 772: `const isMounted = !extractionDoneRef.current || visiblePages.has(i)`). When `setTimestamp()` is called by Puppeteer, it updates `cameraYRef` and calls `applyCamera()`, which triggers `setVisiblePages()`. But `setVisiblePages` is a React state update -- it batches asynchronously. The DOM is NOT updated by the time `setTimestamp` returns.
+Verovio loads via two imports: `import createVerovioModule from 'verovio/wasm'` and `import { VerovioToolkit } from 'verovio/esm'`. The WASM module requires browser APIs (`WebAssembly.instantiate`, `fetch` for the `.wasm` binary). Next.js App Router server components run in Node.js where these browser-specific WASM loading patterns fail. If any server component imports a file that transitively imports `verovioService.ts`, the build crashes with `WebAssembly is not defined` or `ReferenceError: document is not defined`.
 
-**Race condition sequence:**
-```
-1. Puppeteer calls: window.animationController.setFrame(500, 30)
-2. setTimestamp(16.67) executes synchronously:
-   a. Binary search finds event at timestamp
-   b. applyCamera(event.y) called
-   c. cameraYRef.current updated
-   d. setVisiblePages(newVisible) called -- BATCHED, NOT YET APPLIED
-   e. resetNoteheadAnimations() runs on scoreRef
-   f. Animation loop applies colors/transforms to SVG elements
-   g. void scoreRef.current.offsetHeight -- forces reflow
-   h. Returns to Puppeteer
-3. Puppeteer calls: page.screenshot() -- IMMEDIATELY
-4. React has NOT re-rendered yet. Pages from previous frame are still mounted.
-5. Target notes may be on an unmounted page. Screenshot captures WRONG state.
-```
-
-The existing `setTimestamp` in RegularRenderer (lines 526-668) does NOT force React to re-render visible pages synchronously. It only calls `applyCamera()` which sets `cameraYRef.current` and calls `setVisiblePages()` -- a batched state setter.
+**Why it happens:**
+Next.js statically analyzes imports to determine which code runs on the server vs client. Without an explicit `'use client'` boundary, the bundler tries to include everything in the server bundle. The editor page's server component fetches project data, then renders the client component. If the import chain from the server component reaches Verovio, the server-side bundler attempts to process the WASM imports.
 
 **Consequences:**
-- Notes on newly-visible pages are missing from screenshots (page not yet mounted)
-- Camera position is correct (transform applied immediately) but note elements are absent
-- Animation colors applied to null elements (querySelector returns null for unmounted pages)
-- Video shows blank regions where pages should be, with notes "popping" in one frame late
+- `next build` fails with WASM-related errors
+- Development server crashes on page load
+- If the error is intermittent (only on first SSR render), it appears as a hydration mismatch instead of a clear error
 
 **Prevention:**
-1. **Disable virtualization in render mode entirely.** When rendering for export, mount ALL pages. The existing two-phase lifecycle already mounts all pages before `extractionDoneRef.current = true`. For backend rendering, never set `extractionDoneRef.current = true`, or add a `renderMode` prop that skips virtualization:
-   ```typescript
-   // In RegularRenderer render loop
-   const isMounted = renderMode || !extractionDoneRef.current || visiblePages.has(i);
-   ```
-
-2. **If virtualization must be kept** (memory concern for very long scores), use `flushSync` to force synchronous React re-render before screenshot:
-   ```typescript
-   import { flushSync } from 'react-dom';
-
-   function setTimestampForRender(seconds: number) {
-     flushSync(() => {
-       // Update visible pages synchronously
-       const newVisible = getVisiblePageRange();
-       setVisiblePages(newVisible);
-     });
-     // NOW safe to query DOM and screenshot
-     setTimestamp(seconds);
-   }
-   ```
-
-3. **Backend-specific approach:** The backend controls the page. It can wait for React to re-render after each frame:
-   ```typescript
-   // In Puppeteer script
-   await page.evaluate((frame, fps) => {
-     window.animationController.setFrame(frame, fps);
-   }, frameNum, fps);
-
-   // Wait for React re-render to complete
-   await page.waitForFunction(() => {
-     return document.querySelectorAll('.preview-score svg.definition-scale').length > 0;
-   });
-
-   const buffer = await page.screenshot({ encoding: 'binary' });
-   ```
+1. Use `dynamic(() => import('./EditorClient'), { ssr: false })` for the entire editor component. This tells Next.js to never render it on the server.
+2. Ensure the `'use client'` directive is on `EditorClient.tsx`, which contains all Verovio-dependent code.
+3. Never import `verovioService.ts`, renderer components, or any file that transitively imports Verovio from a server component.
+4. Test with `next build` early -- SSR issues only surface during build or first server render, not during client-side navigation.
 
 **Detection:**
-- Frames in output video have blank white areas where score pages should be
-- Notes appear to "pop in" one frame after camera moves to their position
-- Test: render frame 0 and frame at last event, compare DOM node count
+- `next build` fails with WASM or browser API errors
+- Server-side console shows `ReferenceError: document is not defined`
+- Page works on client navigation but crashes on hard refresh (server render)
 
-**Recovery cost:** MEDIUM (4-8 hours)
-- Add renderMode prop to RegularRenderer
-- Skip virtualization in render path
-- Test with multi-page scores
+**Recovery cost:** LOW (1-2 hours) -- add `dynamic({ ssr: false })` and move imports behind the client boundary.
 
-**Phase to address:** Backend service implementation -- MUST resolve before first successful render
+**Phase to address:** Phase 1 (Next.js scaffold) -- validate immediately after moving editor code.
 
 ---
 
-### Pitfall 2: Verovio WASM Not Ready When Puppeteer Starts Frame Capture
+### Pitfall 2: firebase-admin Credentials Leak into Client Bundle
 
 **What goes wrong:**
-Verovio's WASM module loads asynchronously. The `useVerovio` hook (lines 96-181) creates a toolkit via `createToolkit()` (async), loads data, renders pages, then React updates state. The `window.animationController` is only exposed AFTER `toolkit && svgPages.length > 0 && interpolatedEvents.length > 0` (RegularRenderer line 672).
+`firebase-admin` is initialized with a service account private key (`FIREBASE_ADMIN_PRIVATE_KEY`). If any client component imports a file that imports `lib/firebase/admin.ts`, Next.js bundles `firebase-admin` into the client JavaScript. This exposes:
+- The service account private key (full admin access to Firebase project)
+- The `firebase-admin` package itself (depends on Node.js `fs`, `net`, `http2` -- client build fails)
 
-If Puppeteer tries to call `window.animationController.setFrame()` before the entire initialization chain completes, it gets `undefined`:
+Even if the build fails (likely, due to Node.js API dependencies), the attempt to bundle reveals the import chain problem. In the worst case, with aggressive polyfilling, the private key ships to the browser.
 
-```
-Timeline:
-0ms    - page.goto(url) starts
-100ms  - React mounts, useVerovio effect starts
-300ms  - WASM binary downloaded and compiled
-500ms  - Toolkit created
-600ms  - MusicXML loaded, pages rendered
-700ms  - React re-renders with svgPages
-800ms  - Event extraction runs (rAF callback)
-900ms  - Interpolated events computed
-950ms  - animationController exposed on window
-1000ms - Puppeteer checks for controller -- SUCCESS (if waited)
-```
-
-But if any step takes longer (large score, slow network for WASM download, font loading), the timing shifts. Without proper waiting, Puppeteer crashes.
-
-**Additional race: font loading.** Verovio uses `fontLoadAll: true` which loads ALL music fonts (Bravura, Petaluma, Leland, Gootville, Leipzig). These are WASM-embedded but the initial font setup takes time. If Puppeteer screenshots before fonts are fully applied, noteheads render as rectangles or missing glyphs.
+**Why it happens:**
+Server components and client components share the same file system. A developer adds a "convenience" re-export: `lib/firebase/index.ts` that exports both client and admin SDKs. A client component imports from this barrel file, pulling in the admin SDK.
 
 **Consequences:**
-- `TypeError: Cannot read properties of undefined (reading 'setFrame')` in Puppeteer
-- Score renders with missing music symbols (font not loaded)
-- Event positions are wrong (events computed before layout is stable)
-- Silent data corruption: animation controller exists but has stale/empty event list
+- Full admin access to Firebase project exposed to any user
+- Attacker can read/write/delete any Firestore document, Storage file, or user account
+- Build failure with `Module not found: Can't resolve 'fs'` (best case)
+- Silent credential exposure (worst case with polyfills)
 
 **Prevention:**
-1. **Expose a readiness signal on window and poll for it:**
+1. Keep `lib/firebase/client.ts` and `lib/firebase/admin.ts` as completely separate files. Never create a barrel `index.ts` that re-exports both.
+2. Add `firebase-admin` to `next.config.ts` server-only packages:
    ```typescript
-   // In RegularRenderer, when controller is ready
-   (window as any).rendererReady = true;
-   (window as any).animationController = { ... };
-
-   // In Puppeteer
-   await page.waitForFunction(
-     '!!window.rendererReady && !!window.animationController',
-     { timeout: 30000 }
-   );
+   // next.config.ts
+   const nextConfig = {
+     serverExternalPackages: ['firebase-admin'],
+   };
    ```
-
-2. **Verify event count before starting render:**
+3. Use the `server-only` npm package as a guard:
    ```typescript
-   // In Puppeteer
-   const eventCount = await page.evaluate(() =>
-     window.animationController?.getDuration() ?? 0
-   );
-   if (eventCount === 0) throw new Error('No events loaded');
+   // lib/firebase/admin.ts
+   import 'server-only'; // Throws build error if imported in client code
+   import { initializeApp, cert } from 'firebase-admin/app';
    ```
+4. Never use environment variables without `NEXT_PUBLIC_` prefix in client code. Firebase Admin credentials use `FIREBASE_ADMIN_*` (no NEXT_PUBLIC_ prefix), so they are server-only by default.
 
-3. **Wait for specific DOM indicators:**
+**Detection:**
+- Build error: `Module not found: Can't resolve 'fs'` in client bundle
+- Bundle analyzer shows `firebase-admin` in client chunks
+- `.env` variables without `NEXT_PUBLIC_` prefix appear in browser DevTools
+
+**Recovery cost:** LOW (1 hour) if caught during development. CRITICAL if credentials are deployed to production.
+
+**Phase to address:** Phase 2 (Firebase Auth) -- establish SDK separation patterns before any Firebase code.
+
+---
+
+### Pitfall 3: Map Serialization Silently Loses syncAnchors Data
+
+**What goes wrong:**
+The existing codebase uses `Map<string, number>` for `syncAnchors` (event ID to timestamp mappings). When saving to Firestore, `JSON.stringify(new Map([['a', 1]]))` produces `'{}'` -- an empty object. All sync anchor data is silently lost. When the project is loaded from Firestore, the Map is empty, and the editor has no timing data for note animations.
+
+This also affects the server component to client component data boundary. Next.js serializes props from server components to client components using a React-internal serialization format that also does not support Maps.
+
+**Why it happens:**
+`JSON.stringify` does not know how to serialize Map objects. It sees a Map as a plain object with no enumerable properties and produces `{}`. This is a well-known JavaScript gotcha, but it is silent -- no error is thrown, no warning is logged.
+
+**Consequences:**
+- All sync anchors lost on save (animation timing data gone)
+- User opens project and all note-to-audio synchronization is missing
+- No error message -- the save appears to succeed
+- Data loss is only discovered when user reopens the project
+
+**Prevention:**
+1. Convert Maps to plain objects before Firestore writes:
    ```typescript
-   // Wait for Verovio SVG to be present
-   await page.waitForSelector('svg.definition-scale', { timeout: 30000 });
-
-   // Wait for specific font glyphs to render (Bravura uses specific Unicode ranges)
-   await page.waitForFunction(() => {
-     const uses = document.querySelectorAll('g.notehead use');
-     return uses.length > 0;
+   // Serialize
+   const data = {
+     syncAnchors: Object.fromEntries(syncAnchors),
+   };
+   await setDoc(projectRef, data, { merge: true });
+   ```
+2. Convert back on load:
+   ```typescript
+   // Deserialize
+   const syncAnchors = new Map(Object.entries(data.syncAnchors ?? {}));
+   ```
+3. Add a `getSnapshot()` method to the project store that handles all serialization:
+   ```typescript
+   getSnapshot: () => ({
+     ...get(),
+     syncAnchors: Object.fromEntries(get().syncAnchors),
+   }),
+   ```
+4. Add a unit test that round-trips syncAnchors through serialization:
+   ```typescript
+   test('syncAnchors survives serialization', () => {
+     const original = new Map([['note-1', 2.5], ['note-2', 5.0]]);
+     const serialized = Object.fromEntries(original);
+     const restored = new Map(Object.entries(serialized));
+     expect(restored).toEqual(original);
    });
    ```
 
-4. **Set generous timeouts with clear error messages:**
-   ```typescript
-   const WASM_TIMEOUT = 30000; // 30 seconds for WASM + font loading
-   try {
-     await page.waitForFunction('!!window.rendererReady', { timeout: WASM_TIMEOUT });
-   } catch (e) {
-     throw new Error(`Verovio WASM did not initialize within ${WASM_TIMEOUT}ms. ` +
-       `Check Docker image has sufficient memory for WASM compilation.`);
-   }
-   ```
-
 **Detection:**
-- Puppeteer logs: `TypeError: Cannot read properties of undefined`
-- Rendered video has blank frames at the beginning
-- Music noteheads appear as squares or invisible in first few frames
-- Export fails intermittently (timing-dependent)
+- Open a saved project: sync anchors are empty
+- `JSON.stringify(store.syncAnchors)` returns `'{}'` or `'{}'`
+- Firestore console shows `syncAnchors: {}` for a project that should have data
 
-**Recovery cost:** LOW (2-4 hours)
-- Add readiness flag to RegularRenderer
-- Add waitForFunction in Puppeteer script
-- Test with slow WASM init simulation
+**Recovery cost:** LOW (1-2 hours) for the fix. HIGH for lost user data if deployed without the fix.
 
-**Phase to address:** Backend service implementation -- the VERY FIRST integration test
+**Phase to address:** Phase 3 (Firestore data model) -- define serialization patterns before first write.
 
 ---
 
-### Pitfall 3: Music Fonts Missing or Rendering Incorrectly in Docker
+### Pitfall 4: Session Cookie Expires with No Refresh Flow
 
 **What goes wrong:**
-Verovio bundles music fonts (Bravura, Petaluma, etc.) as WASM resources, but text elements in the score (titles, lyrics, dynamics markings like "mf", "pp") use system fonts. Docker's base image (especially Alpine or slim Debian) has NO fonts installed. Additionally, the score may use CSS `@font-face` rules for text rendering.
+Firebase session cookies have a maximum lifetime of 14 days (set at creation time, non-extendable). After 14 days, the session cookie is invalid. `verifySessionCookie()` throws, proxy.ts redirects to `/login`, and the user is logged out mid-work. If the user is in the middle of editing, unsaved changes since the last auto-save are lost.
 
-The headless Chrome in Docker will:
-1. Render music notation correctly (Verovio's embedded WASM fonts)
-2. Render ALL text as fallback squares or wrong font (no system fonts)
-3. Background images may fail to load (if served from localhost and URL doesn't resolve inside Docker)
+Unlike Firebase Auth ID tokens (which auto-refresh via the client SDK every hour), session cookies cannot be refreshed server-side. The only way to extend the session is to create a new session cookie from a fresh ID token.
 
-**Specific failure: CSS `color` property on Verovio SVG.** The score color styling (RegularRenderer lines 227-260) sets `fill: ${scoreColor}` on SVG elements. This works in browser. In headless Chrome, the CSS `<style>` tag injected via `dangerouslySetInnerHTML` (line 724) must be loaded before screenshots. Race condition: CSS may not be applied to SVG elements when `setTimestamp` forces reflow.
+**Why it happens:**
+Firebase session cookies are created once and have a fixed expiration. There is no refresh mechanism built into the session cookie API. The Firebase client SDK refreshes ID tokens automatically, but the server-side session cookie is independent.
 
 **Consequences:**
-- Lyrics, tempo markings, rehearsal marks appear as tofu (missing glyph rectangles)
-- Score appears correct in browser preview but broken in export
-- Dynamic markings ("forte", "piano") unreadable
-- Title/composer text missing or wrong font
+- User silently logged out after 14 days
+- If auto-save fails due to expired session, data loss
+- User sees login page without understanding why
+- If multiple tabs are open, all tabs redirect simultaneously
 
 **Prevention:**
-1. **Install comprehensive font packages in Dockerfile:**
-   ```dockerfile
-   RUN apt-get update && apt-get install -y \
-     fonts-noto \
-     fonts-noto-cjk \
-     fonts-freefont-ttf \
-     fonts-liberation \
-     fonts-dejavu-core \
-     fontconfig \
-     && fc-cache -fv
-   ```
-
-2. **Bundle the specific text fonts Verovio uses.** Verovio text rendering typically uses Times New Roman or a serif fallback. Install `fonts-liberation` (Liberation Serif is a metric-compatible Times New Roman substitute) and `fonts-dejavu-core`.
-
-3. **Test font rendering explicitly:**
+1. Check cookie expiration client-side and proactively refresh:
    ```typescript
-   // In Puppeteer, after page loads
-   const hasText = await page.evaluate(() => {
-     const textElements = document.querySelectorAll('svg text');
-     // Check that text elements have measurable width (not tofu)
-     return Array.from(textElements).every(el =>
-       (el as SVGTextElement).getBBox().width > 0
-     );
-   });
-   if (!hasText) console.warn('SVG text elements may not be rendering correctly');
-   ```
-
-4. **Verify background image loading.** Background images referenced by URL must be accessible from within the Docker container. If the user uploads a background image, the backend must serve it at a URL the headless Chrome page can reach:
-   ```typescript
-   // Inject background as data URL instead of HTTP URL
-   const bgBase64 = Buffer.from(bgImageBuffer).toString('base64');
-   const bgDataUrl = `data:image/png;base64,${bgBase64}`;
-   await page.evaluate((url) => {
-     // Set background via data URL to avoid network dependency
-   }, bgDataUrl);
-   ```
-
-**Detection:**
-- Export video has rectangles where text should be
-- Compare browser screenshot with Puppeteer screenshot side-by-side
-- `fc-list` inside Docker container shows no serif fonts
-
-**Recovery cost:** LOW (1-2 hours)
-- Add font packages to Dockerfile
-- Test with score containing lyrics and text markings
-
-**Phase to address:** Docker image setup -- first Dockerfile iteration
-
----
-
-### Pitfall 4: FFmpeg Frame Timing Drift Causes Audio-Video Desync
-
-**What goes wrong:**
-When piping PNG frames to FFmpeg via stdin, the frame timing is determined by the `-r` (framerate) flag on the input. FFmpeg assigns timestamps based on frame order: frame 0 = 0s, frame 1 = 1/fps seconds, frame 2 = 2/fps seconds, etc. If the capture loop skips frames, duplicates frames, or has any off-by-one error, the audio and video desynchronize.
-
-**Critical math:**
-```
-Total frames = Math.ceil(duration * fps)
-Frame N timestamp = N / fps
-
-If duration = 120.5s and fps = 30:
-Total frames = Math.ceil(120.5 * 30) = 3615
-Last frame timestamp = 3614 / 30 = 120.467s (NOT 120.5s)
-```
-
-If audio is 120.5s but video is 120.467s, the audio extends 33ms past the video. At scale (long songs), this becomes visible drift if frame count is miscalculated.
-
-**Additional pitfall: variable screenshot timing.** Puppeteer's `page.screenshot()` takes variable time (50-200ms per frame depending on page complexity). If the capture loop measures wall-clock time instead of frame index for timestamp calculation, frames will have inconsistent timing.
-
-**Consequences:**
-- Notes highlight before or after their audio sound
-- Drift accumulates over the duration of the video
-- Export appears fine for short pieces but visibly wrong for 3+ minute pieces
-- Audio cuts off before video ends (or continues after video freezes)
-
-**Prevention:**
-1. **Use frame index, never wall clock, for timestamp calculation:**
-   ```typescript
-   const totalFrames = Math.ceil(duration * fps);
-
-   for (let frame = 0; frame < totalFrames; frame++) {
-     await page.evaluate((f, r) => {
-       window.animationController.setFrame(f, r);
-     }, frame, fps);
-
-     const buffer = await page.screenshot({ encoding: 'binary' });
-     ffmpegStdin.write(buffer);
-   }
-   ```
-
-2. **Verify total frame count matches audio duration:**
-   ```typescript
-   const expectedDuration = totalFrames / fps;
-   const audioDuration = await getAudioDuration(audioPath);
-   const drift = Math.abs(expectedDuration - audioDuration);
-   if (drift > 1 / fps) {
-     console.warn(`Frame/audio drift: ${drift.toFixed(3)}s`);
-   }
-   ```
-
-3. **Use CFR (constant frame rate) encoding, never VFR:**
-   ```bash
-   ffmpeg -f image2pipe -framerate 30 -i pipe:0 \
-     -c:v libx264 -pix_fmt yuv420p -vsync cfr \
-     -r 30 output.mp4
-   ```
-
-4. **Pad or trim video to match audio exactly:**
-   ```bash
-   # During muxing, use -shortest to trim to shorter stream
-   ffmpeg -i video.mp4 -i audio.mp3 -c:v copy -c:a aac \
-     -shortest output_final.mp4
-   ```
-
-**Detection:**
-- Play export video: notes visibly highlight before/after their sound
-- Compare frame count: `totalFrames / fps` should equal audio duration within 1 frame
-- Seek to end of video: last note should align with last audio event
-
-**Recovery cost:** LOW (2-3 hours)
-- Fix frame counting math
-- Add duration verification
-- Test with long (5+ minute) scores
-
-**Phase to address:** FFmpeg encoding implementation -- validate with test audio immediately
-
----
-
-### Pitfall 5: Chrome Process Leak and OOM Under Concurrent Renders
-
-**What goes wrong:**
-Each export request launches a headless Chrome instance (or at minimum a new page). Chrome's per-process memory is 100-300MB. On a Fly.io `performance-1x` machine (2GB RAM), running 3+ concurrent Chrome instances crashes the machine with OOM.
-
-Additional leak vector: Puppeteer pages that error mid-render (timeout, WASM failure, user cancellation) may not call `page.close()` or `browser.close()`, leaving orphaned Chrome processes. Over hours of operation, these accumulate and consume all available memory.
-
-**Specific scenario:**
-```
-1. User A starts 8-minute score export (Chrome instance 1: 200MB)
-2. User B starts 3-minute score export (Chrome instance 2: 200MB)
-3. User A's export errors at frame 1000 (WASM timeout)
-4. Error handler doesn't close Chrome instance 1
-5. User C starts export (Chrome instance 3: 200MB)
-6. Node.js process: 100MB + 3 Chrome instances: 600MB = 700MB
-7. Remaining for OS + FFmpeg: 1.3GB -- tight but works
-8. Repeat with 2 more failures without cleanup...
-9. OOM kill. All in-progress exports lost.
-```
-
-**Consequences:**
-- Machine runs out of memory and gets killed by OOM killer
-- All in-progress exports for all users are lost
-- Fly.io auto-restarts machine, causing cold start delay for next request
-- Unpredictable: works fine with 1 user, crashes with 2-3
-
-**Prevention:**
-1. **Use a browser pool with max concurrency:**
-   ```typescript
-   const MAX_CONCURRENT_RENDERS = 2; // For 2GB machine
-
-   class BrowserPool {
-     private semaphore = new Semaphore(MAX_CONCURRENT_RENDERS);
-     private browser: Browser | null = null;
-
-     async acquire(): Promise<Page> {
-       await this.semaphore.acquire();
-       if (!this.browser) {
-         this.browser = await puppeteer.launch({ /* ... */ });
+   // In AuthProvider, periodically check token freshness
+   useEffect(() => {
+     const interval = setInterval(async () => {
+       const user = auth.currentUser;
+       if (user) {
+         const idToken = await user.getIdToken(true); // Force refresh
+         await fetch('/api/auth/session', {
+           method: 'POST',
+           body: JSON.stringify({ idToken }),
+         });
        }
-       return this.browser.newPage();
-     }
-
-     async release(page: Page): Promise<void> {
-       try { await page.close(); } catch {}
-       this.semaphore.release();
-     }
-   }
+     }, 24 * 60 * 60 * 1000); // Every 24 hours
+     return () => clearInterval(interval);
+   }, []);
    ```
-
-2. **Always close pages in finally blocks:**
+2. On any 401 response from the server, redirect to a silent re-auth flow rather than the login page:
    ```typescript
-   const page = await pool.acquire();
-   try {
-     await renderExport(page, settings);
-   } finally {
-     await pool.release(page);
+   // In proxy.ts or API route error handling
+   if (sessionExpired) {
+     // Redirect to /auth/refresh which silently gets new token
+     return NextResponse.redirect('/auth/refresh');
    }
    ```
-
-3. **Monitor Chrome process count and memory:**
+3. Set session cookie to 14 days (maximum) and refresh before expiration:
    ```typescript
-   import { execSync } from 'child_process';
-
-   function getChromeProcessCount(): number {
-     try {
-       const output = execSync('pgrep -c chrome').toString().trim();
-       return parseInt(output, 10);
-     } catch { return 0; }
-   }
+   // Create session with maximum duration
+   const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+     expiresIn: 14 * 24 * 60 * 60 * 1000, // 14 days in ms
+   });
    ```
-
-4. **Recycle browser after N renders to prevent memory creep:**
-   ```typescript
-   private renderCount = 0;
-   private readonly MAX_RENDERS_BEFORE_RECYCLE = 10;
-
-   async release(page: Page): Promise<void> {
-     await page.close();
-     this.renderCount++;
-     if (this.renderCount >= this.MAX_RENDERS_BEFORE_RECYCLE) {
-       await this.browser?.close();
-       this.browser = null;
-       this.renderCount = 0;
-     }
-     this.semaphore.release();
-   }
-   ```
-
-5. **Set kill_timeout in fly.toml** to allow graceful shutdown:
-   ```toml
-   [processes]
-   app = "node server.js"
-
-   kill_timeout = 120  # 2 minutes for in-progress renders to complete
-   ```
+4. Handle auto-save failures gracefully: if a Firestore write fails due to auth, queue the change locally and retry after re-authentication.
 
 **Detection:**
-- `dmesg` shows OOM killer messages
-- Fly.io dashboard shows memory at 100% before crash
-- Concurrent exports cause all exports to fail simultaneously
-- Chrome processes accumulate: `ps aux | grep chrome` shows dozens
+- Users report being logged out unexpectedly after ~2 weeks
+- Server logs show `auth/session-cookie-expired` errors
+- Auto-save status shows "Error" but no clear user message
 
-**Recovery cost:** MEDIUM (4-6 hours)
-- Implement browser pool with semaphore
-- Add finally-block cleanup
-- Add process monitoring
-- Load test with concurrent requests
+**Recovery cost:** MEDIUM (4-6 hours) -- implement refresh flow, handle edge cases.
 
-**Phase to address:** Backend service architecture -- design before implementing render endpoint
+**Phase to address:** Phase 2 (Firebase Auth) -- design the refresh flow alongside initial session implementation.
 
 ---
 
-### Pitfall 6: Screenshot-to-FFmpeg Pipe Backpressure Deadlock
+### Pitfall 5: Firestore Writes Fail Silently When Offline or Rate-Limited
 
 **What goes wrong:**
-Puppeteer captures PNG screenshots (100KB-500KB each at 1920x1080). These are written to FFmpeg's stdin via a Node.js child process pipe. Node.js pipes have a buffer limit (~16KB by default, configurable up to ~1MB). If FFmpeg can't consume frames as fast as Puppeteer produces them, the pipe buffer fills up. `ffmpegProcess.stdin.write(buffer)` returns `false` (backpressure signal). If the code ignores this signal and keeps writing, Node.js buffers frames in memory, eventually causing OOM.
+The auto-save pattern uses `setDoc(ref, data, { merge: true })` which returns a Promise. If the user's internet drops or Firestore rate-limits the client, the write fails. If the failure is not caught and surfaced, the user sees "Saved" (from the debounce completing) but the data never reached Firestore. When they close the browser and reopen, changes are lost.
 
-If the code respects backpressure by awaiting drain events, but FFmpeg is waiting for more data to start encoding (codec startup delay), a deadlock can occur: Puppeteer waits for FFmpeg to drain, FFmpeg waits for enough frames to start encoding.
+Firestore's client SDK has offline persistence enabled by default in web apps. This means writes appear to succeed locally (the Promise resolves) but may fail to sync to the server. If the user closes the browser before the offline queue flushes, pending writes are lost.
 
-**Critical detail:** H.264 encoding uses a lookahead buffer. With default settings, FFmpeg buffers several frames before emitting any output. During this startup period, stdin appears "full" even though FFmpeg hasn't started processing yet.
+**Why it happens:**
+Firestore's offline persistence stores writes in IndexedDB and syncs when connectivity returns. But IndexedDB data is per-origin and per-browser. If the user switches browsers, clears cache, or the tab crashes, the pending writes are gone. The Promise from `setDoc` resolves when the local cache is updated, NOT when the server confirms the write.
 
 **Consequences:**
-- Node.js memory grows unbounded (hundreds of MB of buffered PNG data)
-- Deadlock: render process hangs indefinitely
-- OOM crash kills the export
-- Partial video file left on disk (corrupted, unusable)
+- User thinks data is saved but it only exists in local IndexedDB
+- Closing browser before sync = data loss
+- Auto-save indicator shows "Saved" but server never received the data
+- Project appears empty or with old data on next login (different browser/device)
 
 **Prevention:**
-1. **Respect backpressure with proper drain handling:**
+1. Use `onSnapshot` with `{ includeMetadataChanges: true }` to detect pending writes:
    ```typescript
-   async function writeFrame(stdin: Writable, buffer: Buffer): Promise<void> {
-     const canWrite = stdin.write(buffer);
-     if (!canWrite) {
-       await new Promise<void>((resolve) => stdin.once('drain', resolve));
+   onSnapshot(
+     projectRef,
+     { includeMetadataChanges: true },
+     (snapshot) => {
+       if (snapshot.metadata.hasPendingWrites) {
+         setSaveStatus('pending'); // "Saving..." or "Offline"
+       } else {
+         setSaveStatus('saved'); // Confirmed by server
+       }
      }
-   }
+   );
    ```
-
-2. **Use FFmpeg settings that minimize startup buffering:**
-   ```bash
-   ffmpeg -f image2pipe -framerate 30 -i pipe:0 \
-     -c:v libx264 \
-     -preset ultrafast \     # Minimal lookahead
-     -tune zerolatency \     # No frame reordering
-     -pix_fmt yuv420p \
-     -movflags +faststart \  # Metadata at beginning
-     output.mp4
-   ```
-   Note: `ultrafast` and `zerolatency` produce larger files but eliminate encoding delay. For final quality, re-encode after capture if needed.
-
-3. **Write frames to disk instead of piping (fallback approach):**
+2. Only show "Saved" when the server confirms (no pending writes).
+3. Show a warning when the user tries to close the tab with pending writes:
    ```typescript
-   // Simpler, more debuggable, avoids backpressure entirely
-   const framePath = path.join(tempDir, `frame-${String(frame).padStart(6, '0')}.png`);
-   const buffer = await page.screenshot({ encoding: 'binary' });
-   await fs.writeFile(framePath, buffer);
-
-   // After all frames captured:
-   // ffmpeg -framerate 30 -i frame-%06d.png -c:v libx264 output.mp4
+   useEffect(() => {
+     const handler = (e: BeforeUnloadEvent) => {
+       if (hasPendingWrites) {
+         e.preventDefault();
+         return 'You have unsaved changes.';
+       }
+     };
+     window.addEventListener('beforeunload', handler);
+     return () => window.removeEventListener('beforeunload', handler);
+   }, [hasPendingWrites]);
    ```
-   Trade-off: Disk I/O is slower but eliminates pipe complexity. Good for Phase 1; optimize to pipe later.
-
-4. **Monitor pipe buffer in development:**
+4. Consider disabling offline persistence to make save failures explicit:
    ```typescript
-   ffmpegProcess.stdin.on('error', (err) => {
-     console.error('[FFmpeg] stdin error:', err.message);
-   });
-
-   ffmpegProcess.stderr.on('data', (data) => {
-     // FFmpeg writes progress to stderr
-     console.log('[FFmpeg]', data.toString());
+   import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
+   const db = initializeFirestore(app, {
+     localCache: memoryLocalCache(),
    });
    ```
+   Trade-off: saves fail immediately when offline (clear error) but no offline support.
 
 **Detection:**
-- Export hangs at a specific frame number and never progresses
-- Node.js memory grows linearly during export
-- FFmpeg stderr shows no encoding progress
-- Works for short exports (< 100 frames) but hangs for long ones
+- Save indicator says "Saved" but data missing on reload
+- `snapshot.metadata.hasPendingWrites` is true for extended periods
+- Firestore console shows old data after user reports saving
 
-**Recovery cost:** MEDIUM (3-5 hours)
-- Implement drain-aware write
-- Or switch to disk-based frame capture
-- Test with 1000+ frame exports
+**Recovery cost:** MEDIUM (4-6 hours) -- implement proper save status tracking with metadata changes.
 
-**Phase to address:** FFmpeg integration -- implement correct pipe handling from the start
+**Phase to address:** Phase 5 (Auto-save) -- design save status from the start, not as an afterthought.
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause degraded quality, poor UX, or significant debugging time.
+Mistakes that cause degraded UX, significant debugging time, or require non-trivial fixes.
 
 ---
 
-### Pitfall 7: Viewport and DPI Mismatch Produces Wrong Resolution
+### Pitfall 6: import.meta.env Migration Breaks Export Service Integration
 
 **What goes wrong:**
-Puppeteer's default viewport is 800x600 with `deviceScaleFactor: 1`. The existing app uses `WIDTH = 980` (RegularRenderer line 19) and calculates container dimensions from background image dimensions scaled to this width. If the Puppeteer viewport doesn't match the expected container dimensions, the score renders at wrong size or gets clipped.
+The existing codebase uses Vite's `import.meta.env.DEV` and `import.meta.env.VITE_*` patterns. Next.js uses `process.env.NODE_ENV === 'development'` and `process.env.NEXT_PUBLIC_*`. If these are not migrated, the build fails with `import.meta.env is not defined` or the export service URL resolves to `undefined`.
 
-Additionally, `deviceScaleFactor` controls the actual pixel output. A viewport of 1920x1080 with `deviceScaleFactor: 1` produces a 1920x1080 screenshot. With `deviceScaleFactor: 2`, it produces a 3840x2160 screenshot. If the user requests 1080p but the code sets `deviceScaleFactor: 2`, the export is 4K -- four times the expected file size and encoding time.
+The `exportClient.ts` file uses `import.meta.env.DEV` to determine whether to connect to `localhost:3001` (dev) or the production export service URL. If this is not migrated, the editor cannot communicate with the export service.
 
-**Specific issue with the existing code:** The `setDims` function (line 106-110) scales dimensions based on `WIDTH / w`. If the background image is 1920x1080, it calculates `containerWidth = 980` and `containerHeight = 551`. The Puppeteer viewport must match these dimensions, NOT the original 1920x1080, because that's what the React app renders at internally.
+**Why it happens:**
+`import.meta.env` is a Vite-specific API. Next.js does not support it. The migration requires a search-and-replace across the codebase, but some uses are subtle (e.g., dynamic import paths based on env vars).
 
 **Consequences:**
-- Score appears too small or too large in export
-- Score clipped at edges (viewport smaller than container)
-- Export file size 4x expected (wrong deviceScaleFactor)
-- Encoding takes 4x longer
-- Aspect ratio distorted
+- Build failure: `import.meta.env` is not defined
+- Export button silently fails (URL is `undefined`)
+- Dev/prod environment detection broken (always dev or always prod)
 
 **Prevention:**
-1. **Match viewport to the user's intended output resolution, not internal dimensions:**
-   ```typescript
-   // The app internally renders at WIDTH=980 scale
-   // For 1920x1080 output, set viewport to 1920x1080
-   // and use deviceScaleFactor to control actual pixel resolution
-   await page.setViewport({
-     width: 1920,
-     height: 1080,
-     deviceScaleFactor: 1, // 1x = 1920x1080 output
-   });
-   ```
-
-2. **Alternatively, render at internal dimensions and upscale:**
-   ```typescript
-   // Match internal render dimensions
-   await page.setViewport({
-     width: 980,
-     height: 551,
-     deviceScaleFactor: 2, // 2x = 1960x1102 output (close to 1080p)
-   });
-   ```
-
-3. **Explicitly set dimensions in the URL or via page.evaluate:**
-   ```typescript
-   // Pass desired output dimensions to the app
-   const url = `http://localhost:3000/render?width=1920&height=1080`;
-   await page.goto(url);
-   ```
-
-4. **Verify screenshot dimensions before piping to FFmpeg:**
-   ```typescript
-   const screenshot = await page.screenshot({ encoding: 'binary' });
-   const { width, height } = await sharp(screenshot).metadata();
-   if (width !== expectedWidth || height !== expectedHeight) {
-     throw new Error(`Screenshot ${width}x${height} != expected ${expectedWidth}x${expectedHeight}`);
-   }
-   ```
+1. Global search for `import.meta.env` and replace all occurrences:
+   - `import.meta.env.DEV` -> `process.env.NODE_ENV === 'development'`
+   - `import.meta.env.PROD` -> `process.env.NODE_ENV === 'production'`
+   - `import.meta.env.VITE_*` -> `process.env.NEXT_PUBLIC_*`
+2. Update `.env` files to use `NEXT_PUBLIC_` prefix for client-accessible vars.
+3. Test export service connectivity in development after migration.
 
 **Detection:**
-- Output video resolution doesn't match requested resolution
-- Score appears tiny in center of frame (viewport too large)
-- Score cropped (viewport too small)
-- File size much larger than expected
+- Build error mentioning `import.meta.env`
+- Export button does nothing (fetch to `undefined` URL)
+- Console error: `TypeError: Failed to fetch` with URL `undefined`
 
-**Recovery cost:** LOW (2-3 hours)
-- Set correct viewport dimensions
-- Add dimension verification
-- Test at multiple output resolutions
+**Recovery cost:** LOW (1-2 hours) -- find and replace.
 
-**Phase to address:** Puppeteer setup -- test viewport configuration early
+**Phase to address:** Phase 1 (Next.js scaffold) -- migrate during initial code move.
 
 ---
 
-### Pitfall 8: WebSocket Connection Drops Mid-Export Without Recovery
+### Pitfall 7: Turbopack Fails with Verovio WASM (Fallback to Webpack Needed)
 
 **What goes wrong:**
-A video export for a 5-minute score at 30fps requires capturing 9,000 frames. At 100ms per frame, that's 15 minutes of rendering. During this time, the WebSocket connection between browser and server can drop due to:
-- Network interruption (mobile, WiFi switch)
-- Browser tab goes to sleep (background tab throttling)
-- Proxy/load balancer timeout (default 60s idle)
-- Fly.io proxy timeout
+Next.js 16 uses Turbopack by default for both dev and build. While Turbopack supports client-side WASM imports, Verovio's specific ESM/WASM dual-import pattern (`import createVerovioModule from 'verovio/wasm'` + `import { VerovioToolkit } from 'verovio/esm'`) may not work out of the box. Verovio's package exports map (`verovio/wasm` and `verovio/esm`) must be resolved correctly by Turbopack, and the WASM file must be served correctly in development.
 
-When the WebSocket drops, the browser loses all progress updates. The user has no idea if the export is still running. They may close the tab, start a new export, or believe it failed.
-
-**Critical issue:** If the backend uses WebSocket connection state to track active exports, a dropped connection may trigger export cancellation -- wasting all the rendering work done so far.
+**Why it happens:**
+Turbopack is a different bundler than Webpack with different module resolution behavior. While basic WASM support exists (confirmed by closed GitHub issue #84972), complex package export maps and WASM loading patterns are not exhaustively tested. Verovio's specific pattern of loading WASM through an ESM wrapper function is uncommon.
 
 **Consequences:**
-- User thinks export failed (no progress updates)
-- User starts duplicate exports (resource waste)
-- Backend cancels working export on disconnect
-- 15 minutes of rendering wasted
+- Dev server fails to start or page crashes on editor load
+- Build succeeds but WASM file not found at runtime (404)
+- Module resolution error for `verovio/wasm` or `verovio/esm`
 
 **Prevention:**
-1. **Decouple export lifecycle from WebSocket connection:**
+1. Test Verovio with Turbopack immediately in Phase 1. Do not proceed to Phase 2 until WASM loads.
+2. Have webpack as fallback ready:
    ```typescript
-   // Export has its own ID and lifecycle
-   const exportId = crypto.randomUUID();
-
-   // WebSocket only streams progress, doesn't control lifecycle
-   ws.on('close', () => {
-     // DO NOT cancel the export
-     console.log(`WebSocket closed for export ${exportId}, export continues`);
-   });
+   // next.config.ts
+   const nextConfig = {
+     // If Turbopack fails with Verovio WASM:
+     // Run: next dev --webpack
+     // Run: next build --webpack
+     webpack: (config) => {
+       config.experiments = { ...config.experiments, asyncWebAssembly: true };
+       return config;
+     },
+   };
    ```
-
-2. **Support reconnection with state sync:**
-   ```typescript
-   // Client reconnects with export ID
-   ws.on('message', (msg) => {
-     const { type, exportId } = JSON.parse(msg);
-     if (type === 'reconnect') {
-       const state = exports.get(exportId);
-       ws.send(JSON.stringify({
-         type: 'state_sync',
-         progress: state.progress,
-         status: state.status,
-       }));
-     }
-   });
-   ```
-
-3. **HTTP polling fallback for progress:**
-   ```typescript
-   // REST endpoint as WebSocket fallback
-   app.get('/api/exports/:id/status', (req, res) => {
-     const state = exports.get(req.params.id);
-     res.json({
-       progress: state?.progress ?? 0,
-       status: state?.status ?? 'unknown',
-     });
-   });
-   ```
-
-4. **Implement heartbeat/keep-alive:**
-   ```typescript
-   // Server pings every 30 seconds
-   const pingInterval = setInterval(() => {
-     if (ws.readyState === WebSocket.OPEN) {
-       ws.ping();
-     }
-   }, 30000);
-
-   ws.on('pong', () => { /* connection alive */ });
-   ws.on('close', () => clearInterval(pingInterval));
-   ```
-
-5. **Client-side reconnection with exponential backoff:**
-   ```typescript
-   function connectWebSocket(exportId: string) {
-     const ws = new WebSocket(`wss://api/ws?exportId=${exportId}`);
-     let retries = 0;
-
-     ws.onclose = () => {
-       const delay = Math.min(1000 * Math.pow(2, retries), 30000);
-       retries++;
-       setTimeout(() => connectWebSocket(exportId), delay);
-     };
-   }
-   ```
+3. If Turbopack works in dev but fails in build (or vice versa), use `--webpack` flag for the failing command only.
+4. Document which bundler works for future team members.
 
 **Detection:**
-- Users report "export stuck" but server logs show it's still running
-- Duplicate exports for same content in server logs
-- WebSocket close events without corresponding export cancellation
-- Progress bar stops updating mid-export
+- `next dev` shows WASM-related error
+- Score page is blank (WASM failed to load)
+- Console: `TypeError: createVerovioModule is not a function`
+- Network tab: 404 for `.wasm` file
 
-**Recovery cost:** MEDIUM (4-6 hours)
-- Decouple export lifecycle from WebSocket
-- Add reconnection support
-- Add HTTP polling fallback
-- Test with simulated disconnections
+**Recovery cost:** LOW (30 minutes) -- add `--webpack` flag to scripts.
 
-**Phase to address:** WebSocket implementation -- design for disconnection from the start
+**Phase to address:** Phase 1 (Next.js scaffold) -- first validation task.
 
 ---
 
-### Pitfall 9: Background Image and Data URL Loading Failure in Headless Chrome
+### Pitfall 8: Firestore Security Rules Allow Unauthorized Access
 
 **What goes wrong:**
-The RegularRenderer loads background images from a URL (line 164: `img.src = bgUrl`). In the browser, this is a blob URL from the user's file upload. In headless Chrome on the backend, the image must be provided differently:
-- Blob URLs don't transfer between browser contexts
-- File paths aren't accessible from inside the Docker container
-- HTTP URLs require the image to be served somewhere accessible
+Firestore defaults to deny-all rules in production. Developers often set permissive rules during development (`allow read, write: if true`) and forget to lock them down before deployment. Alternatively, they write rules that check authentication but not ownership:
 
-If the background image fails to load, `setDims` is never called (it's inside `img.onload`), so `containerWidth` and `containerHeight` remain 0. The component returns `<div>Select background</div>` (line 718) instead of rendering the score.
+```
+// BAD: Any authenticated user can read/write ANY project
+match /projects/{projectId} {
+  allow read, write: if request.auth != null;
+}
+```
 
-**Consequences:**
-- Export produces video of "Select background" text instead of score
-- No error thrown -- the component silently fails to render
-- Score region positioning is wrong (depends on background dimensions)
-- Entire export is wasted
+This means User A can read and modify User B's projects.
 
-**Prevention:**
-1. **Convert background images to data URLs before passing to headless Chrome:**
-   ```typescript
-   // Backend receives image as buffer from upload
-   const bgBase64 = bgImageBuffer.toString('base64');
-   const bgMimeType = 'image/png'; // Detect from actual file
-   const bgDataUrl = `data:${bgMimeType};base64,${bgBase64}`;
-
-   // Pass to page via URL params or page.evaluate
-   await page.evaluate((dataUrl) => {
-     // Store in app state for RegularRenderer to use
-     window.__renderConfig = { bgUrl: dataUrl };
-   }, bgDataUrl);
-   ```
-
-2. **Serve images from the backend HTTP server:**
-   ```typescript
-   // Backend serves uploaded images at a known URL
-   app.get('/api/render-assets/:id', (req, res) => {
-     const asset = renderAssets.get(req.params.id);
-     res.type(asset.mimeType).send(asset.buffer);
-   });
-
-   // Pass URL that's accessible from headless Chrome
-   const bgUrl = `http://localhost:${port}/api/render-assets/${assetId}`;
-   ```
-
-3. **Wait for background image to load before starting capture:**
-   ```typescript
-   await page.waitForFunction(() => {
-     // Check that container dimensions are set (background loaded)
-     const container = document.querySelector('.preview-score');
-     return container && container.offsetWidth > 0 && container.offsetHeight > 0;
-   }, { timeout: 10000 });
-   ```
-
-4. **Handle missing background gracefully (render without it):**
-   ```typescript
-   // RegularRenderer already handles no bgUrl: setDims(1920, 1080)
-   // Ensure the backend sends explicit dimensions when no background
-   if (!bgUrl) {
-     await page.evaluate((w, h) => {
-       window.__renderConfig = { width: w, height: h };
-     }, width, height);
-   }
-   ```
-
-**Detection:**
-- Export video shows "Select background" text
-- Export video has no background image (just score on white)
-- containerWidth/containerHeight are 0 in debug logs
-- Background appears in browser preview but not in export
-
-**Recovery cost:** LOW (2-3 hours)
-- Convert to data URLs or serve from backend
-- Add load-state verification
-- Test with and without background images
-
-**Phase to address:** Data transfer design -- how settings and assets reach the headless Chrome page
-
----
-
-### Pitfall 10: Fly.io Cold Start Kills First Export Request
-
-**What goes wrong:**
-With Fly.io `auto_stop_machines: 'stop'`, machines stop when idle to save costs. When a new export request arrives, Fly.io starts the machine, which must:
-1. Boot the VM (~500ms-2s)
-2. Start Node.js process (~500ms)
-3. Launch Chrome (~1-3s with Docker)
-4. The export request then needs to navigate to the page, load WASM, etc.
-
-Total cold start: 3-7 seconds. If the client-side has a short timeout (e.g., 5 seconds for WebSocket connection), it may timeout before the server is ready.
-
-With `auto_stop_machines: 'suspend'`, the machine state is preserved in storage and resume is faster (~500ms), but this requires a volume and costs storage.
-
-**Additional issue: Chrome launch on cold start.** If Chrome is launched on-demand per request (not pre-launched), the first request pays an additional 2-3 second penalty. If Chrome is launched at server startup, it consumes memory even when idle (before auto-stop kicks in).
+**Why it happens:**
+Firestore security rules are separate from application code. They are deployed independently and are easy to forget. During development, permissive rules speed up iteration, but they create a habit of ignoring the rules file.
 
 **Consequences:**
-- First export after idle period fails or takes much longer
-- User sees "connection timeout" or "export failed" on first attempt
-- Retry works (machine is warm) but UX is poor
-- If auto-stop is aggressive, EVERY export request may be a cold start
+- Any authenticated user can read all projects (privacy violation)
+- Any authenticated user can delete or overwrite other users' projects
+- Storage files accessible to any authenticated user (if Storage rules are similarly permissive)
 
 **Prevention:**
-1. **Use `auto_stop_machines: 'suspend'` instead of `'stop'`:**
-   ```toml
-   # fly.toml
-   [http_service]
-     auto_stop_machines = 'suspend'  # Faster resume than cold boot
-     auto_start_machines = true
-     min_machines_running = 0
+1. Write ownership-based rules from day one:
    ```
-
-2. **Pre-launch Chrome at server startup (eager initialization):**
-   ```typescript
-   // server.ts
-   let browser: Browser;
-
-   async function main() {
-     browser = await puppeteer.launch({ /* ... */ });
-     console.log('Chrome pre-launched');
-
-     const server = createServer(/* ... */);
-     server.listen(port);
-   }
-   ```
-
-3. **Client-side retry with appropriate timeout:**
-   ```typescript
-   // Client: expect cold start, retry with backoff
-   async function startExport(settings: ExportSettings): Promise<string> {
-     const MAX_RETRIES = 3;
-     const INITIAL_TIMEOUT = 15000; // 15s for cold start
-
-     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-       try {
-         const response = await fetch('/api/exports', {
-           method: 'POST',
-           body: JSON.stringify(settings),
-           signal: AbortSignal.timeout(INITIAL_TIMEOUT),
-         });
-         return await response.json();
-       } catch (e) {
-         if (attempt === MAX_RETRIES - 1) throw e;
-         await sleep(2000 * (attempt + 1));
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /projects/{projectId} {
+         allow read, write: if request.auth != null
+           && request.auth.uid == resource.data.ownerId;
+         allow create: if request.auth != null
+           && request.auth.uid == request.resource.data.ownerId;
        }
      }
    }
    ```
-
-4. **Keep minimum 1 machine running if budget allows:**
-   ```toml
-   [http_service]
-     min_machines_running = 1  # Always warm, ~$5-15/month
+2. Write matching Storage rules:
    ```
-
-5. **Add health check endpoint that signals readiness:**
-   ```typescript
-   app.get('/health', async (req, res) => {
-     const chromeReady = browser && browser.isConnected();
-     res.status(chromeReady ? 200 : 503).json({ chrome: chromeReady });
-   });
+   rules_version = '2';
+   service firebase.storage {
+     match /b/{bucket}/o {
+       match /users/{userId}/projects/{allPaths=**} {
+         allow read, write: if request.auth != null
+           && request.auth.uid == userId;
+       }
+     }
+   }
    ```
+3. Deploy rules as part of the CI/CD pipeline, not manually.
+4. Test rules with the Firebase Emulator Suite before deploying.
 
 **Detection:**
-- First export after period of inactivity is slow or fails
-- Server logs show Chrome launch time on first request
-- Fly.io dashboard shows machine start events correlating with export failures
-- Subsequent exports are fast (machine warm)
+- Firebase Console > Firestore > Rules shows permissive rules
+- User can access `/editor/{otherUsersProjectId}` and see content
+- Firebase sends warning emails about insecure rules
 
-**Recovery cost:** LOW (2-3 hours)
-- Configure fly.toml for suspend instead of stop
-- Add health check
-- Add client-side retry logic
-- Set appropriate timeouts
+**Recovery cost:** LOW (1-2 hours) for the fix. Potentially catastrophic if exploited before fixing.
 
-**Phase to address:** Fly.io deployment configuration -- configure before first production deploy
+**Phase to address:** Phase 3 (Firestore data model) -- deploy strict rules before storing any user data.
 
 ---
 
-### Pitfall 11: CSS Transition on Camera Breaks Frame-Accurate Capture
+### Pitfall 9: Auto-Save Writes Storm Firestore (Cost + Rate Limits)
 
 **What goes wrong:**
-The RegularRenderer camera has `transition: "transform 200ms ease-out"` (line 757). This means when `setTimestamp` calls `applyCamera()` and sets `translateY(-cameraY)`, the camera doesn't jump instantly -- it animates over 200ms. But Puppeteer takes the screenshot immediately after `setTimestamp` returns. The camera is mid-transition, NOT at its final position.
+Without debouncing, every slider adjustment, color picker change, or scroll position update triggers a Firestore write. A user adjusting a slider produces 20-50 intermediate values in a second. At $0.18 per 100K writes, this seems cheap -- but multiply by many users and many editing sessions, and costs escalate. More importantly, Firestore has a per-document write limit of 1 write per second sustained. Exceeding this causes write contention errors.
 
-**Frame-accurate rendering requires:**
-```
-setTimestamp(t) -> camera at EXACT position for t -> screenshot
-```
-
-**What actually happens:**
-```
-setTimestamp(t) -> camera STARTS transitioning to position for t -> screenshot -> camera still animating
-```
-
-Each frame captures the camera at the START of its transition, not the end. The visual effect is that the camera appears to lag behind the notes by ~200ms worth of movement.
+**Why it happens:**
+React state updates are fast. Zustand store changes fire synchronously. Without a debounce, every `set()` call triggers a Firestore write. A 3-second slider drag produces 50+ writes to the same document.
 
 **Consequences:**
-- Camera position in video is always "behind" where it should be
-- Score appears to scroll with a delayed, elastic feel
-- Notes animate at correct time but camera hasn't caught up yet
-- Particularly noticeable at system boundaries (large camera jumps)
+- Firestore write contention errors (`ABORTED: Too much contention on these documents`)
+- Unexpectedly high Firestore costs
+- Auto-save indicator flickers rapidly between "Saving..." and "Saved"
+- Potential data inconsistency if writes arrive out of order
 
 **Prevention:**
-1. **Remove CSS transition in render mode:**
+1. Debounce all auto-save writes with 1500ms delay:
    ```typescript
-   // In RegularRenderer, when rendering for export
-   <div
-     ref={cameraRef}
-     style={{
-       display: "flex",
-       width: "100%",
-       pointerEvents: "none",
-       transition: renderMode ? "none" : "transform 200ms ease-out",
-     }}
-   />
-   ```
+   import { useDebouncedCallback } from 'use-debounce';
 
-2. **Force transition to complete before screenshot:**
+   const saveToFirestore = useDebouncedCallback(async (data) => {
+     await setDoc(projectRef, data, { merge: true });
+   }, 1500);
+   ```
+2. Only write changed fields (use `{ merge: true }` or update specific fields):
    ```typescript
-   // In Puppeteer, after setTimestamp
-   await page.evaluate(() => {
-     const camera = document.querySelector('[data-camera]');
-     if (camera) {
-       camera.style.transition = 'none';
-       // Force reflow to apply
-       void camera.offsetHeight;
-     }
+   // Instead of writing the entire document every time
+   await updateDoc(projectRef, {
+     scoreColor: newColor,
+     updatedAt: serverTimestamp(),
    });
    ```
-
-3. **Set transition to 'none' at page load time:**
+3. Batch related changes into a single write:
    ```typescript
-   // In Puppeteer, before starting frame capture
-   await page.evaluate(() => {
-     // Kill ALL transitions for frame-accurate capture
-     const style = document.createElement('style');
-     style.textContent = '* { transition: none !important; }';
-     document.head.appendChild(style);
+   // Subscribe to entire store, debounce, write snapshot
+   useProjectStore.subscribe((state, prevState) => {
+     saveToFirestore(state.getSnapshot());
    });
    ```
-   This is the safest approach -- it eliminates all CSS transitions globally, ensuring every element is in its final state when the screenshot is taken.
+4. Monitor Firestore usage in Firebase Console > Usage tab.
 
 **Detection:**
-- Camera appears to "lag" in the exported video
-- Compare: frame at t=5.0s should show camera at same Y as browser preview at t=5.0s
-- Score jumps at system boundaries feel delayed compared to audio
-- Add `console.log(cameraRef.current.style.transform)` before screenshot -- should match expected value
+- Firebase Console shows unexpectedly high write counts
+- Console errors: `ABORTED: Too much contention`
+- Auto-save status flickers
+- Firebase billing alerts
 
-**Recovery cost:** LOW (1 hour)
-- Inject `* { transition: none !important; }` in render mode
-- Test with system-boundary seeking
+**Recovery cost:** LOW (2-3 hours) -- add debounce.
 
-**Phase to address:** Puppeteer frame capture implementation -- add before first test render
+**Phase to address:** Phase 5 (Auto-save) -- debounce is mandatory from the first implementation.
 
 ---
 
-### Pitfall 12: Incorrect Settings Transfer Between Browser and Backend
+### Pitfall 10: Next.js 16 async params Break Page Components
 
 **What goes wrong:**
-The browser stores score settings across many state variables: scoreRegion, scoreColor, scoreScale, musicFont, syncAnchors (Map), animation parameters, border style, background image. All of these must be accurately transferred to the backend so headless Chrome produces identical output.
+Next.js 16 changed `params` and `searchParams` to be async (Promises). Code written for Next.js 15 or earlier that destructures params synchronously breaks:
 
-Common serialization failures:
-- **`Map` serialization:** `syncAnchors` is a `Map<string, number>`. `JSON.stringify(map)` produces `{}` (empty object), not the map contents. All sync anchors are lost. The animation controller has no timing data, so all notes remain at frame 0.
-- **Color format mismatch:** Browser stores colors as `#hex`, backend might receive `rgb()` or vice versa.
-- **ScoreRegion precision:** Floating-point coordinates lose precision in JSON round-trip.
-- **Missing defaults:** If a setting is undefined in the transfer, the RegularRenderer uses a different default than expected.
+```typescript
+// BROKEN in Next.js 16
+export default function EditorPage({ params }: { params: { id: string } }) {
+  const project = await getProject(params.id); // params.id is undefined
+}
+
+// CORRECT in Next.js 16
+export default async function EditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const project = await getProject(id);
+}
+```
+
+**Why it happens:**
+Next.js 16 made `params` async to support future streaming and partial rendering optimizations. The change was announced in the upgrade guide, but many tutorials, blog posts, and AI coding assistants still generate the old synchronous pattern.
 
 **Consequences:**
-- Export has no animation (syncAnchors empty due to Map serialization)
-- Wrong colors in export (color format mismatch)
-- Score positioned incorrectly (scoreRegion imprecise or missing)
-- Wrong font (musicFont missing, defaults to Bravura)
-- Subtle: export looks "almost right" but details differ from preview
+- `params.id` is `undefined` (accessing `.id` on a Promise)
+- Page renders with wrong data or shows "not found"
+- TypeScript may not catch this if types are not updated
 
 **Prevention:**
-1. **Serialize Maps explicitly:**
-   ```typescript
-   // Serialize
-   const payload = {
-     ...settings,
-     syncAnchors: Object.fromEntries(syncAnchors),
-   };
-
-   // Deserialize
-   const syncAnchors = new Map(Object.entries(payload.syncAnchors));
-   ```
-
-2. **Create a strict schema/interface for export settings:**
-   ```typescript
-   interface ExportSettings {
-     xml: string;              // MusicXML content
-     bgImage?: Buffer;         // Background image data
-     audioFile: Buffer;        // Audio file data
-     scoreRegion: { x: number; y: number; width: number; height: number } | null;
-     scoreColor: string;       // Always #RRGGBB
-     scoreScale: number;       // 0.5 to 1.5
-     musicFont: string;        // Bravura | Petaluma | Leland | Gootville | Leipzig
-     scoreBorder: string;      // none | line | ornate | flourish
-     syncAnchors: Record<string, number>;  // Event ID -> timestamp
-     fps: number;              // 30 default
-     width: number;            // Output width
-     height: number;           // Output height
-     activeNoteheadColor: string;
-     activeNoteheadScale: number;
-     activeNoteheadAnimationEntryMs: number;
-     activeNoteheadAnimationHoldMs: number;
-     activeNoteheadAnimationExitMs: number;
-     colorFullNote: boolean;
-   }
-   ```
-
-3. **Validate settings on the backend before rendering:**
-   ```typescript
-   function validateSettings(settings: ExportSettings): string[] {
-     const errors: string[] = [];
-     if (!settings.xml) errors.push('Missing MusicXML');
-     if (!settings.audioFile) errors.push('Missing audio');
-     if (Object.keys(settings.syncAnchors).length === 0) {
-       errors.push('syncAnchors is empty -- Map serialization likely failed');
-     }
-     return errors;
-   }
-   ```
-
-4. **Pixel-comparison test:** Render the same frame in browser and backend, compare screenshots pixel-by-pixel. Any difference reveals a settings transfer issue.
+1. Always `await params` before accessing properties.
+2. Use the correct type signature: `{ params: Promise<{ id: string }> }`.
+3. Follow the Next.js 16 upgrade guide for all dynamic routes.
+4. If using a codemod, run `npx @next/codemod@latest upgrade` to auto-fix.
 
 **Detection:**
-- Export has no note animations (syncAnchors empty)
-- Colors differ between preview and export
-- Score position/size differs
-- Font differs
-- Test: `JSON.stringify(new Map([['a', 1]]))` returns `'{}'` -- this is the Map bug
+- Dynamic route pages show "not found" or render with undefined data
+- `console.log(params)` shows a Promise object, not an object with route segments
+- TypeScript error if types are correctly configured
 
-**Recovery cost:** LOW (2-3 hours)
-- Fix Map serialization
-- Add validation
-- Add pixel-comparison test
+**Recovery cost:** LOW (30 minutes) -- add `await` to params access.
 
-**Phase to address:** Data transfer API design -- validate serialization round-trip before building render pipeline
+**Phase to address:** Phase 1 (Next.js scaffold) -- use correct patterns from the start.
 
 ---
 
 ## Minor Pitfalls
 
-Mistakes that cause annoyance or minor quality issues but are easily fixable.
+Mistakes that cause annoyance or minor quality issues but are quickly fixed.
 
 ---
 
-### Pitfall 13: FFmpeg Output Not Web-Compatible (Missing faststart, Wrong Codec)
+### Pitfall 11: NEXT_PUBLIC_ Prefix Missing on Client Environment Variables
 
 **What goes wrong:**
-FFmpeg's default H.264 encoding produces valid MP4 files, but browsers require specific settings for smooth playback. Missing `-movflags +faststart` means the `moov` atom (metadata) is at the end of the file, requiring full download before playback starts. Wrong pixel format (`yuv444p` instead of `yuv420p`) causes some browsers/devices to refuse playback.
+Next.js requires the `NEXT_PUBLIC_` prefix for environment variables accessible in client-side code. Firebase client config (API key, auth domain, project ID, etc.) must use this prefix. Without it, `process.env.FIREBASE_API_KEY` is `undefined` in the browser, and Firebase initialization fails silently (or with a cryptic "No Firebase App" error).
 
 **Prevention:**
-```bash
-ffmpeg -f image2pipe -framerate 30 -i pipe:0 \
-  -i audio.mp3 \
-  -c:v libx264 \
-  -preset medium \
-  -crf 18 \              # High quality (lower = better, 0-51 range)
-  -pix_fmt yuv420p \     # Required for browser compatibility
-  -c:a aac -b:a 192k \   # AAC audio for MP4
-  -movflags +faststart \ # Metadata at beginning for streaming
-  -shortest \            # Trim to shorter of audio/video
-  output.mp4
+```
+# .env.local
+NEXT_PUBLIC_FIREBASE_API_KEY=AIza...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456
+NEXT_PUBLIC_FIREBASE_APP_ID=1:123456:web:abc
+
+# Server-only (no NEXT_PUBLIC_ prefix)
+FIREBASE_ADMIN_PROJECT_ID=project-id
+FIREBASE_ADMIN_CLIENT_EMAIL=firebase-adminsdk@project.iam.gserviceaccount.com
+FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n..."
 ```
 
-**Detection:** Video won't play in browser, or starts playback only after full download.
+**Detection:** Firebase SDK logs `FirebaseError: No Firebase App '[DEFAULT]' has been created`.
 
-**Recovery cost:** LOW (30 minutes) -- adjust FFmpeg flags.
+**Recovery cost:** LOW (15 minutes).
 
-**Phase to address:** FFmpeg encoding implementation.
+**Phase to address:** Phase 1 (Next.js scaffold).
 
 ---
 
-### Pitfall 14: No Cleanup of Temporary Files After Export
+### Pitfall 12: Firebase __session Cookie Name Required on Firebase Hosting
 
 **What goes wrong:**
-Each export may produce temporary files: frame PNGs (if not piping), intermediate video, uploaded audio/image files. On Fly.io, the writable filesystem is ephemeral but limited (~8GB). Without cleanup, accumulated temp files fill the disk.
+If deploying to Firebase Hosting (even via a Cloud Run backend), Firebase's CDN strips all cookies EXCEPT those named `__session`. If the session cookie is named anything else (e.g., `session`, `token`, `auth`), it is stripped by the CDN and never reaches the server.
+
+**Why it happens:**
+Firebase Hosting's CDN caches responses aggressively. To prevent user-specific data from being cached, it only forwards the `__session` cookie. This is documented but easy to miss.
+
+**Prevention:**
+- Always name the session cookie `__session`.
+- If not using Firebase Hosting, any cookie name works, but `__session` is a safe default regardless.
+
+**Detection:** Auth works in dev (localhost, no CDN) but fails in production (cookie stripped).
+
+**Recovery cost:** LOW (15 minutes) -- rename the cookie.
+
+**Phase to address:** Phase 2 (Firebase Auth).
+
+---
+
+### Pitfall 13: Firestore Timestamps Serialize as Objects, Not Dates
+
+**What goes wrong:**
+Firestore `serverTimestamp()` stores timestamps as Firestore Timestamp objects. When read back, they are `{ seconds: number, nanoseconds: number }` objects, not JavaScript `Date` objects. If code expects `createdAt` to be a Date (e.g., `project.createdAt.toLocaleDateString()`), it fails.
+
+When passing Firestore data from server components to client components, Timestamp objects must be serialized to plain values because React serialization does not support Firestore Timestamp class instances.
 
 **Prevention:**
 ```typescript
-import { mkdtemp, rm } from 'fs/promises';
-import { tmpdir } from 'os';
-import path from 'path';
+// Convert Timestamp to ISO string before passing as props
+const project = {
+  ...projectSnap.data(),
+  createdAt: projectSnap.data().createdAt?.toDate().toISOString(),
+  updatedAt: projectSnap.data().updatedAt?.toDate().toISOString(),
+};
+```
 
-async function renderExport(settings: ExportSettings) {
-  const tempDir = await mkdtemp(path.join(tmpdir(), 'export-'));
-  try {
-    await captureFrames(tempDir, settings);
-    await encodeVideo(tempDir, settings);
-    return path.join(tempDir, 'output.mp4');
-  } finally {
-    // Clean up even on error
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
-  }
+**Detection:** `TypeError: project.createdAt.toLocaleDateString is not a function`.
+
+**Recovery cost:** LOW (30 minutes).
+
+**Phase to address:** Phase 3 (Firestore data model).
+
+---
+
+### Pitfall 14: Zustand Store Hydration Flicker on Client
+
+**What goes wrong:**
+The editor page server component passes initial project data as props. The client component hydrates the Zustand store with this data on mount. But during the first render, the Zustand store has default values (not the server data). This causes a brief flash of default settings before the store is hydrated.
+
+**Prevention:**
+Hydrate the store synchronously in the component body, not in a useEffect:
+```typescript
+function EditorClient({ initialData }: { initialData: ProjectData }) {
+  // Hydrate BEFORE first render
+  const [hydrated] = useState(() => {
+    useProjectStore.getState().hydrate(initialData);
+    return true;
+  });
+
+  // ... rest of component
 }
 ```
 
-**Detection:** `df -h` inside Docker shows disk filling up over time.
+**Detection:** Brief flash of default colors/settings when opening a project.
 
-**Recovery cost:** LOW (1 hour).
+**Recovery cost:** LOW (30 minutes).
 
-**Phase to address:** Backend service implementation.
-
----
-
-### Pitfall 15: Progress Reporting Is Inaccurate or Jumpy
-
-**What goes wrong:**
-Naive progress calculation: `progress = currentFrame / totalFrames * 100`. But frame capture time varies wildly (50ms for simple frames, 300ms for frames with many animated notes). Progress appears to slow down and speed up unpredictably.
-
-Additionally, FFmpeg encoding adds time after the last frame is captured. If progress is 100% when frame capture finishes, the user waits with no visible progress during encoding finalization.
-
-**Prevention:**
-1. **Weight progress by phase:**
-   ```typescript
-   // Frame capture: 0-85%
-   // FFmpeg finalization: 85-95%
-   // Audio muxing: 95-100%
-   const captureProgress = (currentFrame / totalFrames) * 85;
-   ```
-
-2. **Smooth progress updates (don't send every frame):**
-   ```typescript
-   // Send progress every 1% or every 2 seconds, whichever comes first
-   const lastProgressTime = 0;
-   const lastProgressPercent = 0;
-
-   if (percent - lastProgressPercent >= 1 || now - lastProgressTime >= 2000) {
-     ws.send(JSON.stringify({ type: 'progress', percent }));
-   }
-   ```
-
-**Detection:** Progress bar jumps between values or stalls at 99%.
-
-**Recovery cost:** LOW (1-2 hours).
-
-**Phase to address:** WebSocket progress implementation.
-
----
-
-### Pitfall 16: Docker Image Too Large (Slow Deploys)
-
-**What goes wrong:**
-Chrome (~300MB), FFmpeg (~100MB), Node.js (~100MB), npm modules, fonts -- the Docker image easily exceeds 1GB. On Fly.io, large images cause slow deployments (5-10 minutes) and slow cold starts (pulling image from registry).
-
-**Prevention:**
-1. **Use multi-stage builds:**
-   ```dockerfile
-   # Build stage
-   FROM node:20-slim AS builder
-   WORKDIR /app
-   COPY package*.json ./
-   RUN npm ci --production
-   COPY . .
-
-   # Runtime stage
-   FROM ghcr.io/puppeteer/puppeteer:latest
-   # Puppeteer image already includes Chrome
-   RUN apt-get update && apt-get install -y ffmpeg fonts-liberation fonts-noto \
-     && rm -rf /var/lib/apt/lists/*
-   COPY --from=builder /app /app
-   WORKDIR /app
-   ```
-
-2. **Use Puppeteer's official Docker image** as base (already includes Chrome + dependencies).
-
-3. **Install only needed FFmpeg codecs** if using a custom FFmpeg build.
-
-**Detection:** `fly deploy` takes > 5 minutes. `docker images` shows image > 1.5GB.
-
-**Recovery cost:** MEDIUM (3-4 hours) -- restructure Dockerfile.
-
-**Phase to address:** Docker setup -- optimize early, not after.
+**Phase to address:** Phase 3 (Firestore data model) or Phase 5 (Auto-save).
 
 ---
 
@@ -1202,95 +625,19 @@ Chrome (~300MB), FFmpeg (~100MB), Node.js (~100MB), npm modules, fonts -- the Do
 
 | Phase Topic | Likely Pitfall | Severity | Mitigation |
 |-------------|---------------|----------|------------|
-| Docker image setup | Missing fonts for text rendering (#3) | Critical | Install fonts-liberation, fonts-noto; verify with score containing lyrics |
-| Docker image setup | Image too large, slow deploys (#16) | Minor | Multi-stage build, use Puppeteer official image as base |
-| Backend API design | Map serialization loses syncAnchors (#12) | Critical | Use Object.fromEntries/Object.entries; validate round-trip |
-| Backend API design | Background image not accessible (#9) | Moderate | Convert to data URL or serve from backend HTTP |
-| Puppeteer integration | WASM not ready on controller access (#2) | Critical | Poll for window.rendererReady; generous timeout |
-| Puppeteer integration | Viewport/DPI mismatch (#7) | Moderate | Match viewport to output resolution; verify screenshot dimensions |
-| Puppeteer integration | CSS transitions break frame accuracy (#11) | Moderate | Inject `* { transition: none !important; }` |
-| Puppeteer integration | Virtualization hides notes in render (#1) | Critical | Disable virtualization in render mode |
-| FFmpeg encoding | Pipe backpressure deadlock (#6) | Critical | Drain-aware writes or disk-based fallback |
-| FFmpeg encoding | Frame timing drift causes desync (#4) | Critical | Use frame index only, verify total frame count |
-| FFmpeg encoding | Output not web-compatible (#13) | Minor | yuv420p, movflags +faststart, AAC audio |
-| WebSocket progress | Connection drops mid-export (#8) | Moderate | Decouple lifecycle, reconnection, HTTP fallback |
-| WebSocket progress | Inaccurate progress reporting (#15) | Minor | Weight by phase, smooth updates |
-| Concurrent renders | Chrome process leak and OOM (#5) | Critical | Browser pool with semaphore, finally-block cleanup |
-| Fly.io deployment | Cold start kills first request (#10) | Moderate | suspend mode, pre-launch Chrome, client retry |
-| Fly.io deployment | Temp files fill disk (#14) | Minor | Clean up in finally blocks, use temp directories |
-
----
-
-## Recovery Strategies
-
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| #1 Virtualization hides notes | MEDIUM (4-8h) | Add renderMode prop; skip virtualization in render path |
-| #2 WASM not ready | LOW (2-4h) | Add readiness flag; poll in Puppeteer; generous timeout |
-| #3 Missing fonts in Docker | LOW (1-2h) | Add font packages to Dockerfile |
-| #4 Frame timing drift | LOW (2-3h) | Fix frame counting; add duration verification |
-| #5 Chrome process leak/OOM | MEDIUM (4-6h) | Browser pool; finally-block cleanup; process monitoring |
-| #6 Pipe backpressure deadlock | MEDIUM (3-5h) | Drain-aware writes or disk fallback |
-| #7 Viewport/DPI mismatch | LOW (2-3h) | Set correct viewport; verify dimensions |
-| #8 WebSocket drops | MEDIUM (4-6h) | Decouple lifecycle; reconnection; HTTP fallback |
-| #9 Background image failure | LOW (2-3h) | Data URLs or backend-served assets |
-| #10 Cold start timeout | LOW (2-3h) | fly.toml config; client retry; health check |
-| #11 CSS transition lag | LOW (1h) | Inject transition:none in render mode |
-| #12 Settings serialization | LOW (2-3h) | Fix Map handling; add validation |
-| #13 FFmpeg codec compat | LOW (30min) | Correct FFmpeg flags |
-| #14 Temp file cleanup | LOW (1h) | Finally-block cleanup; temp directories |
-| #15 Progress inaccuracy | LOW (1-2h) | Phase-weighted progress |
-| #16 Docker image size | MEDIUM (3-4h) | Multi-stage build |
-
----
-
-## Quality Gate Checklist
-
-Before declaring each phase complete, verify:
-
-**Docker Image:**
-- [ ] Score with lyrics/text markings renders correctly (fonts installed)
-- [ ] Music notation fonts (Bravura, Petaluma, etc.) render correctly
-- [ ] Image size < 1.5GB
-- [ ] Chrome launches successfully inside container
-- [ ] FFmpeg available and functional
-
-**Data Transfer:**
-- [ ] syncAnchors round-trips correctly (Map to JSON and back)
-- [ ] All settings produce identical output vs browser preview
-- [ ] Background image loads in headless Chrome
-- [ ] MusicXML content transfers without corruption
-
-**Puppeteer Frame Capture:**
-- [ ] window.animationController exists after page load (readiness check)
-- [ ] All pages visible when rendering (virtualization disabled or handled)
-- [ ] CSS transitions disabled for frame-accurate capture
-- [ ] Screenshot resolution matches requested output resolution
-- [ ] First frame and last frame render correctly
-
-**FFmpeg Encoding:**
-- [ ] Audio and video in sync (test at beginning, middle, and end)
-- [ ] Frame count matches expected: `ceil(duration * fps)`
-- [ ] Output plays in browser (yuv420p, faststart, AAC)
-- [ ] Pipe backpressure handled (test with 1000+ frame export)
-
-**WebSocket Progress:**
-- [ ] Progress updates reach browser during export
-- [ ] Export continues if WebSocket disconnects
-- [ ] Client can reconnect and see current progress
-- [ ] Export completion triggers download
-
-**Concurrent Renders:**
-- [ ] Two simultaneous exports complete successfully
-- [ ] Failed export doesn't leak Chrome processes
-- [ ] Memory stays bounded during concurrent operation
-- [ ] Queue/rejection for excess concurrent requests
-
-**Fly.io Deployment:**
-- [ ] Cold start export succeeds (may be slower)
-- [ ] Machine auto-stops when idle
-- [ ] Machine auto-starts on new request
-- [ ] Temp files cleaned up after export
+| Next.js scaffold (Phase 1) | Verovio WASM fails with Turbopack (#1, #7) | Critical | Test WASM immediately; have `--webpack` fallback |
+| Next.js scaffold (Phase 1) | import.meta.env not migrated (#6) | Moderate | Global search-replace before first build |
+| Next.js scaffold (Phase 1) | Async params wrong pattern (#10) | Moderate | Follow Next.js 16 upgrade guide |
+| Firebase Auth (Phase 2) | Admin SDK credentials in client bundle (#2) | Critical | Use `server-only` package, separate files |
+| Firebase Auth (Phase 2) | Session cookie expiration without refresh (#4) | Critical | Design refresh flow upfront |
+| Firebase Auth (Phase 2) | Wrong cookie name on Firebase Hosting (#12) | Minor | Always use `__session` |
+| Firestore data model (Phase 3) | Map serialization loses syncAnchors (#3) | Critical | Object.fromEntries/Object.entries |
+| Firestore data model (Phase 3) | Security rules too permissive (#8) | Moderate | Write ownership rules from day one |
+| Firestore data model (Phase 3) | Timestamp serialization (#13) | Minor | Convert to ISO strings for props |
+| Firebase Storage (Phase 4) | No additional pitfalls unique to Phase 4 | -- | Standard Firebase Storage patterns |
+| Auto-save (Phase 5) | Offline writes appear saved but are lost (#5) | Critical | Use metadata changes for save status |
+| Auto-save (Phase 5) | Write storms without debounce (#9) | Moderate | 1500ms debounce mandatory |
+| Auto-save (Phase 5) | Zustand hydration flicker (#14) | Minor | Synchronous hydration in component body |
 
 ---
 
@@ -1298,61 +645,29 @@ Before declaring each phase complete, verify:
 
 ### Primary Sources (HIGH confidence)
 
-**Codebase analysis:**
-- `/Users/emirahmed/Desktop/Manuscript/renderer/src/renderers/RegularRenderer.tsx` -- virtualization logic (lines 262-300, 770-797), camera with CSS transition (line 757), setTimestamp (lines 526-668), animationController exposure (lines 671-715)
-- `/Users/emirahmed/Desktop/Manuscript/renderer/src/lib/animationController.ts` -- frame-by-frame API, synchronous setTimestamp/setFrame
-- `/Users/emirahmed/Desktop/Manuscript/renderer/src/hooks/useVerovio.ts` -- WASM initialization, font loading, async rendering pipeline
-
 **Official documentation:**
-- [Puppeteer Docker Guide](https://pptr.dev/guides/docker) -- Official Docker image, required flags, non-root user setup
-- [Puppeteer Troubleshooting](https://pptr.dev/troubleshooting) -- Missing dependencies, shared memory, sandbox configuration
-- [Puppeteer Viewport API](https://pptr.dev/api/puppeteer.viewport) -- deviceScaleFactor, width/height configuration
-- [Puppeteer ScreenshotOptions](https://pptr.dev/api/puppeteer.screenshotoptions) -- encoding, optimizeForSpeed, quality settings
-- [FFmpeg Documentation](https://ffmpeg.org/ffmpeg.html) -- rawvideo input, image2pipe, codec options
-- [FFmpeg Formats Documentation](https://ffmpeg.org/ffmpeg-formats.html) -- image2pipe format specification
-- [Fly.io Auto-stop/Auto-start](https://fly.io/docs/launch/autostop-autostart/) -- Machine lifecycle management
-- [Fly.io Machine Sizing](https://fly.io/docs/machines/guides-examples/machine-sizing/) -- CPU/memory options
-- [Fly.io Configuration Reference](https://fly.io/docs/reference/configuration/) -- fly.toml options, kill_timeout, processes
-- [Verovio SMuFL Fonts](https://book.verovio.org/advanced-topics/smufl.html) -- Font loading in Verovio
+- [Next.js 16 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-16) -- async params, proxy.ts, Turbopack default
+- [Firebase Auth Session Cookies](https://firebase.google.com/docs/auth/admin/manage-cookies) -- Session cookie creation, verification, expiration limits
+- [Firestore Security Rules](https://firebase.google.com/docs/firestore/security/get-started) -- Rule syntax, ownership patterns
+- [Firebase Hosting Cookie Behavior](https://firebase.google.com/docs/hosting/manage-cache#using_cookies) -- `__session` cookie requirement
+- [Firestore Offline Persistence](https://firebase.google.com/docs/firestore/manage-data/enable-offline) -- IndexedDB caching, hasPendingWrites
+- [server-only Package](https://www.npmjs.com/package/server-only) -- Prevent server code from being imported in client
+- [Next.js Dynamic Import](https://nextjs.org/docs/app/building-your-application/optimizing/lazy-loading) -- `dynamic({ ssr: false })` for client-only components
+- [Firestore Quotas and Limits](https://firebase.google.com/docs/firestore/quotas) -- 1 write per second per document sustained
+
+**Codebase analysis:**
+- `src/lib/verovioService.ts` -- WASM loading pattern with `createVerovioModule` + `VerovioToolkit`
+- `src/stores/syncStore.ts` -- `syncAnchors` as `Map<string, number>`
+- `src/App.tsx` -- All state fields that need persistence, `import.meta.env` usage
 
 ### Secondary Sources (MEDIUM confidence)
 
-**Puppeteer memory and concurrency:**
-- [The Hidden Cost of Headless Browsers: A Puppeteer Memory Leak Journey](https://medium.com/@matveev.dina/the-hidden-cost-of-headless-browsers-a-puppeteer-memory-leak-journey-027e41291367) -- Memory leak patterns, monitoring
-- [Chrome Browser Memory Leak Issue #9283](https://github.com/puppeteer/puppeteer/issues/9283) -- Chrome process memory management
-- [Workaround RAM-leaking Libraries like Puppeteer](https://devforth.io/blog/how-to-simply-workaround-ram-leaking-libraries-like-puppeteer-universal-way-to-fix-ram-leaks-once-and-forever/) -- Process recycling strategy
-- [Puppeteer Cluster](https://github.com/thomasdondorf/puppeteer-cluster) -- Browser pool and concurrency models
-
-**Screenshot performance:**
-- [8 Tips for Faster Puppeteer Screenshots](https://www.bannerbear.com/blog/ways-to-speed-up-puppeteer-screenshots/) -- Binary encoding, optimizeForSpeed
-- [Optimize Screenshot Speed](https://screenshotone.com/blog/optimize-for-speed-when-rendering-screenshots-in-puppeteer-and-chrome-devtools-protocol/) -- CDP optimizations
-
-**Video from screenshots:**
-- [timecut: Record Web Page Animations](https://github.com/tungs/timecut) -- Frame-by-frame video from Puppeteer screenshots with FFmpeg piping
-- [Producing Real-time Video with Node.js and FFmpeg](https://ofarukcaki.medium.com/producing-real-time-video-with-node-js-and-ffmpeg-a59ac27461a1) -- stdin pipe pattern
-
-**WebSocket reliability:**
-- [WebSocket Reliability in Realtime](https://ably.com/topic/websocket-reliability-in-realtime-infrastructure) -- Reconnection, message ordering, keep-alive
-- [How to Implement Reconnection Logic for WebSockets](https://oneuptime.com/blog/post/2026-01-27-websocket-reconnection/view) -- Exponential backoff patterns
-- [WebSocket Architecture Best Practices](https://ably.com/topic/websocket-architecture-best-practices) -- Scaling, state management
-
-**FFmpeg audio sync:**
-- [Correcting Audio/Video Sync with FFmpeg ITSOFFSET](https://wjwoodrow.wordpress.com/2013/02/04/correcting-for-audiovideo-sync-issues-with-the-ffmpeg-programs-itsoffset-switch/) -- Timestamp offset correction
-- [VFR vs CFR](https://www.encodex.se/guides/vfr-vs-cfr.html) -- Why constant frame rate matters
-
-**Fly.io deployment:**
-- [Fly.io Pricing](https://fly.io/docs/about/pricing/) -- Performance-1x: 1 vCPU, 2GB minimum
-- [Machine Suspend and Resume](https://fly.io/docs/reference/suspend-resume/) -- Faster cold starts via suspend
-
-### Tertiary Sources (LOW confidence)
-
-**Font loading in headless Chrome:**
-- [Puppeteer Font Issues](https://www.browserless.io/blog/puppeteer-print) -- Font rendering hinting, user-agent workarounds
-- [Fontconfig Bundle for Headless Chrome](https://gist.github.com/nat-n/c3429d29f2478ccb3de243810bb12956) -- Custom font installation for Lambda/Docker
-- [Bravura Font Repository](https://github.com/steinbergmedia/bravura) -- WOFF2 format available for web embedding
+- [Turbopack WASM Support (GitHub Issue #84972)](https://github.com/vercel/next.js/issues/84972) -- Closed as "not a bug", confirms client-side WASM works
+- [Firebase Next.js Codelab](https://firebase.google.com/codelabs/firebase-nextjs) -- Full auth + Firestore integration pattern
+- [Zustand Subscribe API](https://zustand.docs.pmnd.rs/apis/store-api#subscribe) -- Store subscription for auto-save
 
 ---
 
-*Research completed: 2026-02-09*
-*Domain: Backend video export service for music notation renderer*
-*Focus: Pitfalls when adding headless browser rendering, FFmpeg encoding, WebSocket progress, and Fly.io deployment to existing browser-based animation tool*
+*Research completed: 2026-02-11*
+*Domain: Next.js migration + Firebase backend for music notation renderer*
+*Focus: Pitfalls when migrating from Vite SPA to Next.js App Router with Firebase Auth, Firestore, Storage, and auto-save*
