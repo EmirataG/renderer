@@ -4,9 +4,10 @@ export interface Project {
   viewMode: 'page';
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
-}
-
-export interface CreateProjectInput {
-  name: string;
-  viewMode: 'page';
+  scoreUrl?: string;
+  scoreFileName?: string;
+  audioUrl?: string;
+  audioFileName?: string;
+  backgroundUrl?: string;
+  backgroundFileName?: string;
 }
