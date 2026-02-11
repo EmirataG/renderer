@@ -53,21 +53,23 @@ export default function App({ projectId }: AppProps) {
         if (!res.ok) return;
         const { project } = await res.json();
 
-        // Load score XML from Storage URL
+        // Load score XML via server proxy (avoids CORS with Storage URLs)
         if (project.scoreUrl) {
-          const scoreRes = await fetch(project.scoreUrl);
-          const xml = await scoreRes.text();
-          setMusicXMLFile({
-            xml,
-            name: project.scoreFileName || 'score.xml',
-            measureCount: 0, // Verovio will calculate on render
-          });
+          const scoreRes = await fetch(`/api/projects/${projectId}/score`);
+          if (scoreRes.ok) {
+            const xml = await scoreRes.text();
+            setMusicXMLFile({
+              xml,
+              name: project.scoreFileName || 'score.xml',
+              measureCount: 0, // Verovio will calculate on render
+            });
+          }
         }
 
-        // Set audio from Storage URL (no File object when loading from URL)
+        // Set audio via server proxy (avoids CORS, supports range requests for seeking)
         if (project.audioUrl) {
           setAudioFile({
-            url: project.audioUrl,
+            url: `/api/projects/${projectId}/audio`,
             name: project.audioFileName || 'audio.mp3',
             file: null,
           });
