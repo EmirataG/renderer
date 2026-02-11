@@ -115,8 +115,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 22.1-01-PLAN.md -- Create standalone vanilla JS rendering page with shared animation module, border generator, and esbuild build tooling
-- [ ] 22.1-02-PLAN.md -- Wire standalone page into Fastify server, update Puppeteer config, delete frontend /render route and RenderApp.tsx, human-verify export pipeline
+- [x] 22.1-01-PLAN.md -- Create standalone vanilla JS rendering page with shared animation module, border generator, and esbuild build tooling
+- [x] 22.1-02-PLAN.md -- Wire standalone page into Fastify server, update Puppeteer config, delete frontend /render route and RenderApp.tsx, human-verify export pipeline
 
 ### Phase 23: Firebase Authentication
 
@@ -135,7 +135,7 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 23-01-PLAN.md -- Install Firebase SDKs, create client/admin singletons, session Route Handler, and login page with Google sign-in
+- [x] 23-01-PLAN.md -- Install Firebase SDKs, create client/admin singletons, session Route Handler, and login page with Google sign-in
 - [ ] 23-02-PLAN.md -- Add proxy.ts route protection, sign-out button, and human-verify complete auth flow
 
 ### Phase 24: Project Dashboard & CRUD
@@ -194,7 +194,7 @@ Plans:
 | Phase | Status | Plans | Completion |
 |-------|--------|-------|------------|
 | 22 - Next.js Scaffold & Migration | ✓ Complete (2026-02-11) | 2/2 | 100% |
-| 22.1 - Self-Contained Export Service | Planned | 0/2 | 0% |
+| 22.1 - Self-Contained Export Service | ✓ Complete (2026-02-11) | 2/2 | 100% |
 | 23 - Firebase Authentication | Planned | 0/2 | 0% |
 | 24 - Project Dashboard & CRUD | Not started | 0/? | 0% |
 | 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |

@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 23 of 26 (Firebase Authentication)
 Plan: 1 of 2 complete
 Status: In Progress
-Last activity: 2026-02-11 -- Completed 23-01 (Firebase SDKs, session route, login page)
+Last activity: 2026-02-11 -- Completed phase 22.1 (Self-Contained Export Service)
 
 Progress: [##........] 15%
 
@@ -20,9 +20,9 @@ Progress: [##........] 15%
 
 **Velocity:**
 
-- Total plans completed: 33
+- Total plans completed: 34
 - Average duration: 2.4 min
-- Total execution time: 79 min
+- Total execution time: 84 min
 
 **By Phase:**
 
@@ -47,7 +47,7 @@ Progress: [##........] 15%
 | 19 - Progress Streaming & DL      | 2/2   | 4 min | 2 min    |
 | 20 - Docker & Fly.io Deployment   | 1/2   | 1 min | 1 min    |
 | 22 - Next.js Scaffold & Migration | 2/2   | 6 min | 3 min    |
-| 22.1 - Self-Contained Export Svc  | 1/2   | 4 min | 4 min    |
+| 22.1 - Self-Contained Export Svc  | 2/2   | 9 min | 4.5 min  |
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
 
 _Updated after each plan completion_
@@ -67,8 +67,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 23-01: Firebase Admin SDK initializes without credentials when env vars missing (build-time safety)
 - 23-01: Login page uses force-dynamic to prevent SSR prerender failure from Firebase client SDK
 - 22.1-01: Duplicated animation/interpolation logic in export-service (simpler than shared repo-root module)
-- 22.1-01: Verovio UMD loaded via script tag, not bundled with esbuild (6.5MB self-contained)
-- 22.1-01: IIFE bundle format for standalone page targeting Chrome 120
+- 22.1-02: Switched from verovio UMD (Node-only) to verovio/wasm + verovio/esm ESM imports for browser compat
+- 22.1-02: esbuild format changed from IIFE to ESM to support import.meta.url for WASM loader
+- 22.1-02: frontendUrl changed to localhost:3001/render (export service serves its own page)
 
 ### Roadmap Evolution
 
@@ -86,6 +87,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed 22.1-01-PLAN.md
+Stopped at: Completed phase 22.1 (Self-Contained Export Service)
 Resume file: None
-Next: 22.1-02-PLAN.md (server routing + Puppeteer navigation update)
+Next: 23-02-PLAN.md (route protection via proxy.ts and sign-out)
