@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 
 ## Current Position
 
-Phase: 23 of 26 (Firebase Authentication)
-Plan: 1 of 2 complete
+Phase: 24 of 26 (Project Dashboard & CRUD)
+Plan: 1 of 3 complete
 Status: In Progress
-Last activity: 2026-02-11 -- Completed phase 22.1 (Self-Contained Export Service)
+Last activity: 2026-02-11 -- Completed 24-01 (Project Data Layer)
 
 Progress: [##........] 15%
 
@@ -20,9 +20,9 @@ Progress: [##........] 15%
 
 **Velocity:**
 
-- Total plans completed: 34
+- Total plans completed: 35
 - Average duration: 2.4 min
-- Total execution time: 84 min
+- Total execution time: 86 min
 
 **By Phase:**
 
@@ -49,6 +49,7 @@ Progress: [##........] 15%
 | 22 - Next.js Scaffold & Migration | 2/2   | 6 min | 3 min    |
 | 22.1 - Self-Contained Export Svc  | 2/2   | 9 min | 4.5 min  |
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
+| 24 - Project Dashboard & CRUD     | 1/3   | 2 min | 2 min    |
 
 _Updated after each plan completion_
 
@@ -70,6 +71,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 22.1-02: Switched from verovio UMD (Node-only) to verovio/wasm + verovio/esm ESM imports for browser compat
 - 22.1-02: esbuild format changed from IIFE to ESM to support import.meta.url for WASM loader
 - 22.1-02: frontendUrl changed to localhost:3001/render (export service serves its own page)
+- 24-01: Firestore singleton triggers adminAuth Proxy access to ensure app initialization before getFirestore()
+- 24-01: Audio file types narrowed to .mp3 and .wav only per user decision
 
 ### Roadmap Evolution
 
@@ -87,6 +90,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-11
-Stopped at: Completed phase 22.1 (Self-Contained Export Service)
+Stopped at: Completed 24-01-PLAN.md (Project Data Layer)
 Resume file: None
-Next: 23-02-PLAN.md (route protection via proxy.ts and sign-out)
+Next: 24-02-PLAN.md (Dashboard UI, creation modal, project cards)
