@@ -108,6 +108,16 @@ Plans:
 - [x] 22-01-PLAN.md -- Scaffold Next.js App Router, migrate from Vite, verify dev server and build
 - [x] 22-02-PLAN.md -- Create /render route for export service, human-verify full functional parity
 
+### Phase 22.1: Self-Contained Export Service (INSERTED)
+
+**Goal:** Export service bundles its own rendering page internally. Puppeteer navigates to its own server instead of the frontend. Frontend /render route and RenderApp.tsx removed.
+**Depends on:** Phase 22
+**Plans:** 2 plans
+
+Plans:
+- [ ] 22.1-01-PLAN.md -- Create standalone vanilla JS rendering page with shared animation module, border generator, and esbuild build tooling
+- [ ] 22.1-02-PLAN.md -- Wire standalone page into Fastify server, update Puppeteer config, delete frontend /render route and RenderApp.tsx, human-verify export pipeline
+
 ### Phase 23: Firebase Authentication
 
 **Goal:** Users can securely sign in with Google and access protected pages.
@@ -184,6 +194,7 @@ Plans:
 | Phase | Status | Plans | Completion |
 |-------|--------|-------|------------|
 | 22 - Next.js Scaffold & Migration | ✓ Complete (2026-02-11) | 2/2 | 100% |
+| 22.1 - Self-Contained Export Service | Planned | 0/2 | 0% |
 | 23 - Firebase Authentication | Planned | 0/2 | 0% |
 | 24 - Project Dashboard & CRUD | Not started | 0/? | 0% |
 | 25 - Firebase Storage & File Persistence | Not started | 0/? | 0% |
