@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-12 -- Completed 26-02 (Auto-save wiring)
+Last activity: 2026-02-12 - Completed quick task 43: fix notehead z-index so colored noteheads render above stems in SVG
 
 Progress: [##########] 42/42
 
@@ -108,6 +108,12 @@ None.
 
 - ~~Turbopack + Verovio WASM interaction untested~~ RESOLVED: Validated in 22-01, builds cleanly
 - ~~Firestore offline persistence could conflict with auto-save debounce (investigate in Phase 26)~~ RESOLVED: Auto-save uses server-side PATCH via fetch, not client-side Firestore SDK -- no offline persistence conflict
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 43 | fix notehead z-index so colored noteheads render above stems in SVG | 2026-02-12 | 8c2bc69 | [43-fix-notehead-z-index-so-colored-notehead](./quick/43-fix-notehead-z-index-so-colored-notehead/) |
 
 ## Session Continuity
 
