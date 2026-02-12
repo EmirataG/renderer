@@ -10,19 +10,19 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 ## Current Position
 
 Phase: 26 of 26 (Auto-Save & Data Persistence)
-Plan: 1 of 2 complete
-Status: In Progress
-Last activity: 2026-02-12 -- Completed 26-01 (Data layer for auto-save)
+Plan: 2 of 2 complete
+Status: Complete
+Last activity: 2026-02-12 -- Completed 26-02 (Auto-save wiring)
 
-Progress: [####......] 41/42
+Progress: [##########] 42/42
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 41
+- Total plans completed: 42
 - Average duration: 2.7 min
-- Total execution time: 109 min
+- Total execution time: 113 min
 
 **By Phase:**
 
@@ -51,7 +51,7 @@ Progress: [####......] 41/42
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
 | 24 - Project Dashboard & CRUD     | 3/3   | 10 min | 3.3 min |
 | 25 - Firebase Storage & File Pers | 3/3   | 13 min | 4.3 min |
-| 26 - Auto-Save & Data Persistence| 1/2   | 2 min  | 2 min   |
+| 26 - Auto-Save & Data Persistence| 2/2   | 6 min  | 3 min   |
 
 _Updated after each plan completion_
 
@@ -92,6 +92,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 26-01: Settings stored as flat top-level Firestore fields (not nested under settings key)
 - 26-01: PATCH endpoint whitelists 16 settings fields to prevent arbitrary writes
 - 26-01: Project type uses string for scoreBorder (Firestore returns plain string, store casts to BorderStyle)
+- 26-02: Auto-save subscribes externally (not in React) to avoid lifecycle coupling
+- 26-02: initAutoSave called AFTER loadSettings to prevent spurious save on project open
+- 26-02: getSaveableSettings explicitly picks 16 keys instead of rest-spread (TypeScript index signature compatibility)
 
 ### Roadmap Evolution
 
@@ -104,11 +107,11 @@ None.
 ### Blockers/Concerns
 
 - ~~Turbopack + Verovio WASM interaction untested~~ RESOLVED: Validated in 22-01, builds cleanly
-- Firestore offline persistence could conflict with auto-save debounce (investigate in Phase 26)
+- ~~Firestore offline persistence could conflict with auto-save debounce (investigate in Phase 26)~~ RESOLVED: Auto-save uses server-side PATCH via fetch, not client-side Firestore SDK -- no offline persistence conflict
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 26-01-PLAN.md
+Stopped at: Completed 26-02-PLAN.md (Phase 26 complete, all phases done)
 Resume file: None
-Next: 26-02-PLAN.md (Auto-save wiring)
+Next: All plans complete (42/42)
