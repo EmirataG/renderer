@@ -35,17 +35,17 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
   return (
     <div
       onClick={() => router.push(`/project/${project.id}`)}
-      className="group relative bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden hover:border-neutral-600 transition-colors cursor-pointer"
+      className="group relative bg-black border-2 border-neutral-800 overflow-hidden hover:border-neutral-500 transition-colors cursor-pointer"
     >
       {/* Thumbnail placeholder */}
-      <div className="aspect-[4/3] bg-gradient-to-br from-neutral-800 to-neutral-900 flex items-center justify-center">
+      <div className="aspect-[4/3] bg-neutral-900 flex items-center justify-center">
         <MusicNoteIcon className="w-10 h-10 text-neutral-700" />
       </div>
 
       {/* Metadata */}
-      <div className="p-4">
-        <p className="text-sm font-medium text-neutral-200 truncate">{project.name}</p>
-        <p className="text-xs text-neutral-500 mt-1">{formattedDate}</p>
+      <div className="p-4 border-t border-neutral-800">
+        <p className="text-xs font-bold uppercase tracking-wider text-neutral-200 truncate">{project.name}</p>
+        <p className="text-xs text-neutral-500 mt-1 font-mono">{formattedDate}</p>
       </div>
 
       {/* Three-dot menu */}
@@ -55,21 +55,21 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
             e.stopPropagation();
             setMenuOpen((prev) => !prev);
           }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-neutral-700/80 text-neutral-400 hover:text-neutral-200"
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200"
           aria-label="Project options"
         >
           <MoreIcon className="w-4 h-4" />
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 mt-1 w-36 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl overflow-hidden z-10">
+          <div className="absolute right-0 mt-1 w-36 bg-black border-2 border-neutral-700 shadow-xl overflow-hidden z-10">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setMenuOpen(false);
                 onDelete(project.id, project.name);
               }}
-              className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-neutral-700 transition-colors"
+              className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-400 hover:bg-neutral-800 transition-colors"
             >
               Delete
             </button>

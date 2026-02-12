@@ -75,16 +75,20 @@ export default function App({ projectId }: AppProps) {
 
     if (!projectId) return;
 
+    let cancelled = false;
+
     async function loadProject() {
       setIsLoadingProject(true);
       try {
         const res = await fetch(`/api/projects/${projectId}`);
-        if (!res.ok) return;
+        if (!res.ok || cancelled) return;
         const { project } = await res.json();
+        if (cancelled) return;
 
         // Load score XML via server proxy (avoids CORS with Storage URLs)
         if (project.scoreUrl) {
           const scoreRes = await fetch(`/api/projects/${projectId}/score`);
+          if (cancelled) return;
           if (scoreRes.ok) {
             const xml = await scoreRes.text();
             setMusicXMLFile({
@@ -94,6 +98,8 @@ export default function App({ projectId }: AppProps) {
             });
           }
         }
+
+        if (cancelled) return;
 
         // Set audio via server proxy (avoids CORS, supports range requests for seeking)
         if (project.audioUrl) {
@@ -132,30 +138,40 @@ export default function App({ projectId }: AppProps) {
           smoothReveal: project.smoothReveal ?? DEFAULT_SETTINGS.smoothReveal,
         });
 
-        // Load sync anchors from API response
+        // Load sync anchors from API response — always clear first to prevent
+        // stale anchors from a previous project leaking into the new one
+        useSyncStore.getState().clearAllAnchors();
         if (project.anchors && typeof project.anchors === 'object') {
-          const { clearAllAnchors, setAnchor } = useSyncStore.getState();
-          clearAllAnchors();
+          const { setAnchor } = useSyncStore.getState();
           for (const [eventId, timestamp] of Object.entries(project.anchors)) {
             setAnchor(eventId, Number(timestamp));
           }
         }
 
-        // Initialize auto-save AFTER settings and anchors are loaded
-        // This prevents the initial loadSettings() call from triggering a spurious save
-        autoSaveCleanupRef.current = initAutoSave();
+        // Initialize auto-save AFTER settings and anchors are loaded.
+        // Guard with `cancelled` so Strict Mode double-fire doesn't create
+        // orphaned subscriptions that trigger on the second load's store writes.
+        if (!cancelled) {
+          autoSaveCleanupRef.current = initAutoSave();
+        }
       } catch (err) {
         console.error('Failed to load project:', err);
       } finally {
-        setIsLoadingProject(false);
+        if (!cancelled) {
+          setIsLoadingProject(false);
+        }
       }
     }
 
     loadProject();
 
     return () => {
+      cancelled = true;
       autoSaveCleanupRef.current?.();
       autoSaveCleanupRef.current = null;
+      // Reset stores when leaving a project so the next project starts clean
+      useProjectStore.getState().resetSettings();
+      useSyncStore.getState().clearAllAnchors();
     };
   }, [projectId]);
 

@@ -113,11 +113,11 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
         if (e.target === e.currentTarget) handleClose();
       }}
     >
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-lg w-full mx-4">
+      <div className="bg-black border-2 border-neutral-700 p-6 max-w-lg w-full mx-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-neutral-100">New Project</h2>
-          <span className="text-xs text-neutral-500">Step {step} of 2</span>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-100" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>New Project</h2>
+          <span className="text-xs text-neutral-500 font-mono">Step {step}/2</span>
         </div>
 
         {step === 1 ? (
@@ -150,14 +150,14 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={handleClose}
-                className="px-4 py-2 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+                className="grunge-btn grunge-btn-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={() => setStep(2)}
                 disabled={!scoreFile || !audioFile}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="grunge-btn-primary grunge-btn-sm"
               >
                 Next
               </button>
@@ -178,24 +178,24 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                 if (e.key === 'Enter' && projectName.trim()) handleCreate();
               }}
               autoFocus
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2.5 text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-neutral-500 transition-colors"
+              className="grunge-input w-full px-4 py-2.5"
             />
 
             {/* View mode cards */}
             <div className="grid grid-cols-2 gap-3 mt-4">
               {/* Page view - active */}
-              <div className="border-2 border-blue-500/60 bg-blue-500/10 rounded-lg p-3 flex items-center gap-3">
-                <div className="w-4 h-4 rounded-full border-2 border-blue-400 flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-blue-400" />
+              <div className="border-2 border-white bg-white/5 p-3 flex items-center gap-3">
+                <div className="w-4 h-4 border-2 border-white flex items-center justify-center">
+                  <div className="w-2 h-2 bg-white" />
                 </div>
-                <span className="text-sm text-neutral-200">Page view</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Page view</span>
               </div>
 
               {/* Single line - disabled */}
-              <div className="border-2 border-neutral-700 bg-neutral-800/50 rounded-lg p-3 flex items-center gap-3 opacity-50 cursor-not-allowed">
-                <div className="w-4 h-4 rounded-full border-2 border-neutral-600" />
+              <div className="border-2 border-neutral-700 bg-neutral-900 p-3 flex items-center gap-3 opacity-50 cursor-not-allowed">
+                <div className="w-4 h-4 border-2 border-neutral-600" />
                 <div>
-                  <span className="text-sm text-neutral-400">Single line</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Single line</span>
                   <span className="block text-[10px] text-neutral-500 mt-0.5">Coming soon</span>
                 </div>
               </div>
@@ -204,14 +204,14 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setStep(1)}
-                className="px-4 py-2 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+                className="grunge-btn grunge-btn-sm"
               >
                 Back
               </button>
               <button
                 onClick={handleCreate}
                 disabled={!projectName.trim() || isCreating}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="grunge-btn-primary grunge-btn-sm"
               >
                 {isCreating ? 'Creating...' : 'Create'}
               </button>
@@ -261,12 +261,12 @@ function DropZone({ label, icon, accept, hint, file, onFile, onClear, inputRef }
 
   if (file) {
     return (
-      <div className="border-2 border-neutral-700 bg-neutral-800/50 rounded-lg p-3 flex flex-col items-center gap-2">
+      <div className="border-2 border-neutral-700 bg-neutral-900 p-3 flex flex-col items-center gap-2">
         <CheckIcon className="w-5 h-5 text-green-400" />
         <span className="text-xs text-neutral-300 text-center truncate w-full">{file.name}</span>
         <button
           onClick={onClear}
-          className="text-[10px] text-neutral-500 hover:text-neutral-300 transition-colors"
+          className="text-[10px] text-neutral-500 hover:text-neutral-300 uppercase tracking-wider font-bold transition-colors"
         >
           Remove
         </button>
@@ -280,9 +280,9 @@ function DropZone({ label, icon, accept, hint, file, onFile, onClear, inputRef }
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`border-2 border-dashed rounded-lg p-4 flex flex-col items-center gap-2 cursor-pointer transition-colors ${
+      className={`border-2 border-dashed p-4 flex flex-col items-center gap-2 cursor-pointer transition-colors ${
         isDragOver
-          ? 'border-blue-500 bg-blue-500/10'
+          ? 'border-white bg-white/5'
           : 'border-neutral-700 hover:border-neutral-500'
       }`}
     >

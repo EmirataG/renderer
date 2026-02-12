@@ -100,17 +100,17 @@ export function Dashboard({ initialProjects }: DashboardProps) {
       {/* Header */}
       <header className="border-b border-neutral-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-semibold tracking-tight">Manuscript</h1>
+          <h1 className="text-lg font-bold tracking-wider uppercase" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>Manuscript</h1>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+              className="grunge-btn-primary"
             >
               New Project
             </button>
             <button
               onClick={handleSignOut}
-              className="px-3 py-2 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+              className="grunge-btn grunge-btn-sm"
             >
               Sign out
             </button>
@@ -123,14 +123,16 @@ export function Dashboard({ initialProjects }: DashboardProps) {
         {projects.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-32 text-center">
-            <EmptyMusicIcon className="w-16 h-16 text-neutral-700 mb-4" />
-            <h2 className="text-xl font-medium text-neutral-300 mb-2">No projects yet</h2>
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-neutral-800/50 mb-4">
+              <EmptyMusicIcon className="w-8 h-8 text-neutral-500" />
+            </div>
+            <h2 className="text-lg font-bold tracking-wider uppercase text-neutral-300 mb-2" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>No projects yet</h2>
             <p className="text-sm text-neutral-500 mb-6 max-w-sm">
               Create your first project to start syncing scores with audio.
             </p>
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="px-5 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+              className="grunge-btn-primary"
             >
               New Project
             </button>
@@ -164,21 +166,21 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             if (e.target === e.currentTarget) setDeleteConfirm(null);
           }}
         >
-          <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-sm w-full mx-4">
-            <h3 className="text-base font-semibold text-neutral-100 mb-2">Delete project?</h3>
+          <div className="bg-black border-2 border-neutral-700 p-6 max-w-sm w-full mx-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-100 mb-2" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>Delete project?</h3>
             <p className="text-sm text-neutral-400 mb-6">
               Delete &ldquo;{deleteConfirm.name}&rdquo;? This cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+                className="grunge-btn grunge-btn-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors"
+                className="grunge-btn grunge-btn-sm border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
               >
                 Delete
               </button>

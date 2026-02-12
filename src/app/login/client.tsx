@@ -39,15 +39,15 @@ export function GoogleSignInButton() {
   };
 
   return (
-    <div>
+    <div className="flex flex-col items-center">
       <button
         onClick={handleSignIn}
         disabled={loading}
-        className="px-6 py-3 bg-white text-neutral-900 rounded-lg font-medium hover:bg-neutral-100 transition-colors disabled:opacity-50"
+        className="grunge-btn-primary"
       >
         {loading ? 'Signing in...' : 'Sign in with Google'}
       </button>
-      {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-4 text-xs text-red-400 uppercase tracking-wider">{error}</p>}
     </div>
   );
 }
