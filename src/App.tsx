@@ -207,6 +207,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
   // Transient UI state for region editing
   const [isEditingRegion, setIsEditingRegion] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [zoomScale, setZoomScale] = useState(1);
   const [regionContainerDims, setRegionContainerDims] = useState<{
     width: number;
@@ -702,18 +703,37 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
                   {/* Score Region Editor Button */}
                   <div className="pt-2 border-t border-neutral-700">
-                    <button
-                      onClick={() => setIsEditingRegion(true)}
-                      disabled={!bgUrl}
-                      className="grunge-btn grunge-btn-sm w-full"
-                    >
-                      Edit Score Region
-                    </button>
-                    {scoreRegion && (
-                      <p className="text-xs text-neutral-500 mt-2">
-                        Custom region: {Math.round(scoreRegion.width)}x
-                        {Math.round(scoreRegion.height)}
-                      </p>
+                    {isEditingRegion ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowResetConfirm(true)}
+                          className="grunge-btn grunge-btn-sm flex-1"
+                        >
+                          Use Full Background
+                        </button>
+                        <button
+                          onClick={() => { setIsEditingRegion(false); setShowResetConfirm(false); }}
+                          className="grunge-btn-primary grunge-btn-sm flex-1"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setIsEditingRegion(true)}
+                          disabled={!bgUrl}
+                          className="grunge-btn grunge-btn-sm w-full"
+                        >
+                          Edit Score Region
+                        </button>
+                        {scoreRegion && (
+                          <p className="text-xs text-neutral-500 mt-2">
+                            Custom region: {Math.round(scoreRegion.width)}x
+                            {Math.round(scoreRegion.height)}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1082,7 +1102,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                   onRegionChange={(region) =>
                                     setSetting("scoreRegion", region)
                                   }
-                                  onClose={() => setIsEditingRegion(false)}
                                   scale={zoomScale}
                                 />
                               </div>
@@ -1145,6 +1164,27 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           </section>
         </div>
       </main>
+      {/* Reset Score Region Confirmation Dialog */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 flex items-center justify-center z-[70]">
+          <div className="bg-black border border-neutral-700 p-6 max-w-sm mx-4">
+            <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wider" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+              Reset Score Region?
+            </h3>
+            <p className="text-xs text-neutral-400 mb-4">
+              This will reset the score to use the full background area.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowResetConfirm(false)} className="grunge-btn grunge-btn-sm">
+                Cancel
+              </button>
+              <button onClick={() => { setSetting("scoreRegion", null); setIsEditingRegion(false); setShowResetConfirm(false); }} className="grunge-btn-primary grunge-btn-sm">
+                Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ToastProvider>
   );
 }
