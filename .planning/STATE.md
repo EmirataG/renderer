@@ -120,10 +120,11 @@ None.
 | 47 | add duplicate project option in project card menu | 2026-02-12 | dd3468c | [47-add-duplicate-project-option-in-project-](./quick/47-add-duplicate-project-option-in-project-/) |
 | 48 | ~~stream audio from Firebase Storage and set preload=metadata~~ REVERTED (55e2e53) | 2026-02-12 | 3528e86 | [48-investigate-why-first-audio-playback-is-](./quick/48-investigate-why-first-audio-playback-is-/) |
 | 49 | ~~fix note highlighting regression~~ REVERTED (55e2e53) | 2026-02-12 | 18d7526 | [49-fix-note-highlighting-regression-after-a](./quick/49-fix-note-highlighting-regression-after-a/) |
+| 50 | revert transportMessage guard and add TRANSPORT_DEBUG diagnostics | 2026-02-12 | 5f36b00 | [50-revert-transport-message-fix-and-add-dia](./quick/50-revert-transport-message-fix-and-add-dia/) |
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Reverted quick tasks 48 & 49 (audio streaming broke playback/highlighting)
+Stopped at: Completed quick-50 (revert transportMessage guard, add diagnostics)
 Resume file: None
 Next: All plans complete (42/42)
