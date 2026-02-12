@@ -122,7 +122,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         }
 
         // Load settings from API response into projectStore
-        const { loadSettings, setProjectId, setProjectName } = useProjectStore.getState();
+        const { loadSettings, setProjectId, setProjectName } =
+          useProjectStore.getState();
         setProjectId(projectId!);
         if (project.name) setProjectName(project.name);
         loadSettings({
@@ -531,7 +532,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             spellCheck={false}
             className="text-sm font-semibold bg-transparent border-none outline-none text-neutral-200 placeholder-neutral-600 focus:text-white min-w-0 max-w-[200px]"
@@ -570,10 +571,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             className="w-80 bg-black border-r border-neutral-800 flex flex-col overflow-hidden"
             style={{ display: currentView === "sync" ? "none" : undefined }}
           >
-            <div className="px-5 py-3 border-b border-neutral-800">
-              <h2 className="text-xs text-neutral-500 uppercase tracking-wider font-medium">Score Controls</h2>
-            </div>
-
             <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">
               {/* UPLOAD SECTION */}
               <section className="mb-5">
