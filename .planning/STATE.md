@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-12 - Completed quick task 44: display background image in project card thumbnail
+Last activity: 2026-02-12 - Completed quick task 45: move score region edit buttons from image overlay to inspector panel
 
 Progress: [##########] 42/42
 
