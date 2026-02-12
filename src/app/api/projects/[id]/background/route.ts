@@ -111,5 +111,5 @@ export async function PUT(
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return Response.json({ backgroundUrl });
+  return Response.json({ backgroundUrl: `/api/projects/${id}/background` });
 }
