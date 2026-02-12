@@ -168,22 +168,27 @@ export default memo(function RegularRenderer({
   /* ---------------- audio element ---------------- */
 
   useEffect(() => {
+    console.log('[RegularRenderer] audio effect fired:', { audioUrl, hadRef: !!audioRef.current });
     if (!audioUrl) {
       audioRef.current = null;
       if (!propAudioDuration) setAudioDuration(0);
+      console.log('[RegularRenderer] audio effect: no audioUrl, cleared ref');
       return;
     }
 
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
+    console.log('[RegularRenderer] audio effect: created Audio element for', audioUrl);
 
     const handleLoadedMetadata = () => {
+      console.log('[RegularRenderer] audio loadedmetadata: duration =', audio.duration);
       setAudioDuration(audio.duration);
     };
 
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
 
     return () => {
+      console.log('[RegularRenderer] audio effect cleanup: removing old audio for', audioUrl);
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.pause();
       audioRef.current = null;
@@ -230,7 +235,16 @@ export default memo(function RegularRenderer({
 
   // When Verovio renders SVG pages, update DOM and reset noteheads
   useEffect(() => {
-    if (svgPages.length === 0 || !scoreRef.current) return;
+    console.log('[RegularRenderer] SVG extraction effect fired:', {
+      svgPagesLength: svgPages.length,
+      hasScoreRef: !!scoreRef.current,
+      svgPagesRefSame: svgPagesRef === svgPages,
+      hasToolkit: !!toolkit,
+    });
+    if (svgPages.length === 0 || !scoreRef.current) {
+      console.log('[RegularRenderer] SVG extraction effect: early return (no pages or no scoreRef)');
+      return;
+    }
 
     // Reset extraction state for new score — all pages mount for extraction
     extractionDoneRef.current = false;
@@ -241,7 +255,10 @@ export default memo(function RegularRenderer({
     // Use requestAnimationFrame to wait for the next paint, then verify
     // the Verovio SVG is actually present in the DOM before resetting noteheads.
     requestAnimationFrame(() => {
-      if (!scoreRef.current) return;
+      if (!scoreRef.current) {
+        console.log('[RegularRenderer] SVG extraction rAF: scoreRef gone');
+        return;
+      }
       // Guard: confirm Verovio SVG elements exist in the DOM before
       // attempting to query/reset noteheads. The svg.definition-scale
       // class is Verovio's root SVG element.
@@ -255,13 +272,17 @@ export default memo(function RegularRenderer({
       prevActiveRangeRef.current = null;
 
       // Cache validity check: skip extraction if svgPages reference unchanged
-      if (svgPagesRef === svgPages) return;
+      if (svgPagesRef === svgPages) {
+        console.log('[RegularRenderer] SVG extraction rAF: cache hit, skipping extraction');
+        return;
+      }
 
       // Extract events using two-phase extraction and store in cache
       if (toolkit) {
         const timemapEvents = extractTimemapEvents(toolkit);
         const containers = pageContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
         const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, pageOffsets);
+        console.log('[RegularRenderer] SVG extraction rAF: extracted', cachedEvents.length, 'events');
         setEventsInStore(cachedEvents, svgPages);
 
         // Extraction complete — activate virtualization (skip in render mode to keep all pages mounted)
@@ -271,13 +292,15 @@ export default memo(function RegularRenderer({
           visiblePagesRef.current = initialVisible;
           setVisiblePages(initialVisible);
         }
+      } else {
+        console.warn('[RegularRenderer] SVG extraction rAF: no toolkit available!');
       }
     });
 
     // Camera starts at top
     currentYRef.current = 0;
     applyCamera(0);
-  }, [svgPages, svgPagesRef, toolkit, pageOffsets, setEventsInStore]);
+  }, [svgPages, svgPagesRef, toolkit, pageOffsets, setEventsInStore, containerWidth]);
 
   /* ---------------- score color and styling ---------------- */
 
@@ -487,26 +510,27 @@ export default memo(function RegularRenderer({
   const hasLastAnchor = !!(lastEventId && syncAnchors?.has(lastEventId));
   const canPlay = hasAudio && hasFirstAnchor && hasLastAnchor;
 
+  // DEBUG: log transport gating on every render
+  console.log('[RegularRenderer] transport gating:', {
+    canPlay,
+    hasAudio,
+    audioUrl: !!audioUrl,
+    audioRefCurrent: !!audioRef.current,
+    eventsLength: events.length,
+    firstEventId,
+    lastEventId,
+    hasFirstAnchor,
+    hasLastAnchor,
+    syncAnchorsSize: syncAnchors?.size ?? 'undefined',
+  });
+
   const transportMessage = !hasAudio
     ? "Upload audio to enable playback"
-    : (!hasFirstAnchor || !hasLastAnchor)
-      ? "Set first and last sync anchors to enable playback"
-      : null;
-
-  // --- DIAGNOSTIC: remove after debugging transport message issue ---
-  if (hasAudio && (!hasFirstAnchor || !hasLastAnchor)) {
-    console.log('[TRANSPORT_DEBUG]', {
-      eventsCount: events.length,
-      firstEventId,
-      lastEventId,
-      syncAnchorsSize: syncAnchors?.size ?? 0,
-      syncAnchorsKeys: syncAnchors ? Array.from(syncAnchors.keys()) : [],
-      hasFirstAnchor,
-      hasLastAnchor,
-      firstAnchorLookup: firstEventId ? syncAnchors?.has(firstEventId) : 'no firstEventId',
-      lastAnchorLookup: lastEventId ? syncAnchors?.has(lastEventId) : 'no lastEventId',
-    });
-  }
+    : events.length === 0
+      ? null // Events still loading — can't check anchors yet
+      : (!hasFirstAnchor || !hasLastAnchor)
+        ? "Set first and last sync anchors to enable playback"
+        : null;
 
   function play() {
     if (isPlaying || !canPlay) return;
