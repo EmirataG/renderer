@@ -2,7 +2,7 @@
 
 @layer base {
   .scroll-score-bg {
-    animation: scroll-score 60s ease-in-out alternate infinite;
+    animation: scroll-score 120s ease-in-out alternate infinite;
   }
 
   @keyframes scroll-score {
@@ -23,12 +23,6 @@ body {
 ::-webkit-scrollbar {
   display: none;
 }
-
-/* #vf-auto3771 .vf-notehead {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: highlight-scale 1s linear infinite;
-} */
 
 @keyframes highlight-scale {
   0% {
@@ -56,10 +50,6 @@ body {
     stroke: black;
   }
 }
-
-/* .vf-measure:nth-of-type(1) .vf-stavenote path {
-  display: none;
-} */
 
 /* ============================================
    GRUNGE / DISTRESSED THEME SYSTEM
@@ -99,7 +89,9 @@ body {
   background: transparent;
   color: white;
   cursor: pointer;
-  transition: background-color 150ms, color 150ms;
+  transition:
+    background-color 150ms,
+    color 150ms;
 }
 
 .grunge-btn:hover {
@@ -131,7 +123,9 @@ body {
   background: white;
   color: black;
   cursor: pointer;
-  transition: background-color 150ms, color 150ms;
+  transition:
+    background-color 150ms,
+    color 150ms;
 }
 
 .grunge-btn-primary:hover {
@@ -204,7 +198,7 @@ body {
 }
 
 .grunge-checkbox:checked::after {
-  content: '';
+  content: "";
   position: absolute;
   left: 3px;
   top: 0px;
@@ -221,7 +215,7 @@ body {
 }
 
 .grunge-section-title {
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: "Georgia", "Times New Roman", serif;
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -257,7 +251,10 @@ body {
   background: transparent;
   color: #777;
   cursor: pointer;
-  transition: background-color 150ms, color 150ms, border-color 150ms;
+  transition:
+    background-color 150ms,
+    color 150ms,
+    border-color 150ms;
 }
 
 .grunge-tab:hover {
