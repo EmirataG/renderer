@@ -23,6 +23,36 @@ function getExtension(filename: string): string {
   return filename.slice(lastDot).toLowerCase();
 }
 
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getAuthenticatedUser();
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  const { id } = await params;
+  const db = getDb();
+  const doc = await db
+    .collection('users').doc(user.uid)
+    .collection('projects').doc(id)
+    .get();
+
+  if (!doc.exists) return new Response('Not found', { status: 404 });
+
+  // Find background file in Storage by prefix
+  const [files] = await getBucket().getFiles({
+    prefix: `users/${user.uid}/projects/${id}/background`,
+  });
+  if (files.length === 0) return new Response('No background', { status: 404 });
+
+  const file = files[0];
+  const [metadata] = await file.getMetadata();
+  const [contents] = await file.download();
+  return new Response(new Uint8Array(contents), {
+    headers: { 'Content-Type': metadata.contentType || 'image/jpeg' },
+  });
+}
+
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

@@ -75,9 +75,9 @@ export default function App({ projectId }: AppProps) {
           });
         }
 
-        // Set background image from Storage URL
+        // Set background image via server proxy (avoids CORS for export fetch)
         if (project.backgroundUrl) {
-          setBgUrl(project.backgroundUrl);
+          setBgUrl(`/api/projects/${projectId}/background`);
           setBgFileName(project.backgroundFileName || null);
         }
       } catch (err) {
@@ -244,6 +244,14 @@ export default function App({ projectId }: AppProps) {
         audioFileForExport = new File([audioBlob], audioFile.name, { type: audioBlob.type });
       }
 
+      // If background was loaded from Storage (no local File), fetch it as a Blob
+      let bgFileForExport = bgFile;
+      if (!bgFileForExport && bgUrl) {
+        const bgRes = await fetch(bgUrl);
+        const bgBlob = await bgRes.blob();
+        bgFileForExport = new File([bgBlob], bgFileName || 'background.jpg', { type: bgBlob.type });
+      }
+
       const backendUrl = process.env.NODE_ENV !== 'production' ? 'http://localhost:3001' : '';
       const response = await requestExport({
         settings,
@@ -251,7 +259,7 @@ export default function App({ projectId }: AppProps) {
         musicXmlContent: musicXMLFile.xml,
         musicXmlFilename: musicXMLFile.name,
         audioFile: audioFileForExport!,
-        bgImageFile: bgFile || undefined,
+        bgImageFile: bgFileForExport || undefined,
       }, backendUrl);
 
       setExportState(prev => ({ ...prev, status: 'rendering', jobId: response.jobId }));
