@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-12 - Completed quick task 52: fix project card thumbnails not showing background images on dashboard
+Last activity: 2026-02-12 - Completed quick task 53: auto-reset score region when background image changes
 
 Progress: [##########] 42/42
 
@@ -123,10 +123,11 @@ None.
 | 50 | revert transportMessage guard and add TRANSPORT_DEBUG diagnostics | 2026-02-12 | 5f36b00 | [50-revert-transport-message-fix-and-add-dia](./quick/50-revert-transport-message-fix-and-add-dia/) |
 | 51 | fix event extraction race condition (containerWidth dep) and remove diagnostic logs | 2026-02-12 | 754bf65 | [51-fix-event-extraction-race-events-never-e](./quick/51-fix-event-extraction-race-events-never-e/) |
 | 52 | fix project card thumbnails not showing background images on dashboard | 2026-02-12 | e90e711 | [52-fix-project-card-thumbnails-not-showing-](./quick/52-fix-project-card-thumbnails-not-showing-/) |
+| 53 | auto-reset score region when background image changes | 2026-02-12 | a28d31e | [53-when-the-background-image-is-changed-the](./quick/53-when-the-background-image-is-changed-the/) |
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed quick-52 (fix dashboard background images)
+Stopped at: Completed quick-53 (auto-reset score region on background change)
 Resume file: None
 Next: All plans complete (42/42)
