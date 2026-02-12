@@ -116,6 +116,25 @@ export function animateNoteheads(
   });
 }
 
+/**
+ * Reorder notehead elements to be the last child of their parent `g.note` group.
+ * In SVG, rendering order is determined by DOM order (later elements paint on top).
+ * Verovio generates SVG where `g.stem` appears after `g.notehead` within each `g.note`,
+ * causing stems to paint over noteheads. When noteheads are colored (during playback
+ * or export), the stem obscures them. Moving each `g.notehead` to be the last child
+ * ensures noteheads always paint on top of stems.
+ */
+export function reorderNoteheadsAboveStems(root: HTMLElement | null): void {
+  if (!root) return;
+  const noteheads = root.querySelectorAll<SVGGElement>('g.notehead');
+  noteheads.forEach((nh) => {
+    const parent = nh.parentElement;
+    if (parent && parent.lastElementChild !== nh) {
+      parent.appendChild(nh);
+    }
+  });
+}
+
 export function resetNoteheadAnimations(root: HTMLElement | null) {
   if (!root) return;
 

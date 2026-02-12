@@ -16,6 +16,7 @@ import {
   animateNoteheads,
   resetNoteheadAnimations,
   resetEventNoteheads,
+  reorderNoteheadsAboveStems,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
@@ -249,6 +250,7 @@ export default memo(function RegularRenderer({
         console.warn('[RegularRenderer] Verovio SVG not found in DOM after rAF');
         return;
       }
+      reorderNoteheadsAboveStems(scoreRef.current);
       resetNoteheadAnimations(scoreRef.current);
       prevActiveRangeRef.current = null;
 

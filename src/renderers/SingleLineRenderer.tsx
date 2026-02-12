@@ -14,6 +14,7 @@ import { useEventStore } from "../stores/eventStore";
 import {
   animateNoteheads,
   resetNoteheadAnimations,
+  reorderNoteheadsAboveStems,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
@@ -251,6 +252,7 @@ export default function SingleLineRenderer({
         console.warn('[SingleLineRenderer] Verovio SVG not found in DOM after rAF');
         return;
       }
+      reorderNoteheadsAboveStems(scoreRef.current);
       resetNoteheadAnimations(scoreRef.current);
 
       // Cache validity check: skip extraction if sections reference unchanged
