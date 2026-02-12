@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@layer base {
+  .scroll-score-bg {
+    animation: scroll-score 60s ease-in-out alternate infinite;
+  }
+
+  @keyframes scroll-score {
+    0% {
+      transform: translateY(0);
+    }
+    100% {
+      transform: translateY(calc(-100% + 100vh));
+    }
+  }
+}
+
 body {
   background-color: black;
   color: white;
