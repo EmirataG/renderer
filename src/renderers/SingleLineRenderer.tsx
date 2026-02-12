@@ -273,7 +273,7 @@ export default function SingleLineRenderer({
     // Camera starts at left
     currentXRef.current = 0;
     applyCamera(0);
-  }, [sections, svgPagesRef, toolkit, sectionOffsets, setEventsInStore]);
+  }, [sections, svgPagesRef, toolkit, sectionOffsets, setEventsInStore, containerWidth]);
 
   /* ---------------- score color and styling ---------------- */
 
