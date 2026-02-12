@@ -175,7 +175,6 @@ export default memo(function RegularRenderer({
     }
 
     const audio = new Audio(audioUrl);
-    audio.preload = "metadata";
     audioRef.current = audio;
 
     const handleLoadedMetadata = () => {

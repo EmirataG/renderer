@@ -589,7 +589,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
               {/* Hidden audio element for duration detection (used by export) */}
               {audioFile && (
-                <audio ref={audioRef} src={audioFile.url} preload="metadata" className="hidden" />
+                <audio ref={audioRef} src={audioFile.url} className="hidden" />
               )}
 
               {/* PLAYBACK SECTION */}

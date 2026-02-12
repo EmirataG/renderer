@@ -1,4 +1,3 @@
-import { Readable } from 'stream';
 import { cookies } from 'next/headers';
 import { adminAuth } from '@/lib/firebase-admin';
 import { getDb } from '@/lib/firestore';
@@ -42,6 +41,8 @@ export async function GET(
   const contentType = metadata.contentType || 'audio/mpeg';
   const fileSize = Number(metadata.size);
 
+  const [contents] = await file.download();
+
   // Handle range requests for audio seeking
   const rangeHeader = request.headers.get('range');
   if (rangeHeader) {
@@ -49,40 +50,25 @@ export async function GET(
     if (match) {
       const start = parseInt(match[1], 10);
       const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
-      const chunkSize = end - start + 1;
+      const slice = contents.slice(start, end + 1);
 
-      try {
-        const nodeStream = file.createReadStream({ start, end });
-        const webStream = Readable.toWeb(nodeStream) as ReadableStream;
-
-        return new Response(webStream, {
-          status: 206,
-          headers: {
-            'Content-Type': contentType,
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Content-Length': String(chunkSize),
-            'Accept-Ranges': 'bytes',
-          },
-        });
-      } catch {
-        return new Response('Stream error', { status: 500 });
-      }
+      return new Response(new Uint8Array(slice), {
+        status: 206,
+        headers: {
+          'Content-Type': contentType,
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Content-Length': String(slice.length),
+          'Accept-Ranges': 'bytes',
+        },
+      });
     }
   }
 
-  // Full request — stream entire file without loading into memory
-  try {
-    const nodeStream = file.createReadStream();
-    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
-
-    return new Response(webStream, {
-      headers: {
-        'Content-Type': contentType,
-        'Content-Length': String(fileSize),
-        'Accept-Ranges': 'bytes',
-      },
-    });
-  } catch {
-    return new Response('Stream error', { status: 500 });
-  }
+  return new Response(new Uint8Array(contents), {
+    headers: {
+      'Content-Type': contentType,
+      'Content-Length': String(fileSize),
+      'Accept-Ranges': 'bytes',
+    },
+  });
 }
