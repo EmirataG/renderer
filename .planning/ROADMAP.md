@@ -197,7 +197,11 @@ Plans:
 4. Opening a project from the dashboard loads all settings, anchors, and background image exactly as last saved
 5. Background image URL persists in Firestore and the image loads visually when the project is reopened
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 26-01-PLAN.md -- Data layer: projectStore (Zustand), extended Project type, subscribeWithSelector on syncStore, PATCH endpoint
+- [ ] 26-02-PLAN.md -- Auto-save engine, App.tsx settings migration to projectStore, settings loading from API, SaveIndicator
 
 ## Progress
 
@@ -208,7 +212,7 @@ Plans:
 | 23 - Firebase Authentication | Planned | 0/2 | 0% |
 | 24 - Project Dashboard & CRUD | ✓ Complete (2026-02-11) | 3/3 | 100% |
 | 25 - Firebase Storage & File Persistence | ✓ Complete (2026-02-11) | 3/3 | 100% |
-| 26 - Auto-Save & Data Persistence | Not started | 0/? | 0% |
+| 26 - Auto-Save & Data Persistence | Planned | 0/2 | 0% |
 
 **Milestone v2.0 Coverage:**
 - Total requirements: 27
