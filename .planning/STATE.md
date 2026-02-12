@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-12 - Completed quick task 43: fix notehead z-index so colored noteheads render above stems in SVG
+Last activity: 2026-02-12 - Completed quick task 44: display background image in project card thumbnail
 
 Progress: [##########] 42/42
 
@@ -114,10 +114,11 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 43 | fix notehead z-index so colored noteheads render above stems in SVG | 2026-02-12 | 8c2bc69 | [43-fix-notehead-z-index-so-colored-notehead](./quick/43-fix-notehead-z-index-so-colored-notehead/) |
+| 44 | display background image in project card thumbnail | 2026-02-12 | f366f91 | [44-update-the-project-dashboard-code-so-tha](./quick/44-update-the-project-dashboard-code-so-tha/) |
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed 26-02-PLAN.md (Phase 26 complete, all phases done)
+Stopped at: Completed quick task 44: display background image in project card thumbnail
 Resume file: None
 Next: All plans complete (42/42)
