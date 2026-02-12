@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-12 - Completed quick task 47: add duplicate project option in project card menu
+Last activity: 2026-02-12 - Completed quick task 48: stream audio from Firebase Storage and set preload=metadata
 
 Progress: [##########] 42/42
 
@@ -118,10 +118,11 @@ None.
 | 45 | move score region edit buttons from image overlay to inspector panel | 2026-02-12 | c5d284f | [45-move-score-region-edit-buttons-from-imag](./quick/45-move-score-region-edit-buttons-from-imag/) |
 | 46 | remove getDownloadURL overhead from file uploads (2-10s faster project creation) | 2026-02-12 | 3b1f2d8 | [46-investigate-why-creating-a-project-takes](./quick/46-investigate-why-creating-a-project-takes/) |
 | 47 | add duplicate project option in project card menu | 2026-02-12 | dd3468c | [47-add-duplicate-project-option-in-project-](./quick/47-add-duplicate-project-option-in-project-/) |
+| 48 | stream audio from Firebase Storage and set preload=metadata (fix slow first playback) | 2026-02-12 | 3528e86 | [48-investigate-why-first-audio-playback-is-](./quick/48-investigate-why-first-audio-playback-is-/) |
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed quick task 47: add duplicate project option in project card menu
+Stopped at: Completed quick task 48: stream audio from Firebase Storage and set preload=metadata
 Resume file: None
 Next: All plans complete (42/42)
