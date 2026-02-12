@@ -9,20 +9,20 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 
 ## Current Position
 
-Phase: 25 of 26 (Firebase Storage & File Persistence)
-Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-02-11 -- Completed 25-03 (Security rules and end-to-end verification)
+Phase: 26 of 26 (Auto-Save & Data Persistence)
+Plan: 1 of 2 complete
+Status: In Progress
+Last activity: 2026-02-12 -- Completed 26-01 (Data layer for auto-save)
 
-Progress: [####......] 40%
+Progress: [####......] 41/42
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 40
+- Total plans completed: 41
 - Average duration: 2.7 min
-- Total execution time: 107 min
+- Total execution time: 109 min
 
 **By Phase:**
 
@@ -51,6 +51,7 @@ Progress: [####......] 40%
 | 23 - Firebase Authentication      | 1/2   | 3 min | 3 min    |
 | 24 - Project Dashboard & CRUD     | 3/3   | 10 min | 3.3 min |
 | 25 - Firebase Storage & File Pers | 3/3   | 13 min | 4.3 min |
+| 26 - Auto-Save & Data Persistence| 1/2   | 2 min  | 2 min   |
 
 _Updated after each plan completion_
 
@@ -88,6 +89,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 25-03: Lazy getBucket() singleton replaces module-level bucket export (Firebase Admin init race fix)
 - 25-03: Score and audio served through API proxy endpoints instead of direct Storage URLs (CORS)
 - 25-03: Background route updated to use getBucket() for consistency with lazy init pattern
+- 26-01: Settings stored as flat top-level Firestore fields (not nested under settings key)
+- 26-01: PATCH endpoint whitelists 16 settings fields to prevent arbitrary writes
+- 26-01: Project type uses string for scoreBorder (Firestore returns plain string, store casts to BorderStyle)
 
 ### Roadmap Evolution
 
@@ -104,7 +108,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-11
-Stopped at: Completed 25-03-PLAN.md (Phase 25 complete)
+Last session: 2026-02-12
+Stopped at: Completed 26-01-PLAN.md
 Resume file: None
-Next: Phase 26 (if planned)
+Next: 26-02-PLAN.md (Auto-save wiring)
