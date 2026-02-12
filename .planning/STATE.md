@@ -115,10 +115,11 @@ None.
 |---|-------------|------|--------|-----------|
 | 43 | fix notehead z-index so colored noteheads render above stems in SVG | 2026-02-12 | 8c2bc69 | [43-fix-notehead-z-index-so-colored-notehead](./quick/43-fix-notehead-z-index-so-colored-notehead/) |
 | 44 | display background image in project card thumbnail | 2026-02-12 | f366f91 | [44-update-the-project-dashboard-code-so-tha](./quick/44-update-the-project-dashboard-code-so-tha/) |
+| 45 | move score region edit buttons from image overlay to inspector panel | 2026-02-12 | c5d284f | [45-move-score-region-edit-buttons-from-imag](./quick/45-move-score-region-edit-buttons-from-imag/) |
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed quick task 44: display background image in project card thumbnail
+Stopped at: Completed quick task 45: move score region edit buttons to inspector panel
 Resume file: None
 Next: All plans complete (42/42)
