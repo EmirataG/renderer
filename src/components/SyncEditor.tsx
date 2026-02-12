@@ -13,8 +13,6 @@ import type {} from '../types/global';
 interface SyncEditorProps {
   xml: string;
   audioUrl?: string; // Audio URL for preview sync
-  currentView: 'renderer' | 'sync';
-  onViewChange: (view: 'renderer' | 'sync') => void;
 }
 
 // Format seconds to MM:SS.mmm display format
@@ -24,7 +22,7 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toFixed(2).padStart(5, '0')}`;
 }
 
-export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEditorProps) {
+export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
   const scoreRef = useRef<HTMLDivElement>(null);
   const scoreContainerRef = useRef<HTMLDivElement>(null);
   const styleRef = useRef<HTMLStyleElement | null>(null);
@@ -512,26 +510,8 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
       {/* Hidden audio element */}
       {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
 
-      {/* Header with view toggle and selected note info */}
+      {/* Header with selected note info */}
       <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-3 flex items-center gap-4 h-14">
-        {/* View toggle */}
-        <div className="flex gap-0">
-          <button
-            onClick={() => onViewChange('renderer')}
-            className={currentView === 'renderer' ? 'grunge-tab-active' : 'grunge-tab'}
-          >
-            Preview
-          </button>
-          <button
-            onClick={() => onViewChange('sync')}
-            className={currentView === 'sync' ? 'grunge-tab-active' : 'grunge-tab'}
-          >
-            Sync Editor
-          </button>
-        </div>
-
-        <div className="w-px h-6 bg-neutral-600" />
-
         <div className="flex-1">
           {selectedEvent ? (
             <div className="flex items-center gap-4">

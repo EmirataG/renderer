@@ -18,9 +18,10 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 interface AppProps {
   projectId?: string;
+  onNavigateDashboard?: () => void;
 }
 
-export default function App({ projectId }: AppProps) {
+export default function App({ projectId, onNavigateDashboard }: AppProps) {
   // Get sync anchors from store (use selector for proper reactivity)
   const anchors = useSyncStore((state) => state.anchors);
 
@@ -401,21 +402,54 @@ export default function App({ projectId }: AppProps) {
 
   return (
     <ToastProvider>
-      <main className="h-screen flex bg-black text-neutral-100">
-        <aside className="w-80 bg-black border-r border-neutral-800 flex flex-col overflow-hidden" style={{ display: currentView === 'sync' ? 'none' : undefined }}>
-          {/* Header */}
-          <div className="px-5 py-4 border-b border-neutral-800">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-lg font-bold tracking-wider uppercase" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>Inspector</h1>
-                <div className="flex items-center gap-2">
-                  <p className="text-xs text-neutral-500 mt-0.5 uppercase tracking-wider">
-                    Score Controls
-                  </p>
-                  {projectId && <SaveIndicator />}
-                </div>
-              </div>
+      <main className="h-screen flex flex-col bg-black text-neutral-100">
+        {/* Top header bar — spans full width over inspector + content */}
+        <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-2.5 flex items-center gap-4">
+          {onNavigateDashboard && (
+            <button
+              onClick={onNavigateDashboard}
+              className="flex items-center gap-1.5 text-neutral-500 hover:text-neutral-100 transition-colors mr-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+            </button>
+          )}
+          <div className="w-px h-5 bg-neutral-800" />
+          {musicXMLFile && (
+            <div className="flex gap-0">
+              <button
+                onClick={() => setCurrentView('renderer')}
+                className={currentView === 'renderer' ? 'grunge-tab-active' : 'grunge-tab'}
+              >
+                Preview
+              </button>
+              <button
+                onClick={() => setCurrentView('sync')}
+                className={currentView === 'sync' ? 'grunge-tab-active' : 'grunge-tab'}
+              >
+                Sync Editor
+              </button>
             </div>
+          )}
+          {musicXMLFile && (
+            <div className="text-xs text-neutral-500 uppercase tracking-wider">
+              {useSingleLineRenderer ? 'Single-Line Mode' : 'Preview Mode'}
+            </div>
+          )}
+          <div className="flex-1" />
+          {projectId && <SaveIndicator />}
+        </div>
+
+        <div className="flex-1 flex min-h-0">
+        <aside className="w-80 bg-black border-r border-neutral-800 flex flex-col overflow-hidden" style={{ display: currentView === 'sync' ? 'none' : undefined }}>
+          {/* Inspector Header */}
+          <div className="px-5 py-4 border-b border-neutral-800">
+            <h1 className="text-lg font-bold tracking-wider uppercase" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>Inspector</h1>
+            <p className="text-xs text-neutral-500 mt-0.5 uppercase tracking-wider">
+              Score Controls
+            </p>
           </div>
 
           <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">
@@ -804,28 +838,6 @@ export default function App({ projectId }: AppProps) {
             <>
               {/* Renderer view - always mounted, hidden when not active */}
               <div className="flex flex-col h-full" style={{ display: currentView === 'renderer' ? 'flex' : 'none' }}>
-                {/* View toggle header */}
-                <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-3 flex items-center gap-4">
-                  <div className="flex gap-0">
-                    <button
-                      onClick={() => setCurrentView('renderer')}
-                      className={currentView === 'renderer' ? 'grunge-tab-active' : 'grunge-tab'}
-                    >
-                      Preview
-                    </button>
-                    <button
-                      onClick={() => setCurrentView('sync')}
-                      className="grunge-tab"
-                    >
-                      Sync Editor
-                    </button>
-                  </div>
-                  <div className="text-xs text-neutral-500 uppercase tracking-wider">
-                    {useSingleLineRenderer ? 'Single-Line Mode' : 'Preview Mode'}
-                  </div>
-                  {/* Spacer */}
-                  <div className="flex-1" />
-                </div>
                 {/* Renderer content */}
                 <div className="flex-1 min-h-0 overflow-auto">
                 <TransformWrapper onTransformed={(_, state) => setZoomScale(state.scale)} minScale={0.25} maxScale={5} panning={{ activationKeys: ["Alt"] }} doubleClick={{ mode: "reset" }}>
@@ -914,8 +926,6 @@ export default function App({ projectId }: AppProps) {
                 <SyncEditor
                   xml={musicXMLFile.xml}
                   audioUrl={audioFile?.url}
-                  currentView={currentView}
-                  onViewChange={setCurrentView}
                 />
               </div>
             </>
@@ -946,6 +956,7 @@ export default function App({ projectId }: AppProps) {
             </div>
           )}
         </section>
+        </div>
       </main>
     </ToastProvider>
   );

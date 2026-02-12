@@ -27,7 +27,7 @@ export const config = {
   corsOrigin: true as const,
 
   /** Maximum concurrent Puppeteer browser instances */
-  maxBrowsers: 3,
+  maxBrowsers: parseInt(process.env.MAX_BROWSERS ?? '3', 10),
 
   /** Maximum time to wait to acquire a browser from the pool (30s) */
   browserAcquireTimeoutMs: 30_000,

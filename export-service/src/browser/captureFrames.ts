@@ -31,7 +31,7 @@ export async function* captureFrames(
 
     const buffer = await page.screenshot({
       type: 'jpeg',
-      quality: 90,
+      quality: 85,
       optimizeForSpeed: true,
       captureBeyondViewport: false,
     });
