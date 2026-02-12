@@ -97,9 +97,6 @@ export async function PATCH(
     .collection('projects')
     .doc(id);
 
-  const doc = await docRef.get();
-  if (!doc.exists) return Response.json({ error: 'Not found' }, { status: 404 });
-
   // Build update payload -- flatten settings into top-level fields
   const updateData: Record<string, unknown> = {
     updatedAt: FieldValue.serverTimestamp(),
@@ -121,7 +118,14 @@ export async function PATCH(
     updateData.name = name.trim();
   }
 
-  await docRef.update(updateData);
+  try {
+    await docRef.update(updateData);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('NOT_FOUND')) {
+      return Response.json({ error: 'Not found' }, { status: 404 });
+    }
+    throw err;
+  }
 
   return Response.json({ status: 'saved' });
 }

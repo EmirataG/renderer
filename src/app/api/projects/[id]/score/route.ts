@@ -30,13 +30,10 @@ export async function GET(
 
   if (!doc.exists) return new Response('Not found', { status: 404 });
 
-  // Find the score file in Storage by prefix
-  const [files] = await getBucket().getFiles({
-    prefix: `users/${user.uid}/projects/${id}/score`,
-  });
-  if (files.length === 0) return new Response('Score not found', { status: 404 });
+  const data = doc.data()!;
+  if (!data.scoreUrl) return new Response('Score not found', { status: 404 });
 
-  const [contents] = await files[0].download();
+  const [contents] = await getBucket().file(data.scoreUrl).download();
   return new Response(new Uint8Array(contents), {
     headers: { 'Content-Type': 'application/xml' },
   });

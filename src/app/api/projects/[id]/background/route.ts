@@ -39,13 +39,10 @@ export async function GET(
 
   if (!doc.exists) return new Response('Not found', { status: 404 });
 
-  // Find background file in Storage by prefix
-  const [files] = await getBucket().getFiles({
-    prefix: `users/${user.uid}/projects/${id}/background`,
-  });
-  if (files.length === 0) return new Response('No background', { status: 404 });
+  const data = doc.data()!;
+  if (!data.backgroundUrl) return new Response('No background', { status: 404 });
 
-  const file = files[0];
+  const file = getBucket().file(data.backgroundUrl);
   const [metadata] = await file.getMetadata();
   const [contents] = await file.download();
   return new Response(new Uint8Array(contents), {

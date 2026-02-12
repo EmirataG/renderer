@@ -30,13 +30,10 @@ export async function GET(
 
   if (!doc.exists) return new Response('Not found', { status: 404 });
 
-  // Find the audio file in Storage by prefix
-  const [files] = await getBucket().getFiles({
-    prefix: `users/${user.uid}/projects/${id}/audio`,
-  });
-  if (files.length === 0) return new Response('Audio not found', { status: 404 });
+  const data = doc.data()!;
+  if (!data.audioUrl) return new Response('Audio not found', { status: 404 });
 
-  const file = files[0];
+  const file = getBucket().file(data.audioUrl);
   const [metadata] = await file.getMetadata();
   const contentType = metadata.contentType || 'audio/mpeg';
   const fileSize = Number(metadata.size);
