@@ -37,9 +37,17 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
       onClick={() => router.push(`/project/${project.id}`)}
       className="group relative bg-black border-2 border-neutral-800 overflow-hidden hover:border-neutral-500 transition-colors cursor-pointer"
     >
-      {/* Thumbnail placeholder */}
+      {/* Thumbnail */}
       <div className="aspect-[4/3] bg-neutral-900 flex items-center justify-center">
-        <MusicNoteIcon className="w-10 h-10 text-neutral-700" />
+        {project.backgroundUrl ? (
+          <img
+            src={`/api/projects/${project.id}/background`}
+            alt={project.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <MusicNoteIcon className="w-10 h-10 text-neutral-700" />
+        )}
       </div>
 
       {/* Metadata */}
