@@ -327,6 +327,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     setBgUrl(imageUrl || null);
     setBgFileName(fileName || null);
     setBgFile(file || null);
+
+    // Reset score region when background changes — the old region dimensions
+    // are sized for the previous image and become invalid. Setting to null
+    // falls back to full container dimensions via scoreRegion?.width ?? containerWidth.
+    setSetting("scoreRegion", null);
+    setIsEditingRegion(false);
   };
 
   // Export handlers
