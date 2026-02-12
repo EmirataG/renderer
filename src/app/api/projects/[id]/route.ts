@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { adminAuth } from '@/lib/firebase-admin';
-import { getDb } from '@/lib/firestore';
+import { getDb, FieldValue } from '@/lib/firestore';
 import { deleteProjectFiles } from '@/lib/storage';
 
 async function getAuthenticatedUser() {
@@ -70,4 +70,54 @@ export async function DELETE(
   await docRef.delete();
 
   return Response.json({ status: 'deleted' });
+}
+
+const ALLOWED_SETTINGS = [
+  'scoreColor', 'scoreScale', 'musicFont', 'scoreBorder', 'hideLabels',
+  'scoreRegion', 'activeNoteheadColor', 'activeNoteheadScale',
+  'activeNoteheadEntryMs', 'activeNoteheadHoldMs', 'activeNoteheadExitMs',
+  'colorFullNote', 'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal',
+];
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getAuthenticatedUser();
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { id } = await params;
+  const body = await request.json();
+  const { settings, anchors } = body;
+
+  const db = getDb();
+  const docRef = db
+    .collection('users')
+    .doc(user.uid)
+    .collection('projects')
+    .doc(id);
+
+  const doc = await docRef.get();
+  if (!doc.exists) return Response.json({ error: 'Not found' }, { status: 404 });
+
+  // Build update payload -- flatten settings into top-level fields
+  const updateData: Record<string, unknown> = {
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (settings && typeof settings === 'object') {
+    for (const key of ALLOWED_SETTINGS) {
+      if (key in settings) {
+        updateData[key] = settings[key];
+      }
+    }
+  }
+
+  if (anchors !== undefined && typeof anchors === 'object') {
+    updateData.anchors = anchors;
+  }
+
+  await docRef.update(updateData);
+
+  return Response.json({ status: 'saved' });
 }
