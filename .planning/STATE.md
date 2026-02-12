@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-12 - Completed quick task 51: fix event extraction race condition and remove diagnostic logs
+Last activity: 2026-02-12 - Completed quick task 52: fix project card thumbnails not showing background images on dashboard
 
 Progress: [##########] 42/42
 
@@ -122,10 +122,11 @@ None.
 | 49 | ~~fix note highlighting regression~~ REVERTED (55e2e53) | 2026-02-12 | 18d7526 | [49-fix-note-highlighting-regression-after-a](./quick/49-fix-note-highlighting-regression-after-a/) |
 | 50 | revert transportMessage guard and add TRANSPORT_DEBUG diagnostics | 2026-02-12 | 5f36b00 | [50-revert-transport-message-fix-and-add-dia](./quick/50-revert-transport-message-fix-and-add-dia/) |
 | 51 | fix event extraction race condition (containerWidth dep) and remove diagnostic logs | 2026-02-12 | 754bf65 | [51-fix-event-extraction-race-events-never-e](./quick/51-fix-event-extraction-race-events-never-e/) |
+| 52 | fix project card thumbnails not showing background images on dashboard | 2026-02-12 | e90e711 | [52-fix-project-card-thumbnails-not-showing-](./quick/52-fix-project-card-thumbnails-not-showing-/) |
 
 ## Session Continuity
 
 Last session: 2026-02-12
-Stopped at: Completed quick-51 (fix event extraction race condition, remove diagnostic logs)
+Stopped at: Completed quick-52 (fix dashboard background images)
 Resume file: None
 Next: All plans complete (42/42)
