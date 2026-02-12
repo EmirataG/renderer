@@ -8,6 +8,9 @@ import { ScoreRegionEditor } from "./components/ScoreRegionEditor";
 import { BorderPicker } from "./components/BorderPicker";
 import { BorderStyle } from "./borders";
 import { useSyncStore } from "./stores/syncStore";
+import { useProjectStore, DEFAULT_SETTINGS } from "./stores/projectStore";
+import { SaveIndicator } from "./components/SaveIndicator";
+import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
 import { requestExport } from "./lib/exportClient";
 import type { ExportSettings } from "./lib/exportClient";
@@ -20,6 +23,25 @@ interface AppProps {
 export default function App({ projectId }: AppProps) {
   // Get sync anchors from store
   const { anchors } = useSyncStore();
+
+  // Project settings from store (replaces 16 individual useState calls)
+  const fps = useProjectStore((s) => s.fps);
+  const scoreColor = useProjectStore((s) => s.scoreColor);
+  const scoreShadowDistance = useProjectStore((s) => s.scoreShadowDistance);
+  const hideUnplayedNotes = useProjectStore((s) => s.hideUnplayedNotes);
+  const smoothReveal = useProjectStore((s) => s.smoothReveal);
+  const scoreRegion = useProjectStore((s) => s.scoreRegion);
+  const scoreBorder = useProjectStore((s) => s.scoreBorder);
+  const scoreScale = useProjectStore((s) => s.scoreScale);
+  const musicFont = useProjectStore((s) => s.musicFont);
+  const hideLabels = useProjectStore((s) => s.hideLabels);
+  const activeNoteheadColor = useProjectStore((s) => s.activeNoteheadColor);
+  const activeNoteheadScale = useProjectStore((s) => s.activeNoteheadScale);
+  const activeNoteheadEntryMs = useProjectStore((s) => s.activeNoteheadEntryMs);
+  const activeNoteheadHoldMs = useProjectStore((s) => s.activeNoteheadHoldMs);
+  const activeNoteheadExitMs = useProjectStore((s) => s.activeNoteheadExitMs);
+  const colorFullNote = useProjectStore((s) => s.colorFullNote);
+  const setSetting = useProjectStore((s) => s.setSetting);
 
   // Check for renderer mode via URL query param
   const useSingleLineRenderer = typeof window !== 'undefined' &&
@@ -43,7 +65,14 @@ export default function App({ projectId }: AppProps) {
   // Project loading state
   const [isLoadingProject, setIsLoadingProject] = useState(false);
 
+  // Auto-save cleanup ref
+  const autoSaveCleanupRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
+    // Clean up previous auto-save subscription if projectId changes
+    autoSaveCleanupRef.current?.();
+    autoSaveCleanupRef.current = null;
+
     if (!projectId) return;
 
     async function loadProject() {
@@ -80,6 +109,41 @@ export default function App({ projectId }: AppProps) {
           setBgUrl(`/api/projects/${projectId}/background`);
           setBgFileName(project.backgroundFileName || null);
         }
+
+        // Load settings from API response into projectStore
+        const { loadSettings, setProjectId } = useProjectStore.getState();
+        setProjectId(projectId!);
+        loadSettings({
+          scoreColor: project.scoreColor ?? DEFAULT_SETTINGS.scoreColor,
+          scoreScale: project.scoreScale ?? DEFAULT_SETTINGS.scoreScale,
+          musicFont: project.musicFont ?? DEFAULT_SETTINGS.musicFont,
+          scoreBorder: (project.scoreBorder ?? DEFAULT_SETTINGS.scoreBorder) as BorderStyle,
+          hideLabels: project.hideLabels ?? DEFAULT_SETTINGS.hideLabels,
+          scoreRegion: project.scoreRegion ?? DEFAULT_SETTINGS.scoreRegion,
+          activeNoteheadColor: project.activeNoteheadColor ?? DEFAULT_SETTINGS.activeNoteheadColor,
+          activeNoteheadScale: project.activeNoteheadScale ?? DEFAULT_SETTINGS.activeNoteheadScale,
+          activeNoteheadEntryMs: project.activeNoteheadEntryMs ?? DEFAULT_SETTINGS.activeNoteheadEntryMs,
+          activeNoteheadHoldMs: project.activeNoteheadHoldMs ?? DEFAULT_SETTINGS.activeNoteheadHoldMs,
+          activeNoteheadExitMs: project.activeNoteheadExitMs ?? DEFAULT_SETTINGS.activeNoteheadExitMs,
+          colorFullNote: project.colorFullNote ?? DEFAULT_SETTINGS.colorFullNote,
+          fps: project.fps ?? DEFAULT_SETTINGS.fps,
+          scoreShadowDistance: project.scoreShadowDistance ?? DEFAULT_SETTINGS.scoreShadowDistance,
+          hideUnplayedNotes: project.hideUnplayedNotes ?? DEFAULT_SETTINGS.hideUnplayedNotes,
+          smoothReveal: project.smoothReveal ?? DEFAULT_SETTINGS.smoothReveal,
+        });
+
+        // Load sync anchors from API response
+        if (project.anchors && typeof project.anchors === 'object') {
+          const { clearAllAnchors, setAnchor } = useSyncStore.getState();
+          clearAllAnchors();
+          for (const [eventId, timestamp] of Object.entries(project.anchors)) {
+            setAnchor(eventId, Number(timestamp));
+          }
+        }
+
+        // Initialize auto-save AFTER settings and anchors are loaded
+        // This prevents the initial loadSettings() call from triggering a spurious save
+        autoSaveCleanupRef.current = initAutoSave();
       } catch (err) {
         console.error('Failed to load project:', err);
       } finally {
@@ -88,14 +152,12 @@ export default function App({ projectId }: AppProps) {
     }
 
     loadProject();
-  }, [projectId]);
 
-  // Playback settings
-  const [fps, setFps] = useState(30);
-  const [scoreColor, setScoreColor] = useState("#000000");
-  const [scoreShadowDistance, setScoreShadowDistance] = useState(0);
-  const [hideUnplayedNotes, setHideUnplayedNotes] = useState(true);
-  const [smoothReveal, setSmoothReveal] = useState(true);
+    return () => {
+      autoSaveCleanupRef.current?.();
+      autoSaveCleanupRef.current = null;
+    };
+  }, [projectId]);
 
   // View toggle state
   const [currentView, setCurrentView] = useState<'renderer' | 'sync'>('renderer');
@@ -106,25 +168,14 @@ export default function App({ projectId }: AppProps) {
   // Transport bar portal target (play/pause/reset rendered here from RegularRenderer)
   const [transportEl, setTransportEl] = useState<HTMLDivElement | null>(null);
 
-  // Score region customization
-  const [scoreRegion, setScoreRegion] = useState<ScoreRegion | null>(null);
+  // Transient UI state for region editing
   const [isEditingRegion, setIsEditingRegion] = useState(false);
   const [zoomScale, setZoomScale] = useState(1);
   const [regionContainerDims, setRegionContainerDims] = useState<{ width: number; height: number } | null>(null);
 
-  // Score border style
-  const [scoreBorder, setScoreBorder] = useState<BorderStyle>('none');
-
-  // Score scale (size)
-  const [scoreScale, setScoreScale] = useState(1.0);
+  // Verovio rendering debounces (local state, derived from store values)
   const [debouncedScoreScale, setDebouncedScoreScale] = useState(1.0);
   const [debouncedScoreRegion, setDebouncedScoreRegion] = useState<ScoreRegion | null>(null);
-
-  // Music font
-  const [musicFont, setMusicFont] = useState<string>('Bravura');
-
-  // Hide instrument labels
-  const [hideLabels, setHideLabels] = useState(false);
 
   // Debounce scoreScale to avoid Verovio re-render on every slider tick
   useEffect(() => {
@@ -165,16 +216,6 @@ export default function App({ projectId }: AppProps) {
       });
     };
   }, [bgUrl]);
-
-  // Notehead animation controls
-  const [activeNoteheadColor, setActiveNoteheadColor] = useState<string | null>(
-    "#000000"
-  );
-  const [activeNoteheadScale, setActiveNoteheadScale] = useState(1.2);
-  const [activeNoteheadEntryMs, setActiveNoteheadEntryMs] = useState(50);
-  const [activeNoteheadHoldMs, setActiveNoteheadHoldMs] = useState(200);
-  const [activeNoteheadExitMs, setActiveNoteheadExitMs] = useState(500);
-  const [colorFullNote, setColorFullNote] = useState(false);
 
   // Export state
   const [exportState, setExportState] = useState<{
@@ -351,9 +392,12 @@ export default function App({ projectId }: AppProps) {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-lg font-bold tracking-wider uppercase" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>Inspector</h1>
-                <p className="text-xs text-neutral-500 mt-0.5 uppercase tracking-wider">
-                  Score Controls
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-neutral-500 mt-0.5 uppercase tracking-wider">
+                    Score Controls
+                  </p>
+                  {projectId && <SaveIndicator />}
+                </div>
               </div>
             </div>
           </div>
@@ -403,7 +447,7 @@ export default function App({ projectId }: AppProps) {
                     max={60}
                     step={1}
                     value={fps}
-                    onChange={(e) => setFps(Number(e.target.value))}
+                    onChange={(e) => setSetting('fps', Number(e.target.value))}
                     className="grunge-range"
                   />
                 </div>
@@ -424,7 +468,7 @@ export default function App({ projectId }: AppProps) {
                     <input
                       type="color"
                       value={scoreColor}
-                      onChange={(e) => setScoreColor(e.target.value)}
+                      onChange={(e) => setSetting('scoreColor', e.target.value)}
                       className="grunge-color-picker"
                     />
                     <span className="text-xs text-neutral-400 font-mono">
@@ -446,7 +490,7 @@ export default function App({ projectId }: AppProps) {
                     max={1.5}
                     step={0.05}
                     value={scoreScale}
-                    onChange={(e) => setScoreScale(Number(e.target.value))}
+                    onChange={(e) => setSetting('scoreScale', Number(e.target.value))}
                     className="grunge-range"
                   />
                 </div>
@@ -457,7 +501,7 @@ export default function App({ projectId }: AppProps) {
                   </label>
                   <select
                     value={musicFont}
-                    onChange={(e) => setMusicFont(e.target.value)}
+                    onChange={(e) => setSetting('musicFont', e.target.value)}
                     className="grunge-select w-full"
                   >
                     <option value="Bravura">Bravura</option>
@@ -473,7 +517,7 @@ export default function App({ projectId }: AppProps) {
                     <input
                       type="checkbox"
                       checked={hideLabels}
-                      onChange={(e) => setHideLabels(e.target.checked)}
+                      onChange={(e) => setSetting('hideLabels', e.target.checked)}
                       className="grunge-checkbox"
                     />
                     <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
@@ -483,7 +527,7 @@ export default function App({ projectId }: AppProps) {
                 </div>
 
                 {/* Border Picker */}
-                <BorderPicker value={scoreBorder} onChange={setScoreBorder} color={scoreColor} />
+                <BorderPicker value={scoreBorder} onChange={(style) => setSetting('scoreBorder', style)} color={scoreColor} />
 
                 {/* Score Region Editor Button */}
                 <div className="pt-2 border-t border-neutral-700">
@@ -515,7 +559,7 @@ export default function App({ projectId }: AppProps) {
                       type="checkbox"
                       checked={activeNoteheadColor !== null}
                       onChange={(e) =>
-                        setActiveNoteheadColor(
+                        setSetting('activeNoteheadColor',
                           e.target.checked ? scoreColor : null
                         )
                       }
@@ -537,7 +581,7 @@ export default function App({ projectId }: AppProps) {
                         <input
                           type="color"
                           value={activeNoteheadColor}
-                          onChange={(e) => setActiveNoteheadColor(e.target.value)}
+                          onChange={(e) => setSetting('activeNoteheadColor', e.target.value)}
                           className="grunge-color-picker"
                         />
                         <span className="text-xs text-neutral-400 font-mono">
@@ -551,7 +595,7 @@ export default function App({ projectId }: AppProps) {
                         <input
                           type="checkbox"
                           checked={colorFullNote}
-                          onChange={(e) => setColorFullNote(e.target.checked)}
+                          onChange={(e) => setSetting('colorFullNote', e.target.checked)}
                           className="grunge-checkbox"
                         />
                         <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
@@ -576,7 +620,7 @@ export default function App({ projectId }: AppProps) {
                     step={0.01}
                     value={activeNoteheadScale}
                     onChange={(e) =>
-                      setActiveNoteheadScale(Number(e.target.value))
+                      setSetting('activeNoteheadScale', Number(e.target.value))
                     }
                     className="grunge-range"
                   />
@@ -596,7 +640,7 @@ export default function App({ projectId }: AppProps) {
                     step={10}
                     value={activeNoteheadEntryMs}
                     onChange={(e) =>
-                      setActiveNoteheadEntryMs(Number(e.target.value))
+                      setSetting('activeNoteheadEntryMs', Number(e.target.value))
                     }
                     className="grunge-range"
                   />
@@ -616,7 +660,7 @@ export default function App({ projectId }: AppProps) {
                     step={20}
                     value={activeNoteheadHoldMs}
                     onChange={(e) =>
-                      setActiveNoteheadHoldMs(Number(e.target.value))
+                      setSetting('activeNoteheadHoldMs', Number(e.target.value))
                     }
                     className="grunge-range"
                   />
@@ -636,7 +680,7 @@ export default function App({ projectId }: AppProps) {
                     step={20}
                     value={activeNoteheadExitMs}
                     onChange={(e) =>
-                      setActiveNoteheadExitMs(Number(e.target.value))
+                      setSetting('activeNoteheadExitMs', Number(e.target.value))
                     }
                     className="grunge-range"
                   />
@@ -827,7 +871,7 @@ export default function App({ projectId }: AppProps) {
                           containerWidth={regionContainerDims.width}
                           containerHeight={regionContainerDims.height}
                           initialRegion={scoreRegion}
-                          onRegionChange={setScoreRegion}
+                          onRegionChange={(region) => setSetting('scoreRegion', region)}
                           onClose={() => setIsEditingRegion(false)}
                           scale={zoomScale}
                         />
