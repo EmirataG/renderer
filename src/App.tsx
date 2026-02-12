@@ -236,13 +236,21 @@ export default function App({ projectId }: AppProps) {
         audioDuration: audioRef.current?.duration,
       };
 
+      // If audio was loaded from Storage (no local File), fetch it as a Blob
+      let audioFileForExport = audioFile.file;
+      if (!audioFileForExport && audioFile.url) {
+        const audioRes = await fetch(audioFile.url);
+        const audioBlob = await audioRes.blob();
+        audioFileForExport = new File([audioBlob], audioFile.name, { type: audioBlob.type });
+      }
+
       const backendUrl = process.env.NODE_ENV !== 'production' ? 'http://localhost:3001' : '';
       const response = await requestExport({
         settings,
         syncAnchors: anchors,
         musicXmlContent: musicXMLFile.xml,
         musicXmlFilename: musicXMLFile.name,
-        audioFile: audioFile.file!, // null when loaded from URL -- export requires local file
+        audioFile: audioFileForExport!,
         bgImageFile: bgFile || undefined,
       }, backendUrl);
 
