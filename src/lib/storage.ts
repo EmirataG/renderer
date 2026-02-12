@@ -1,5 +1,5 @@
 import 'server-only';
-import { getStorage, getDownloadURL } from 'firebase-admin/storage';
+import { getStorage } from 'firebase-admin/storage';
 import { adminAuth } from '@/lib/firebase-admin';
 
 const STORAGE_BUCKET = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!;
@@ -17,7 +17,7 @@ export function getBucket() {
 }
 
 /**
- * Upload a file buffer to Firebase Storage and return the permanent download URL.
+ * Upload a file buffer to Firebase Storage and return the storage path.
  */
 export async function uploadFile(
   storagePath: string,
@@ -26,7 +26,7 @@ export async function uploadFile(
 ): Promise<string> {
   const fileRef = getBucket().file(storagePath);
   await fileRef.save(buffer, { metadata: { contentType } });
-  return await getDownloadURL(fileRef);
+  return storagePath;
 }
 
 /**
