@@ -31,6 +31,7 @@ export default async function DashboardPage() {
         viewMode: doc.data().viewMode || 'page',
         createdAt: doc.data().createdAt?.toDate().toISOString() ?? new Date().toISOString(),
         updatedAt: doc.data().updatedAt?.toDate().toISOString() ?? new Date().toISOString(),
+        backgroundUrl: doc.data().backgroundUrl || undefined,
       }));
     }
   } catch (error) {
