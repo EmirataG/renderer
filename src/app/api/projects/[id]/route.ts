@@ -88,7 +88,7 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { settings, anchors } = body;
+  const { settings, anchors, name } = body;
 
   const db = getDb();
   const docRef = db
@@ -115,6 +115,10 @@ export async function PATCH(
 
   if (anchors !== undefined && typeof anchors === 'object') {
     updateData.anchors = anchors;
+  }
+
+  if (typeof name === 'string' && name.trim()) {
+    updateData.name = name.trim();
   }
 
   await docRef.update(updateData);

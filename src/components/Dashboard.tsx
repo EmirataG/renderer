@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase-client';
-import { useToast } from '@/hooks/useToast';
-import { ProjectCard } from '@/components/ProjectCard';
-import { CreateProjectModal } from '@/components/CreateProjectModal';
-import type { Project } from '@/types/project';
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase-client";
+import { useToast } from "@/hooks/useToast";
+import { ProjectCard } from "@/components/ProjectCard";
+import { CreateProjectModal } from "@/components/CreateProjectModal";
+import type { Project } from "@/types/project";
 
 interface DashboardProps {
   initialProjects: Project[];
@@ -19,17 +19,24 @@ export function Dashboard({ initialProjects }: DashboardProps) {
 
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   // Track pending delete timeouts so we can clean up on unmount
-  const pendingDeletes = useRef<Map<string, { timeout: ReturnType<typeof setTimeout>; projectId: string }>>(new Map());
+  const pendingDeletes = useRef<
+    Map<string, { timeout: ReturnType<typeof setTimeout>; projectId: string }>
+  >(new Map());
 
   // On unmount, fire any pending deletes immediately
   useEffect(() => {
     return () => {
       pendingDeletes.current.forEach(({ timeout, projectId }) => {
         clearTimeout(timeout);
-        fetch(`/api/projects/${projectId}`, { method: 'DELETE' }).catch(() => {});
+        fetch(`/api/projects/${projectId}`, { method: "DELETE" }).catch(
+          () => {},
+        );
       });
       pendingDeletes.current.clear();
     };
@@ -39,9 +46,12 @@ export function Dashboard({ initialProjects }: DashboardProps) {
     setProjects((prev) => [project, ...prev]);
   }, []);
 
-  const handleDeleteRequest = useCallback((projectId: string, projectName: string) => {
-    setDeleteConfirm({ id: projectId, name: projectName });
-  }, []);
+  const handleDeleteRequest = useCallback(
+    (projectId: string, projectName: string) => {
+      setDeleteConfirm({ id: projectId, name: projectName });
+    },
+    [],
+  );
 
   const handleDeleteConfirm = useCallback(() => {
     if (!deleteConfirm) return;
@@ -58,7 +68,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
     // Schedule actual deletion after 5 seconds
     const timeout = setTimeout(() => {
       pendingDeletes.current.delete(projectId);
-      fetch(`/api/projects/${projectId}`, { method: 'DELETE' }).catch(() => {
+      fetch(`/api/projects/${projectId}`, { method: "DELETE" }).catch(() => {
         // If delete fails, we can't easily restore since 5s passed
         // Just log silently
       });
@@ -77,22 +87,23 @@ export function Dashboard({ initialProjects }: DashboardProps) {
       setProjects((prev) => {
         // Insert back in order by updatedAt desc
         const updated = [...prev, deletedProject].sort(
-          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
         );
         return updated;
       });
     };
 
-    showToast(`"${projectName}" deleted`, 'info', {
-      action: { label: 'Undo', onClick: undoFn },
+    showToast(`"${projectName}" deleted`, "info", {
+      action: { label: "Undo", onClick: undoFn },
       duration: 5000,
     });
   }, [deleteConfirm, projects, showToast]);
 
   const handleSignOut = useCallback(async () => {
-    await fetch('/api/auth/session', { method: 'DELETE' });
+    await fetch("/api/auth/session", { method: "DELETE" });
     await signOut(auth);
-    router.push('/login');
+    router.push("/login");
   }, [router]);
 
   return (
@@ -100,8 +111,13 @@ export function Dashboard({ initialProjects }: DashboardProps) {
       {/* Header */}
       <header className="border-b border-neutral-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-bold tracking-wider uppercase" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>Manuscript</h1>
-          <div className="flex items-center gap-3">
+          <h1
+            className="text-lg font-bold tracking-wider uppercase"
+            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+          >
+            Manuscript
+          </h1>
+          <div className="flex gap-3">
             <button
               onClick={() => setIsCreateModalOpen(true)}
               className="grunge-btn-primary"
@@ -126,7 +142,12 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-neutral-800/50 mb-4">
               <EmptyMusicIcon className="w-8 h-8 text-neutral-500" />
             </div>
-            <h2 className="text-lg font-bold tracking-wider uppercase text-neutral-300 mb-2" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>No projects yet</h2>
+            <h2
+              className="text-lg font-bold tracking-wider uppercase text-neutral-300 mb-2"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            >
+              No projects yet
+            </h2>
             <p className="text-sm text-neutral-500 mb-6 max-w-sm">
               Create your first project to start syncing scores with audio.
             </p>
@@ -167,7 +188,12 @@ export function Dashboard({ initialProjects }: DashboardProps) {
           }}
         >
           <div className="bg-black border-2 border-neutral-700 p-6 max-w-sm w-full mx-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-100 mb-2" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>Delete project?</h3>
+            <h3
+              className="text-xs font-bold uppercase tracking-wider text-neutral-100 mb-2"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            >
+              Delete project?
+            </h3>
             <p className="text-sm text-neutral-400 mb-6">
               Delete &ldquo;{deleteConfirm.name}&rdquo;? This cannot be undone.
             </p>
@@ -194,7 +220,13 @@ export function Dashboard({ initialProjects }: DashboardProps) {
 
 function EmptyMusicIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1"
+    >
       <path d="M9 18V5l12-2v13" />
       <circle cx="6" cy="18" r="3" />
       <circle cx="18" cy="16" r="3" />

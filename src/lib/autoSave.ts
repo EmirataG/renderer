@@ -41,14 +41,15 @@ async function performSave(projectId: string): Promise<void> {
   }
 
   try {
-    const settings = getSaveableSettings(useProjectStore.getState());
+    const state = useProjectStore.getState();
+    const settings = getSaveableSettings(state);
     const anchors = useSyncStore.getState().anchors;
     const serializedAnchors = Object.fromEntries(anchors);
 
     const response = await fetch(`/api/projects/${projectId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ settings, anchors: serializedAnchors }),
+      body: JSON.stringify({ settings, anchors: serializedAnchors, name: state.projectName }),
     });
 
     if (response.ok) {
@@ -89,6 +90,12 @@ export function initAutoSave(): () => void {
     { equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b) }
   );
 
+  // Subscribe to project name changes
+  const unsub3 = useProjectStore.subscribe(
+    (state) => state.projectName,
+    () => scheduleSave(),
+  );
+
   // Subscribe to sync anchor changes (Map value equality)
   const unsub2 = useSyncStore.subscribe(
     (state) => state.anchors,
@@ -107,6 +114,7 @@ export function initAutoSave(): () => void {
   return () => {
     unsub1();
     unsub2();
+    unsub3();
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;

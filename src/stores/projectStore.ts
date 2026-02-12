@@ -45,6 +45,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
 
 interface ProjectStore extends ProjectSettings {
   projectId: string | null;
+  projectName: string;
   saveStatus: SaveStatus;
   lastSaveError: string | null;
 
@@ -52,6 +53,7 @@ interface ProjectStore extends ProjectSettings {
   setSetting: <K extends keyof ProjectSettings>(key: K, value: ProjectSettings[K]) => void;
   loadSettings: (settings: Partial<ProjectSettings>) => void;
   setProjectId: (id: string | null) => void;
+  setProjectName: (name: string) => void;
   setSaveStatus: (status: SaveStatus, error?: string) => void;
   resetSettings: () => void;
 }
@@ -60,6 +62,7 @@ export const useProjectStore = create<ProjectStore>()(
   subscribeWithSelector((set) => ({
     ...DEFAULT_SETTINGS,
     projectId: null,
+    projectName: 'Untitled Project',
     saveStatus: 'idle' as SaveStatus,
     lastSaveError: null,
 
@@ -69,6 +72,8 @@ export const useProjectStore = create<ProjectStore>()(
 
     setProjectId: (id) => set({ projectId: id }),
 
+    setProjectName: (name) => set({ projectName: name }),
+
     setSaveStatus: (status, error) =>
       set({ saveStatus: status, lastSaveError: error ?? null }),
 
@@ -76,6 +81,7 @@ export const useProjectStore = create<ProjectStore>()(
       set({
         ...DEFAULT_SETTINGS,
         projectId: null,
+        projectName: 'Untitled Project',
         saveStatus: 'idle' as SaveStatus,
         lastSaveError: null,
       }),
