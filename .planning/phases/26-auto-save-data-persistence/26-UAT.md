@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 26-auto-save-data-persistence
 source: [26-01-SUMMARY.md, 26-02-SUMMARY.md]
 started: 2026-02-12T01:15:00Z
-updated: 2026-02-12T01:30:00Z
+updated: 2026-02-12T01:35:00Z
 ---
 
 ## Current Test
@@ -46,18 +46,24 @@ result: pass
 
 total: 7
 passed: 6
-issues: 1
+issues: 1 (fixed)
 pending: 0
 skipped: 0
 
 ## Gaps
 
 - truth: "Sync anchors restore and UI recognizes them (no stale 'Set first and last sync anchors' message)"
-  status: failed
+  status: fixed
   reason: "User reported: anchors persist, but when I reload, it still says Set first and last sync anchors to enable playback (even though they are there)"
   severity: major
   test: 4
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "App.tsx and SyncEditor.tsx used destructuring const { anchors } = useSyncStore() instead of selector functions. With subscribeWithSelector middleware, destructuring captures the initial Map reference and doesn't re-render when setAnchor() creates new Maps during anchor restoration."
+  artifacts:
+    - path: "src/App.tsx"
+      issue: "Destructured anchors from useSyncStore() instead of using selector"
+    - path: "src/components/SyncEditor.tsx"
+      issue: "Destructured all state from useSyncStore() instead of using individual selectors"
+  missing:
+    - "Use useSyncStore((state) => state.anchors) selector pattern for proper Map reactivity"
+  debug_session: ".planning/debug/resolved/sync-anchor-message-not-clearing.md"
+  fix_commits: ["7d2caec", "975e36b"]
