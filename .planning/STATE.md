@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-12 - Reverted quick tasks 48 & 49 (audio streaming broke playback/highlighting)
+Last activity: 2026-02-12 - Completed quick task 50: revert transport message fix and add diagnostic logs
 
 Progress: [##########] 42/42
 
