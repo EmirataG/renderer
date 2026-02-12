@@ -10,4 +10,25 @@ export interface Project {
   audioFileName?: string;
   backgroundUrl?: string;
   backgroundFileName?: string;
+
+  // Settings (all optional -- missing = use defaults)
+  scoreColor?: string;
+  scoreScale?: number;
+  musicFont?: string;
+  scoreBorder?: string;
+  hideLabels?: boolean;
+  scoreRegion?: { x: number; y: number; width: number; height: number } | null;
+  activeNoteheadColor?: string | null;
+  activeNoteheadScale?: number;
+  activeNoteheadEntryMs?: number;
+  activeNoteheadHoldMs?: number;
+  activeNoteheadExitMs?: number;
+  colorFullNote?: boolean;
+  fps?: number;
+  scoreShadowDistance?: number;
+  hideUnplayedNotes?: boolean;
+  smoothReveal?: boolean;
+
+  // Sync anchors (plain object, not Map)
+  anchors?: Record<string, number>;
 }

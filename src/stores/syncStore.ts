@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 
 interface SyncStore {
   // Anchors: eventId -> timestamp in seconds
@@ -14,7 +15,8 @@ interface SyncStore {
   clearAllAnchors: () => void;
 }
 
-export const useSyncStore = create<SyncStore>((set) => ({
+export const useSyncStore = create<SyncStore>()(
+  subscribeWithSelector((set) => ({
   anchors: new Map(),
   selectedEventId: null,
 
@@ -33,4 +35,4 @@ export const useSyncStore = create<SyncStore>((set) => ({
   selectEvent: (eventId) => set({ selectedEventId: eventId }),
 
   clearAllAnchors: () => set({ anchors: new Map() }),
-}));
+})));
