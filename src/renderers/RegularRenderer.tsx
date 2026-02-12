@@ -493,6 +493,21 @@ export default memo(function RegularRenderer({
       ? "Set first and last sync anchors to enable playback"
       : null;
 
+  // --- DIAGNOSTIC: remove after debugging transport message issue ---
+  if (hasAudio && (!hasFirstAnchor || !hasLastAnchor)) {
+    console.log('[TRANSPORT_DEBUG]', {
+      eventsCount: events.length,
+      firstEventId,
+      lastEventId,
+      syncAnchorsSize: syncAnchors?.size ?? 0,
+      syncAnchorsKeys: syncAnchors ? Array.from(syncAnchors.keys()) : [],
+      hasFirstAnchor,
+      hasLastAnchor,
+      firstAnchorLookup: firstEventId ? syncAnchors?.has(firstEventId) : 'no firstEventId',
+      lastAnchorLookup: lastEventId ? syncAnchors?.has(lastEventId) : 'no lastEventId',
+    });
+  }
+
   function play() {
     if (isPlaying || !canPlay) return;
     setIsPlaying(true);
