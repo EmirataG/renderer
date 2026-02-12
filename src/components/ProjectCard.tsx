@@ -7,9 +7,10 @@ import type { Project } from '@/types/project';
 interface ProjectCardProps {
   project: Project;
   onDelete: (id: string, name: string) => void;
+  onDuplicate: (id: string) => void;
 }
 
-export function ProjectCard({ project, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, onDelete, onDuplicate }: ProjectCardProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -71,6 +72,16 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
 
         {menuOpen && (
           <div className="absolute right-0 mt-1 w-36 bg-black border-2 border-neutral-700 shadow-xl overflow-hidden z-10">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                onDuplicate(project.id);
+              }}
+              className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 transition-colors"
+            >
+              Duplicate
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();

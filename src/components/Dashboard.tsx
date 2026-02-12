@@ -100,6 +100,23 @@ export function Dashboard({ initialProjects }: DashboardProps) {
     });
   }, [deleteConfirm, projects, showToast]);
 
+  const handleDuplicate = useCallback(
+    async (projectId: string) => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/duplicate`, {
+          method: 'POST',
+        });
+        if (!res.ok) throw new Error('Duplicate failed');
+        const { project } = await res.json();
+        setProjects((prev) => [project, ...prev]);
+        showToast(`"${project.name}" created`, 'success');
+      } catch {
+        showToast('Failed to duplicate project', 'error');
+      }
+    },
+    [showToast],
+  );
+
   const handleSignOut = useCallback(async () => {
     await fetch("/api/auth/session", { method: "DELETE" });
     await signOut(auth);
@@ -166,6 +183,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
                 key={project.id}
                 project={project}
                 onDelete={handleDeleteRequest}
+                onDuplicate={handleDuplicate}
               />
             ))}
           </div>
