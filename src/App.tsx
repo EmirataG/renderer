@@ -21,8 +21,8 @@ interface AppProps {
 }
 
 export default function App({ projectId }: AppProps) {
-  // Get sync anchors from store
-  const { anchors } = useSyncStore();
+  // Get sync anchors from store (use selector for proper reactivity)
+  const anchors = useSyncStore((state) => state.anchors);
 
   // Project settings from store (replaces 16 individual useState calls)
   const fps = useProjectStore((s) => s.fps);

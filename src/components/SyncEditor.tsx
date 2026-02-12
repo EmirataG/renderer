@@ -63,8 +63,12 @@ export function SyncEditor({ xml, audioUrl, currentView, onViewChange }: SyncEdi
   const animationRef = useRef<number | null>(null);
   const currentEventIndexRef = useRef(-1);
 
-  // Zustand store
-  const { anchors, selectedEventId, setAnchor, removeAnchor, selectEvent } = useSyncStore();
+  // Zustand store (use selectors for proper reactivity with Map objects)
+  const anchors = useSyncStore((state) => state.anchors);
+  const selectedEventId = useSyncStore((state) => state.selectedEventId);
+  const setAnchor = useSyncStore((state) => state.setAnchor);
+  const removeAnchor = useSyncStore((state) => state.removeAnchor);
+  const selectEvent = useSyncStore((state) => state.selectEvent);
 
   // Verovio hook - renders score to SVG at container width
   const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth || 800, 40);
