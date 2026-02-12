@@ -62,10 +62,12 @@ export const useEventStore = create<EventStore>((set) => ({
     });
   },
 
-  invalidate: () => set({
-    events: [],
-    svgPagesRef: null,
-    eventById: new Map(),
-    eventsByPage: new Map(),
-  }),
+  invalidate: () => {
+    set({
+      events: [],
+      svgPagesRef: null,
+      eventById: new Map(),
+      eventsByPage: new Map(),
+    });
+  },
 }));

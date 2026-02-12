@@ -262,21 +262,10 @@ export default function SingleLineRenderer({
       if (toolkit) {
         const timemapEvents = extractTimemapEvents(toolkit);
         const containers = sectionContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
-        console.log('[SingleLineRenderer] Event extraction:', {
-          timemapEventsCount: timemapEvents.length,
-          containersCount: containers.length,
-          sectionOffsetsCount: sectionOffsets.length,
-          firstEventSvgIds: timemapEvents[0]?.svgIds,
-        });
         // Compute vertical positions (for compatibility, using section 0 offset as fallback)
         const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, [0]);
         // Compute horizontal positions for camera
         const eventsWithX = computeSectionPositions(cachedEvents, containers, sectionOffsets);
-        console.log('[SingleLineRenderer] Events with positions:', {
-          eventsCount: eventsWithX.length,
-          firstEventSectionIndex: eventsWithX[0]?.sectionIndex,
-          firstEventGlobalX: eventsWithX[0]?.globalX,
-        });
         setEventsInStore(eventsWithX, sections);
       }
     });
@@ -419,12 +408,6 @@ export default function SingleLineRenderer({
             ? sectionContainerRefs.current[sectionIndex]
             : scoreRef.current;
 
-          // Debug: check if element exists
-          const testEl = root?.querySelector(`#${CSS.escape(evt.svgIds[0])}`);
-          if (!testEl) {
-            console.warn('[SingleLineRenderer] Element not found:', evt.svgIds[0], 'in section', sectionIndex);
-          }
-
           animateNoteheads(root, evt.svgIds, {
             scale: activeNoteheadScale,
             entryMs: activeNoteheadAnimationEntryMs,
@@ -481,24 +464,11 @@ export default function SingleLineRenderer({
 
   const transportMessage = !hasAudio
     ? "Upload audio to enable playback"
-    : (!hasFirstAnchor || !hasLastAnchor)
-      ? "Set first and last sync anchors to enable playback"
-      : null;
-
-  // --- DIAGNOSTIC: remove after debugging transport message issue ---
-  if (hasAudio && (!hasFirstAnchor || !hasLastAnchor)) {
-    console.log('[TRANSPORT_DEBUG]', {
-      eventsCount: events.length,
-      firstEventId,
-      lastEventId,
-      syncAnchorsSize: syncAnchors?.size ?? 0,
-      syncAnchorsKeys: syncAnchors ? Array.from(syncAnchors.keys()) : [],
-      hasFirstAnchor,
-      hasLastAnchor,
-      firstAnchorLookup: firstEventId ? syncAnchors?.has(firstEventId) : 'no firstEventId',
-      lastAnchorLookup: lastEventId ? syncAnchors?.has(lastEventId) : 'no lastEventId',
-    });
-  }
+    : events.length === 0
+      ? null // Events still loading — can't check anchors yet
+      : (!hasFirstAnchor || !hasLastAnchor)
+        ? "Set first and last sync anchors to enable playback"
+        : null;
 
   function play() {
     if (isPlaying || !canPlay) return;
@@ -760,15 +730,7 @@ export default function SingleLineRenderer({
     // In normal mode, require sync timing to be active
     const shouldExpose = toolkit && sections.length > 0 && interpolatedEvents.length > 0;
 
-    if (!shouldExpose) {
-      console.log("[SingleLineRenderer] Not exposing controller yet:", {
-        isRenderMode,
-        hasToolkit: !!toolkit,
-        hasSections: sections.length > 0,
-        eventsCount: interpolatedEvents.length,
-      });
-      return;
-    }
+    if (!shouldExpose) return;
 
     const getInterpolatedEvents = () => interpolatedEvents;
 
@@ -789,8 +751,6 @@ export default function SingleLineRenderer({
       getDuration: () => audioDuration,
       getFps: () => 30,
     };
-
-    console.log("[SingleLineRenderer] Animation controller exposed on window");
 
     return () => {
       delete (window as any).animationController;

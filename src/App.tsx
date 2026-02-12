@@ -9,6 +9,7 @@ import { BorderPicker } from "./components/BorderPicker";
 import { BorderStyle } from "./borders";
 import { useSyncStore } from "./stores/syncStore";
 import { useProjectStore, DEFAULT_SETTINGS } from "./stores/projectStore";
+import { useEventStore } from "./stores/eventStore";
 import { SaveIndicator } from "./components/SaveIndicator";
 import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
@@ -166,7 +167,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             setAnchor(eventId, Number(timestamp));
           }
         }
-
         // Initialize auto-save AFTER settings and anchors are loaded.
         // Guard with `cancelled` so Strict Mode double-fire doesn't create
         // orphaned subscriptions that trigger on the second load's store writes.
@@ -191,6 +191,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       // Reset stores when leaving a project so the next project starts clean
       useProjectStore.getState().resetSettings();
       useSyncStore.getState().clearAllAnchors();
+      useEventStore.getState().invalidate();
     };
   }, [projectId]);
 
