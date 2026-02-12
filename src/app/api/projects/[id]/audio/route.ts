@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { cookies } from 'next/headers';
 import { adminAuth } from '@/lib/firebase-admin';
 import { getDb } from '@/lib/firestore';
@@ -52,13 +53,7 @@ export async function GET(
 
       try {
         const nodeStream = file.createReadStream({ start, end });
-        const webStream = new ReadableStream({
-          start(controller) {
-            nodeStream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
-            nodeStream.on('end', () => controller.close());
-            nodeStream.on('error', (err: Error) => controller.error(err));
-          },
-        });
+        const webStream = Readable.toWeb(nodeStream) as ReadableStream;
 
         return new Response(webStream, {
           status: 206,
@@ -78,13 +73,7 @@ export async function GET(
   // Full request — stream entire file without loading into memory
   try {
     const nodeStream = file.createReadStream();
-    const webStream = new ReadableStream({
-      start(controller) {
-        nodeStream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
-        nodeStream.on('end', () => controller.close());
-        nodeStream.on('error', (err: Error) => controller.error(err));
-      },
-    });
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
 
     return new Response(webStream, {
       headers: {
