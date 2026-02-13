@@ -12,6 +12,7 @@ interface SyncStore {
   setAnchor: (eventId: string, timestamp: number) => void;
   removeAnchor: (eventId: string) => void;
   selectEvent: (eventId: string | null) => void;
+  loadAnchors: (entries: Record<string, number>) => void;
   clearAllAnchors: () => void;
 }
 
@@ -33,6 +34,10 @@ export const useSyncStore = create<SyncStore>()(
   }),
 
   selectEvent: (eventId) => set({ selectedEventId: eventId }),
+
+  loadAnchors: (entries) => set({
+    anchors: new Map(Object.entries(entries).map(([k, v]) => [k, Number(v)])),
+  }),
 
   clearAllAnchors: () => set({ anchors: new Map() }),
 })));

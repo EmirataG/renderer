@@ -35,6 +35,6 @@ export async function GET(
 
   const [contents] = await getBucket().file(data.scoreUrl).download();
   return new Response(new Uint8Array(contents), {
-    headers: { 'Content-Type': 'application/xml' },
+    headers: { 'Content-Type': 'application/xml', 'Cache-Control': 'private, max-age=3600' },
   });
 }

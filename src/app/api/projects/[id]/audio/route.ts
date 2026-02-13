@@ -56,6 +56,7 @@ export async function GET(
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Content-Length': String(slice.length),
           'Accept-Ranges': 'bytes',
+          'Cache-Control': 'private, max-age=3600',
         },
       });
     }
@@ -66,6 +67,7 @@ export async function GET(
       'Content-Type': contentType,
       'Content-Length': String(fileSize),
       'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=3600',
     },
   });
 }

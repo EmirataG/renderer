@@ -104,14 +104,14 @@ export function Dashboard({ initialProjects }: DashboardProps) {
     async (projectId: string) => {
       try {
         const res = await fetch(`/api/projects/${projectId}/duplicate`, {
-          method: 'POST',
+          method: "POST",
         });
-        if (!res.ok) throw new Error('Duplicate failed');
+        if (!res.ok) throw new Error("Duplicate failed");
         const { project } = await res.json();
         setProjects((prev) => [project, ...prev]);
-        showToast(`"${project.name}" created`, 'success');
+        showToast(`"${project.name}" created`, "success");
       } catch {
-        showToast('Failed to duplicate project', 'error');
+        showToast("Failed to duplicate project", "error");
       }
     },
     [showToast],
@@ -126,10 +126,20 @@ export function Dashboard({ initialProjects }: DashboardProps) {
   return (
     <main className="min-h-screen bg-black text-neutral-100">
       {/* Header */}
-      <header className="border-b border-neutral-800 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="relative border-b border-neutral-800 px-6 py-4">
+        {/* Staff lines */}
+        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-50">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="w-full"
+              style={{ height: 2, backgroundColor: "#9f9f9f" }}
+            />
+          ))}
+        </div>
+        <div className="max-w-7xl mx-auto flex items-center justify-between relative">
           <h1
-            className="text-lg font-bold tracking-wider uppercase"
+            className="text-3xl font-bold tracking-wider uppercase"
             style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
           >
             Manuscript
@@ -149,6 +159,11 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             </button>
           </div>
         </div>
+        <img
+          src="/final_barline.png"
+          alt=""
+          className="absolute right-0 top-0 h-full w-auto"
+        />
       </header>
 
       {/* Content */}

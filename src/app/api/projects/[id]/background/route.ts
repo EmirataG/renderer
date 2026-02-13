@@ -46,7 +46,7 @@ export async function GET(
   const [metadata] = await file.getMetadata();
   const [contents] = await file.download();
   return new Response(new Uint8Array(contents), {
-    headers: { 'Content-Type': metadata.contentType || 'image/jpeg' },
+    headers: { 'Content-Type': metadata.contentType || 'image/jpeg', 'Cache-Control': 'private, max-age=3600' },
   });
 }
 

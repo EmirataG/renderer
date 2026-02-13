@@ -158,14 +158,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           smoothReveal: project.smoothReveal ?? DEFAULT_SETTINGS.smoothReveal,
         });
 
-        // Load sync anchors from API response — always clear first to prevent
-        // stale anchors from a previous project leaking into the new one
-        useSyncStore.getState().clearAllAnchors();
+        // Load sync anchors from API response in one batch — clears stale
+        // anchors from a previous project and avoids N intermediate Map copies
         if (project.anchors && typeof project.anchors === "object") {
-          const { setAnchor } = useSyncStore.getState();
-          for (const [eventId, timestamp] of Object.entries(project.anchors)) {
-            setAnchor(eventId, Number(timestamp));
-          }
+          useSyncStore.getState().loadAnchors(project.anchors);
+        } else {
+          useSyncStore.getState().clearAllAnchors();
         }
         // Initialize auto-save AFTER settings and anchors are loaded.
         // Guard with `cancelled` so Strict Mode double-fire doesn't create
@@ -517,7 +515,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           {onNavigateDashboard && (
             <button
               onClick={onNavigateDashboard}
-              className="flex items-center gap-1.5 text-neutral-500 hover:text-neutral-100 transition-colors mr-2"
+              className="flex items-center gap-1.5 text-neutral-500 hover:text-neutral-100 transition-colors mr-2 cursor-pointer"
             >
               <svg
                 width="16"
@@ -719,7 +717,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                           Use Full Background
                         </button>
                         <button
-                          onClick={() => { setIsEditingRegion(false); setShowResetConfirm(false); }}
+                          onClick={() => {
+                            setIsEditingRegion(false);
+                            setShowResetConfirm(false);
+                          }}
                           className="grunge-btn-primary grunge-btn-sm flex-1"
                         >
                           Done
@@ -1175,17 +1176,30 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       {showResetConfirm && (
         <div className="fixed inset-0 flex items-center justify-center z-[70]">
           <div className="bg-black border border-neutral-700 p-6 max-w-sm mx-4">
-            <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wider" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+            <h3
+              className="text-sm font-bold text-white mb-2 uppercase tracking-wider"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            >
               Reset Score Region?
             </h3>
             <p className="text-xs text-neutral-400 mb-4">
               This will reset the score to use the full background area.
             </p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowResetConfirm(false)} className="grunge-btn grunge-btn-sm">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="grunge-btn grunge-btn-sm"
+              >
                 Cancel
               </button>
-              <button onClick={() => { setSetting("scoreRegion", null); setIsEditingRegion(false); setShowResetConfirm(false); }} className="grunge-btn-primary grunge-btn-sm">
+              <button
+                onClick={() => {
+                  setSetting("scoreRegion", null);
+                  setIsEditingRegion(false);
+                  setShowResetConfirm(false);
+                }}
+                className="grunge-btn-primary grunge-btn-sm"
+              >
                 Reset
               </button>
             </div>

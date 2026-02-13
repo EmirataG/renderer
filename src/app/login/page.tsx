@@ -5,9 +5,9 @@ import Image from "next/image";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-black relative overflow-hidden p-4">
       {/* Scrolling score background */}
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden p-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/score.svg"

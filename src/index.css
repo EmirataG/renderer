@@ -2,12 +2,21 @@
 
 @layer base {
   .scroll-score-bg {
-    animation: scroll-score 120s ease-in-out alternate infinite;
+    animation: scroll-score 120s linear alternate infinite;
   }
 
   @keyframes scroll-score {
     0% {
       transform: translateY(0);
+      animation-timing-function: ease-in;
+    }
+    5% {
+      transform: translateY(calc((-100% + 100vh) * 0.05));
+      animation-timing-function: linear;
+    }
+    95% {
+      transform: translateY(calc((-100% + 100vh) * 0.95));
+      animation-timing-function: ease-out;
     }
     100% {
       transform: translateY(calc(-100% + 100vh));
