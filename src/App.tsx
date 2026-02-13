@@ -208,6 +208,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const [isEditingRegion, setIsEditingRegion] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [zoomScale, setZoomScale] = useState(1);
+  const [zoomEnabled, setZoomEnabled] = useState(true);
   const [regionContainerDims, setRegionContainerDims] = useState<{
     width: number;
     height: number;
@@ -569,6 +570,16 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </div>
           )}
           <div className="flex-1" />
+          {currentView === "renderer" && musicXMLFile && (
+            <button
+              onClick={() => setZoomEnabled((prev) => !prev)}
+              className={
+                zoomEnabled ? "grunge-tab-active" : "grunge-tab"
+              }
+            >
+              {zoomEnabled ? "Disable Zoom" : "Enable Zoom"}
+            </button>
+          )}
           {projectId && <SaveIndicator />}
         </div>
 
@@ -1019,8 +1030,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       onTransformed={(_, state) => setZoomScale(state.scale)}
                       minScale={0.25}
                       maxScale={5}
-                      panning={{ activationKeys: ["Alt"] }}
-                      doubleClick={{ mode: "reset" }}
+                      panning={{ activationKeys: [] }}
+                      wheel={{ disabled: !zoomEnabled }}
+                      pinch={{ disabled: !zoomEnabled }}
+                      doubleClick={{ disabled: !zoomEnabled, mode: "reset" }}
                     >
                       <TransformComponent
                         wrapperStyle={{ width: "100%", height: "100%" }}

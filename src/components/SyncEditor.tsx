@@ -172,18 +172,20 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
   const NOTE_SUB_SELECTORS = 'g.notehead use, g.stem path, g.stem use, g.dots ellipse, g.dots use';
 
   // Helper to generate CSS color rule for a set of SVG IDs
+  // All selectors are scoped to #sync-editor-score to prevent bleeding into Preview
   const colorRule = (svgIds: string[], color: string): string => {
+    const S = '#sync-editor-score';
     return svgIds.map(svgId => {
       const e = CSS.escape(svgId);
       // Target note sub-elements + parent chord stems (via :has)
       return [
-        `#${e} g.notehead use`,
-        `#${e} g.stem path`,
-        `#${e} g.stem use`,
-        `#${e} g.dots ellipse`,
-        `#${e} g.dots use`,
-        `g.chord:has(#${e}) > g.stem path`,
-        `g.chord:has(#${e}) > g.stem use`,
+        `${S} #${e} g.notehead use`,
+        `${S} #${e} g.stem path`,
+        `${S} #${e} g.stem use`,
+        `${S} #${e} g.dots ellipse`,
+        `${S} #${e} g.dots use`,
+        `${S} g.chord:has(#${e}) > g.stem path`,
+        `${S} g.chord:has(#${e}) > g.stem use`,
       ].join(', ');
     }).join(', ') + ` { fill: ${color}; stroke: ${color}; }`;
   };
@@ -244,10 +246,11 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
       scoreRef.current.appendChild(styleRef.current);
     }
 
+    const S = '#sync-editor-score';
     let css = `
-      svg.definition-scale { display: block; }
-      g.note { cursor: pointer; }
-      g.note:hover g.notehead use { filter: brightness(0.7); }
+      ${S} svg.definition-scale { display: block; }
+      ${S} g.note { cursor: pointer; }
+      ${S} g.note:hover g.notehead use { filter: brightness(0.7); }
     `;
 
     // Anchor colors (green) — lower priority
@@ -589,7 +592,7 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
         className="flex-1 min-h-0 overflow-auto bg-white p-4"
         onClick={handleScoreClick}
       >
-        <div ref={scoreRef} style={containerWidth > 0 ? { width: containerWidth } : undefined}>
+        <div ref={scoreRef} id="sync-editor-score" style={containerWidth > 0 ? { width: containerWidth } : undefined}>
           {svgPages.map((svg, i) => (
             <div
               key={i}
