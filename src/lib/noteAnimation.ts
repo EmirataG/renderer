@@ -126,6 +126,19 @@ export function animateNoteheads(
  */
 export function reorderNoteheadsAboveStems(root: HTMLElement | null): void {
   if (!root) return;
+
+  // Move stems to be the first child of their parent so they paint first.
+  // This handles chord-level stems (g.chord > g.stem) that would otherwise
+  // paint over all g.note children, as well as note-level stems.
+  const stems = root.querySelectorAll<SVGGElement>('g.stem');
+  stems.forEach((stem) => {
+    const parent = stem.parentElement;
+    if (parent && parent.firstElementChild !== stem) {
+      parent.insertBefore(stem, parent.firstElementChild);
+    }
+  });
+
+  // Move noteheads to be the last child of their parent so they paint last.
   const noteheads = root.querySelectorAll<SVGGElement>('g.notehead');
   noteheads.forEach((nh) => {
     const parent = nh.parentElement;
@@ -133,6 +146,40 @@ export function reorderNoteheadsAboveStems(root: HTMLElement | null): void {
       parent.appendChild(nh);
     }
   });
+}
+
+/**
+ * Reorder notehead/stem elements in an SVG string so noteheads paint above stems.
+ * Uses DOMParser to manipulate the SVG, then serializes back to a string.
+ * This is the string-level equivalent of reorderNoteheadsAboveStems — applied
+ * before React renders the SVG via dangerouslySetInnerHTML so the correct
+ * order survives React re-renders.
+ */
+export function reorderNoteheadsInSvgString(svgString: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, 'image/svg+xml');
+
+  // Check for parse errors
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) return svgString;
+
+  // Move stems to first child
+  doc.querySelectorAll('g.stem').forEach((stem) => {
+    const parent = stem.parentElement;
+    if (parent && parent.firstElementChild !== stem) {
+      parent.insertBefore(stem, parent.firstElementChild);
+    }
+  });
+
+  // Move noteheads to last child
+  doc.querySelectorAll('g.notehead').forEach((nh) => {
+    const parent = nh.parentElement;
+    if (parent && parent.lastElementChild !== nh) {
+      parent.appendChild(nh);
+    }
+  });
+
+  return new XMLSerializer().serializeToString(doc.documentElement);
 }
 
 export function resetNoteheadAnimations(root: HTMLElement | null) {

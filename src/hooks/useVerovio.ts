@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { VerovioToolkit } from 'verovio/esm';
 import { createToolkit } from '../lib/verovioService';
+import { reorderNoteheadsInSvgString } from '../lib/noteAnimation';
 
 // Pre-compiled regex patterns (module scope) - compiled once at module load
 const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)px"/;
@@ -147,6 +148,9 @@ export function useVerovio(
           if (i > 1) {
             svg = trimPageTopMargin(svg);
           }
+          // Reorder noteheads above stems in the SVG string so the correct
+          // paint order survives React re-renders via dangerouslySetInnerHTML.
+          svg = reorderNoteheadsInSvgString(svg);
           pages.push(svg);
         }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { VerovioToolkit } from 'verovio/esm';
 import { createToolkit } from '../lib/verovioService';
+import { reorderNoteheadsInSvgString } from '../lib/noteAnimation';
 
 // Pre-compiled regex patterns (module scope) - compiled once at module load
 const WIDTH_REGEX = /width="(\d+(?:\.\d+)?)px"/;
@@ -151,7 +152,8 @@ export function useSingleLineVerovio(
           const end = Math.min(start + measuresPerSection - 1, totalMeasures);
           toolkit.select({ measureRange: `${start}-${end}` });
           toolkit.redoLayout();
-          const svg = toolkit.renderToSVG(1); // Always page 1 after select
+          let svg = toolkit.renderToSVG(1); // Always page 1 after select
+          svg = reorderNoteheadsInSvgString(svg);
           renderedSections.push(svg);
         }
 
