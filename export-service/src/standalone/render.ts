@@ -421,11 +421,24 @@ async function main(): Promise<void> {
   const regionHeight = config.scoreRegion?.height ?? containerHeight;
   const regionX = config.scoreRegion?.x ?? 0;
   const regionY = config.scoreRegion?.y ?? 0;
+  const regionRotation = config.scoreRegion?.rotation ?? 0;
+
+  // Rotation wrapper - positions and rotates the entire score region + borders
+  const rotationWrapperEl = document.createElement('div');
+  rotationWrapperEl.style.position = 'absolute';
+  rotationWrapperEl.style.left = `${regionX}px`;
+  rotationWrapperEl.style.top = `${regionY}px`;
+  rotationWrapperEl.style.width = `${regionWidth}px`;
+  rotationWrapperEl.style.height = `${regionHeight}px`;
+  if (regionRotation !== 0) {
+    rotationWrapperEl.style.transform = `rotate(${regionRotation}deg)`;
+    rotationWrapperEl.style.transformOrigin = 'center center';
+  }
 
   const regionEl = document.createElement('div');
   regionEl.style.position = 'absolute';
-  regionEl.style.left = `${regionX}px`;
-  regionEl.style.top = `${regionY}px`;
+  regionEl.style.left = '0px';
+  regionEl.style.top = '0px';
   regionEl.style.width = `${regionWidth}px`;
   regionEl.style.height = `${regionHeight}px`;
   regionEl.style.overflow = 'hidden';
@@ -448,7 +461,8 @@ async function main(): Promise<void> {
   // Assemble DOM hierarchy
   cameraEl.appendChild(scoreEl);
   regionEl.appendChild(cameraEl);
-  bgEl.appendChild(regionEl);
+  rotationWrapperEl.appendChild(regionEl);
+  bgEl.appendChild(rotationWrapperEl);
   mainEl.appendChild(bgEl);
   scaleEl.appendChild(mainEl);
   outerEl.appendChild(scaleEl);
@@ -562,7 +576,7 @@ async function main(): Promise<void> {
     svgIds: evt.svgIds,
   }));
 
-  // 11. Setup borders
+  // 11. Setup borders (positioned relative to rotation wrapper so they rotate with the score)
   const borderStyle = (config.scoreBorder ?? 'none') as BorderStyle;
   if (borderStyle !== 'none') {
     const borderHeight = getBorderHeight(borderStyle);
@@ -570,8 +584,8 @@ async function main(): Promise<void> {
     // Top border - bottom edge aligns with top of region
     const topBorderDiv = document.createElement('div');
     topBorderDiv.style.position = 'absolute';
-    topBorderDiv.style.top = `${regionY - borderHeight}px`;
-    topBorderDiv.style.left = `${regionX}px`;
+    topBorderDiv.style.top = `${-borderHeight}px`;
+    topBorderDiv.style.left = '0px';
     topBorderDiv.style.width = `${regionWidth}px`;
     topBorderDiv.style.pointerEvents = 'none';
     topBorderDiv.style.zIndex = '3';
@@ -581,13 +595,13 @@ async function main(): Promise<void> {
       config.scoreColor,
       'top',
     );
-    bgEl.appendChild(topBorderDiv);
+    rotationWrapperEl.appendChild(topBorderDiv);
 
     // Bottom border - top edge aligns with bottom of region
     const bottomBorderDiv = document.createElement('div');
     bottomBorderDiv.style.position = 'absolute';
-    bottomBorderDiv.style.top = `${regionY + regionHeight}px`;
-    bottomBorderDiv.style.left = `${regionX}px`;
+    bottomBorderDiv.style.top = `${regionHeight}px`;
+    bottomBorderDiv.style.left = '0px';
     bottomBorderDiv.style.width = `${regionWidth}px`;
     bottomBorderDiv.style.pointerEvents = 'none';
     bottomBorderDiv.style.zIndex = '3';
@@ -597,7 +611,7 @@ async function main(): Promise<void> {
       config.scoreColor,
       'bottom',
     );
-    bgEl.appendChild(bottomBorderDiv);
+    rotationWrapperEl.appendChild(bottomBorderDiv);
 
     console.log(`[Standalone] Borders set up: ${borderStyle}`);
   }

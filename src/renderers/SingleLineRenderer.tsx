@@ -795,109 +795,122 @@ export default function SingleLineRenderer({
             backgroundSize: "cover",
           }}
         >
-          {/* Score container with optional region positioning */}
-          <div
-            style={{
-              position: "absolute",
-              left: scoreRegion?.x ?? 0,
-              top: scoreRegion?.y ?? 0,
-              width: scoreRegion?.width ?? containerWidth,
-              height: scoreRegion?.height ?? containerHeight,
-              overflow: "hidden",
-              display: "flex",
-              alignItems: "center", // Vertical centering within region
-            }}
-          >
-            <div
-              ref={cameraRef}
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                pointerEvents: "none",
-                // No CSS transition - camera position is interpolated frame-by-frame
-              }}
-            >
+          {/* Rotation wrapper - rotates score region + borders together */}
+          {(() => {
+            const regionWidth = scoreRegion?.width ?? containerWidth;
+            const regionX = scoreRegion?.x ?? 0;
+            const regionY = scoreRegion?.y ?? 0;
+            const regionHeight = scoreRegion?.height ?? containerHeight;
+            const regionRotation = scoreRegion?.rotation ?? 0;
+            const BorderComponent = scoreBorder !== "none" ? getBorderComponent(scoreBorder) : null;
+            const borderHeight = scoreBorder !== "none" ? getBorderHeight(scoreBorder) : 0;
+
+            return (
               <div
-                ref={scoreRef}
-                className="preview-score"
                 style={{
-                  display: "flex",
-                  flexDirection: "row",
-                  cursor: "default",
-                  lineHeight: 0,
-                  fontSize: 0,
+                  position: "absolute",
+                  left: regionX,
+                  top: regionY,
+                  width: regionWidth,
+                  height: regionHeight,
+                  transform: regionRotation !== 0 ? `rotate(${regionRotation}deg)` : undefined,
+                  transformOrigin: "center center",
                 }}
               >
-                {sections.map((svg, i) => (
+                {/* Score container */}
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: regionWidth,
+                    height: regionHeight,
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center", // Vertical centering within region
+                  }}
+                >
                   <div
-                    key={i}
-                    ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                    className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
+                    ref={cameraRef}
                     style={{
-                      flexShrink: 0,
-                      width: sectionWidths[i],
-                      height: maxHeight,
-                      display: 'flex',
-                      alignItems: 'flex-start',
+                      display: "flex",
+                      flexDirection: "row",
+                      pointerEvents: "none",
+                      // No CSS transition - camera position is interpolated frame-by-frame
                     }}
-                    dangerouslySetInnerHTML={{ __html: svg }}
-                  />
-                ))}
+                  >
+                    <div
+                      ref={scoreRef}
+                      className="preview-score"
+                      style={{
+                        display: "flex",
+                        flexDirection: "row",
+                        cursor: "default",
+                        lineHeight: 0,
+                        fontSize: 0,
+                      }}
+                    >
+                      {sections.map((svg, i) => (
+                        <div
+                          key={i}
+                          ref={(el) => { sectionContainerRefs.current[i] = el; }}
+                          className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
+                          style={{
+                            flexShrink: 0,
+                            width: sectionWidths[i],
+                            height: maxHeight,
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                          }}
+                          dangerouslySetInnerHTML={{ __html: svg }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Score borders - positioned relative to rotation wrapper */}
+                {BorderComponent && (
+                  <>
+                    {/* Top border - bottom edge aligns with top of region */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: -borderHeight,
+                        left: 0,
+                        width: regionWidth,
+                        pointerEvents: "none",
+                        zIndex: 3,
+                      }}
+                    >
+                      <BorderComponent
+                        width={regionWidth}
+                        color={scoreColor}
+                        position="top"
+                      />
+                    </div>
+                    {/* Bottom border - top edge aligns with bottom of region */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: regionHeight,
+                        left: 0,
+                        width: regionWidth,
+                        pointerEvents: "none",
+                        zIndex: 3,
+                      }}
+                    >
+                      <BorderComponent
+                        width={regionWidth}
+                        color={scoreColor}
+                        position="bottom"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-          </div>
-
-          {/* Score borders - positioned exactly at region edges */}
-          {scoreBorder !== "none" &&
-            (() => {
-              const BorderComponent = getBorderComponent(scoreBorder);
-              const borderHeight = getBorderHeight(scoreBorder);
-              const regionWidth = scoreRegion?.width ?? containerWidth;
-              const regionX = scoreRegion?.x ?? 0;
-              const regionY = scoreRegion?.y ?? 0;
-              const regionHeight = scoreRegion?.height ?? containerHeight;
-
-              if (!BorderComponent) return null;
-
-              return (
-                <>
-                  {/* Top border - bottom edge aligns with top of region */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: regionY - borderHeight,
-                      left: regionX,
-                      width: regionWidth,
-                      pointerEvents: "none",
-                      zIndex: 3,
-                    }}
-                  >
-                    <BorderComponent
-                      width={regionWidth}
-                      color={scoreColor}
-                      position="top"
-                    />
-                  </div>
-                  {/* Bottom border - top edge aligns with bottom of region */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: regionY + regionHeight,
-                      left: regionX,
-                      width: regionWidth,
-                      pointerEvents: "none",
-                      zIndex: 3,
-                    }}
-                  >
-                    <BorderComponent
-                      width={regionWidth}
-                      color={scoreColor}
-                      position="bottom"
-                    />
-                  </div>
-                </>
-              );
-            })()}
+            );
+          })()}
         </div>
       </div>
 
