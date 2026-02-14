@@ -112,6 +112,33 @@ function trimPageTopMargin(svgString: string): string {
     .replace(HEIGHT_REGEX, `height="${newVbH}px"`);
 }
 
+/**
+ * Reorder notehead/stem elements in an SVG string so noteheads paint above stems.
+ * Inlined version of the frontend's reorderNoteheadsInSvgString.
+ */
+function reorderNoteheadsInSvgString(svgString: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, 'image/svg+xml');
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) return svgString;
+
+  doc.querySelectorAll('g.stem').forEach((stem) => {
+    const parent = stem.parentElement;
+    if (parent && parent.firstElementChild !== stem) {
+      parent.insertBefore(stem, parent.firstElementChild);
+    }
+  });
+
+  doc.querySelectorAll('g.notehead').forEach((nh) => {
+    const parent = nh.parentElement;
+    if (parent && parent.lastElementChild !== nh) {
+      parent.appendChild(nh);
+    }
+  });
+
+  return new XMLSerializer().serializeToString(doc.documentElement);
+}
+
 // ---------------------------------------------------------------------------
 // Event extraction (ported from src/lib/getEvents.ts extractTimemapEvents)
 // ---------------------------------------------------------------------------
@@ -475,6 +502,7 @@ async function main(): Promise<void> {
     if (i > 1) {
       svg = trimPageTopMargin(svg);
     }
+    svg = reorderNoteheadsInSvgString(svg);
     svgPages.push(svg);
   }
 
