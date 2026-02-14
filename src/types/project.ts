@@ -17,7 +17,7 @@ export interface Project {
   musicFont?: string;
   scoreBorder?: string;
   hideLabels?: boolean;
-  scoreRegion?: { x: number; y: number; width: number; height: number } | null;
+  scoreRegion?: { x: number; y: number; width: number; height: number; rotation?: number } | null;
   activeNoteheadColor?: string | null;
   activeNoteheadScale?: number;
   activeNoteheadEntryMs?: number;

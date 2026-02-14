@@ -5,6 +5,7 @@ export const ScoreRegionSchema = Type.Object({
   y: Type.Number(),
   width: Type.Number(),
   height: Type.Number(),
+  rotation: Type.Optional(Type.Number()),
 });
 
 export const BorderStyleSchema = Type.Union([

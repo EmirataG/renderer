@@ -84,7 +84,7 @@ export interface ExportConfig {
   scoreShadowDistance: number;
   hideUnplayedNotes: boolean;
   smoothReveal: boolean;
-  scoreRegion: { x: number; y: number; width: number; height: number } | null;
+  scoreRegion: { x: number; y: number; width: number; height: number; rotation?: number } | null;
   scoreBorder: string;
   scoreScale: number;
   musicFont: string;
