@@ -1,9 +1,18 @@
 export const dynamic = "force-dynamic";
 
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "./client";
 import Image from "next/image";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  // Belt-and-suspenders: redirect authenticated users even if middleware is bypassed
+  const cookieStore = await cookies();
+  const session = cookieStore.get("__session")?.value;
+  if (session) {
+    redirect("/");
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-black relative overflow-hidden p-4">
       {/* Scrolling score background */}
