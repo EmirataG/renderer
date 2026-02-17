@@ -68,17 +68,24 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
     if (!projectName.trim() || !scoreFile || !audioFile) return;
     setIsCreating(true);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60_000);
+    const t0 = performance.now();
+
     try {
       const formData = new FormData();
       formData.append('name', projectName.trim());
       formData.append('score', scoreFile);
       formData.append('audio', audioFile);
 
+      console.log('[CreateProject] starting fetch', { scoreSize: scoreFile.size, audioSize: audioFile.size });
       const res = await fetch('/api/projects', {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
         // NO Content-Type header -- browser sets multipart boundary automatically
       });
+      console.log('[CreateProject] fetch responded', { status: res.status, elapsed: `${(performance.now() - t0).toFixed(0)}ms` });
 
       if (!res.ok) {
         const data = await res.json();
@@ -86,6 +93,8 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
       }
 
       const { id } = await res.json();
+      console.log('[CreateProject] project created', { id, elapsed: `${(performance.now() - t0).toFixed(0)}ms` });
+
       const now = new Date().toISOString();
       const project: Project = {
         id,
@@ -97,10 +106,18 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
 
       onCreated(project);
       resetState();
+      console.log('[CreateProject] navigating to project', { elapsed: `${(performance.now() - t0).toFixed(0)}ms` });
       router.push(`/project/${id}`);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to create project', 'error');
+      console.error('[CreateProject] error', { error: err, elapsed: `${(performance.now() - t0).toFixed(0)}ms` });
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        showToast('Project creation timed out. Please try again.', 'error');
+      } else {
+        showToast(err instanceof Error ? err.message : 'Failed to create project', 'error');
+      }
       setIsCreating(false);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, [projectName, scoreFile, audioFile, onCreated, resetState, router, showToast]);
 

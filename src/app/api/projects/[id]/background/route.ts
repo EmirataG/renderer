@@ -24,7 +24,7 @@ function getExtension(filename: string): string {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getAuthenticatedUser();
@@ -44,9 +44,25 @@ export async function GET(
 
   const file = getBucket().file(data.backgroundUrl);
   const [metadata] = await file.getMetadata();
+
+  // ETag from storage metadata (md5Hash or etag)
+  const etag = metadata.md5Hash || metadata.etag || '';
+  const clientEtag = request.headers.get('If-None-Match');
+
+  if (etag && clientEtag === etag) {
+    return new Response(null, {
+      status: 304,
+      headers: { 'ETag': etag, 'Cache-Control': 'private, no-cache' },
+    });
+  }
+
   const [contents] = await file.download();
   return new Response(new Uint8Array(contents), {
-    headers: { 'Content-Type': metadata.contentType || 'image/jpeg', 'Cache-Control': 'private, max-age=3600' },
+    headers: {
+      'Content-Type': metadata.contentType || 'image/jpeg',
+      'Cache-Control': 'private, no-cache',
+      'ETag': etag,
+    },
   });
 }
 
@@ -89,17 +105,13 @@ export async function PUT(
 
   const basePath = `users/${user.uid}/projects/${id}`;
 
-  // Delete existing background files (any extension)
-  const [existingFiles] = await getBucket().getFiles({ prefix: `${basePath}/background` });
-  for (const f of existingFiles) await f.delete();
-
-  // Upload new background
-  const buffer = Buffer.from(await bgFile.arrayBuffer());
-  const backgroundUrl = await uploadFile(
-    `${basePath}/background${ext}`,
-    buffer,
-    bgFile.type || 'image/jpeg'
-  );
+  // Delete old files and upload new one in parallel
+  const [, backgroundUrl] = await Promise.all([
+    getBucket().getFiles({ prefix: `${basePath}/background` })
+      .then(([files]) => Promise.all(files.map(f => f.delete()))),
+    bgFile.arrayBuffer()
+      .then(ab => uploadFile(`${basePath}/background${ext}`, Buffer.from(ab), bgFile.type || 'image/jpeg')),
+  ]);
 
   // Update Firestore document
   await docRef.update({

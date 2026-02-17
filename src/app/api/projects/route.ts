@@ -54,12 +54,18 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[POST /api/projects] ${label} +${Date.now() - t0}ms`);
+
+  log('start');
   const user = await getAuthenticatedUser();
+  log('auth done');
   if (!user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const formData = await request.formData();
+  log('formData parsed');
 
   const name = formData.get('name');
   const scoreFile = formData.get('score') as File | null;
@@ -124,14 +130,21 @@ export async function POST(request: Request) {
   const scorePath = `users/${user.uid}/projects/${projectId}/score${scoreExt}`;
   const audioPath = `users/${user.uid}/projects/${projectId}/audio${audioExt}`;
 
-  // Upload files to Firebase Storage
-  const scoreBuffer = Buffer.from(await scoreFile.arrayBuffer());
-  const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
+  log(`uploading files (score: ${scoreFile.size} bytes, audio: ${audioFile.size} bytes)`);
 
+  // Upload files to Firebase Storage (buffer + upload chained per file, both in parallel)
   const [scoreUrl, audioUrl] = await Promise.all([
-    uploadFile(scorePath, scoreBuffer, scoreFile.type || 'application/octet-stream'),
-    uploadFile(audioPath, audioBuffer, audioFile.type || 'application/octet-stream'),
+    scoreFile.arrayBuffer().then(ab => {
+      log('score buffer ready');
+      return uploadFile(scorePath, Buffer.from(ab), scoreFile.type || 'application/octet-stream');
+    }).then(url => { log('score uploaded'); return url; }),
+    audioFile.arrayBuffer().then(ab => {
+      log('audio buffer ready');
+      return uploadFile(audioPath, Buffer.from(ab), audioFile.type || 'application/octet-stream');
+    }).then(url => { log('audio uploaded'); return url; }),
   ]);
+
+  log('all files uploaded');
 
   // Create Firestore document
   const db = getDb();
@@ -150,6 +163,8 @@ export async function POST(request: Request) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+  log('firestore doc created');
 
   return Response.json({ id: projectId }, { status: 201 });
 }
