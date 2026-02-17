@@ -86,7 +86,12 @@ export function UploadDropZone({
   const processImage = useCallback(
     async (file: File) => {
       if (projectId) {
-        // Upload to Firebase Storage via API
+        // Show optimistic preview immediately via blob URL.
+        // Pass the File object so App.tsx stores it in bgFile for export.
+        const blobUrl = URL.createObjectURL(file);
+        onImageUpload(blobUrl, file.name, file);
+
+        // Upload to Firebase Storage in background
         const formData = new FormData();
         formData.append('background', file);
         try {
@@ -98,10 +103,13 @@ export function UploadDropZone({
             const data = await res.json();
             throw new Error(data.error || 'Failed to upload background');
           }
-          const { backgroundUrl } = await res.json();
-          onImageUpload(backgroundUrl, file.name);
+          // Upload succeeded -- blob URL stays as display source, file is in bgFile for export.
+          // Do NOT call onImageUpload again to avoid a second image load/flash.
           showToast(`Background uploaded: ${file.name}`, 'success');
         } catch (err) {
+          // Revert optimistic preview on failure
+          URL.revokeObjectURL(blobUrl);
+          onImageUpload('', '');
           showToast(err instanceof Error ? err.message : 'Failed to upload background', 'error');
         }
       } else {
