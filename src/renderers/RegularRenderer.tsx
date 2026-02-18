@@ -305,7 +305,8 @@ export default memo(function RegularRenderer({
       shape-rendering: crispEdges !important;
     }
     .preview-score g.notehead {
-      will-change: transform;
+      transform-box: fill-box;
+      transform-origin: center;
     }
     .preview-score svg {
       display: block;
@@ -977,21 +978,19 @@ export default memo(function RegularRenderer({
                   transformOrigin: "center center",
                 }}
               >
-                {hasPerspectiveTransform ? (
-                  /* Perspective wrapper - applies matrix3d inside rotation wrapper */
-                  <div
-                    style={{
-                      width: regionWidth,
-                      height: regionHeight,
-                      transform: computeMatrix3d(regionWidth, regionHeight, regionPerspective!),
-                      transformOrigin: "0 0",
-                    }}
-                  >
-                    {innerContent}
-                  </div>
-                ) : (
-                  innerContent
-                )}
+                {/* Perspective wrapper - always mounted to avoid React unmount/remount of SVG children */}
+                <div
+                  style={{
+                    width: regionWidth,
+                    height: regionHeight,
+                    transform: hasPerspectiveTransform
+                      ? computeMatrix3d(regionWidth, regionHeight, regionPerspective!)
+                      : undefined,
+                    transformOrigin: hasPerspectiveTransform ? "0 0" : undefined,
+                  }}
+                >
+                  {innerContent}
+                </div>
               </div>
             );
           })()}
