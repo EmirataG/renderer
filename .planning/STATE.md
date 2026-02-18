@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-18 - Completed quick task 58: add perspective toggle button to score region editor
+Last activity: 2026-02-18 - Completed quick task 59: fix perspective diamond handles intercepted by Rnd
 
 Progress: [##########] 42/42
 
@@ -129,10 +129,11 @@ None.
 | 56 | fix background image loading twice when selecting new image in project | 2026-02-17 | 866b946 | [56-fix-background-image-loading-twice-when-](./quick/56-fix-background-image-loading-twice-when-/) |
 | 57 | add perspective transform to score region via CSS matrix3d and corner handles | 2026-02-18 | 8c4c8fe | [57-add-perspective-transform-to-score-regio](./quick/57-add-perspective-transform-to-score-regio/) |
 | 58 | add perspective toggle button so diamond and resize handles don't overlap | 2026-02-18 | 0ca2e8d | [58-add-perspective-toggle-button-so-diamond](./quick/58-add-perspective-toggle-button-so-diamond/) |
+| 59 | fix perspective diamond handles intercepted by Rnd resize handlers | 2026-02-18 | 67917a0 | [59-fix-perspective-diamond-handles-being-in](./quick/59-fix-perspective-diamond-handles-being-in/) |
 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed quick-58 (add perspective toggle button to score region editor)
+Stopped at: Completed quick-59 (fix perspective diamond handles intercepted by Rnd)
 Resume file: None
 Next: All plans complete (42/42)
