@@ -69,7 +69,8 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
   const selectEvent = useSyncStore((state) => state.selectEvent);
 
   // Verovio hook - renders score to SVG at container width
-  const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth || 800, 40);
+  // Wait for real container width (avoid wasted render at fallback width)
+  const { svgPages, toolkit, isLoading } = useVerovio(xml, containerWidth, 40);
 
   // Extract events from SyncEditor's own toolkit when SVG is ready
   // (Verovio generates different random IDs per toolkit, so SyncEditor must use its own)

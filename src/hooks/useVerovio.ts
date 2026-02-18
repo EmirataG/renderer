@@ -100,13 +100,15 @@ export function useVerovio(
 
       try {
         const toolkit = await createToolkit();
-        if (cancelled) return;
+        if (cancelled) {
+          (toolkit as any).destroy?.();
+          return;
+        }
 
         toolkitRef.current = toolkit;
 
         const options = {
           font: font,  // Font name (Bravura, Petaluma, Leland, Gootville, Leipzig)
-          fontLoadAll: true,  // Load all music fonts to enable runtime font switching
           pageWidth: (containerWidth * 100) / scale,
           pageHeight: 2970,
           scale: scale,
@@ -188,6 +190,10 @@ export function useVerovio(
 
     return () => {
       cancelled = true;
+      if (toolkitRef.current) {
+        (toolkitRef.current as any).destroy?.();
+        toolkitRef.current = null;
+      }
     };
   }, [xml, containerWidth, scale, font]);
 

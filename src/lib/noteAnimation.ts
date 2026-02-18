@@ -17,7 +17,7 @@ export type ElementCache = Map<string, SVGGElement>;
  */
 export function buildElementCache(root: HTMLElement): ElementCache {
   const cache: ElementCache = new Map();
-  const elements = root.querySelectorAll<SVGGElement>('[id]');
+  const elements = root.querySelectorAll<SVGGElement>('g.note[id], g.chord[id]');
   elements.forEach((el) => {
     cache.set(el.id, el);
   });

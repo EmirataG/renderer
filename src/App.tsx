@@ -215,9 +215,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   } | null>(null);
 
   // Verovio rendering debounces (local state, derived from store values)
-  const [debouncedScoreScale, setDebouncedScoreScale] = useState(1.0);
+  // Initialize from current store values so the first render uses real values
+  // (avoids a flash where the score covers the entire background for 300ms).
+  const [debouncedScoreScale, setDebouncedScoreScale] = useState(scoreScale);
   const [debouncedScoreRegion, setDebouncedScoreRegion] =
-    useState<ScoreRegion | null>(null);
+    useState<ScoreRegion | null>(scoreRegion);
 
   // Debounce scoreScale to avoid Verovio re-render on every slider tick
   useEffect(() => {
@@ -227,13 +229,19 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     return () => clearTimeout(timer);
   }, [scoreScale]);
 
-  // Debounce scoreRegion to avoid Verovio re-render on every drag tick
+  // Debounce scoreRegion only during active editing to avoid Verovio re-render
+  // on every drag tick. Outside editing (initial load, settings change), propagate
+  // immediately to prevent the score flashing at full-container size.
   useEffect(() => {
+    if (!isEditingRegion) {
+      setDebouncedScoreRegion(scoreRegion);
+      return;
+    }
     const timer = setTimeout(() => {
       setDebouncedScoreRegion(scoreRegion);
     }, 300);
     return () => clearTimeout(timer);
-  }, [scoreRegion]);
+  }, [scoreRegion, isEditingRegion]);
 
   // Calculate container dimensions for score region editing
   const WIDTH = 980; // Same as RegularRenderer WIDTH constant
@@ -1137,24 +1145,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-3"
                   />
                 </div>
-                {/* Sync Editor view - always mounted, hidden when not active */}
-                {/* Use visibility instead of display to preserve Verovio layout calculations */}
-                <div
-                  style={{
-                    visibility: currentView === "sync" ? "visible" : "hidden",
-                    position: currentView === "sync" ? "relative" : "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    zIndex: currentView === "sync" ? 1 : -1,
-                  }}
-                >
+                {/* Sync Editor view - only mounted when active to save ~100-200MB */}
+                {currentView === "sync" && (
                   <SyncEditor
                     xml={musicXMLFile.xml}
                     audioUrl={audioFile?.url}
                   />
-                </div>
+                )}
               </>
             ) : (
               <div className="flex-1 flex items-center justify-center">

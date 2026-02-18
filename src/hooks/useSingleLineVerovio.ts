@@ -79,14 +79,16 @@ export function useSingleLineVerovio(
 
       try {
         const toolkit = await createToolkit();
-        if (cancelled) return;
+        if (cancelled) {
+          (toolkit as any).destroy?.();
+          return;
+        }
 
         toolkitRef.current = toolkit;
 
         // Verovio options for horizontal layout (single system, no breaks)
         const options = {
           font: font,  // Font name (Bravura, Petaluma, Leland, Gootville, Leipzig)
-          fontLoadAll: true,           // Load all music fonts to enable runtime font switching
           breaks: 'none',              // Force single horizontal system
           pageWidth: 100000,           // Large width to prevent wrapping
           pageHeight: 100,             // Minimal height, adjustPageHeight expands
@@ -206,6 +208,10 @@ export function useSingleLineVerovio(
 
     return () => {
       cancelled = true;
+      if (toolkitRef.current) {
+        (toolkitRef.current as any).destroy?.();
+        toolkitRef.current = null;
+      }
     };
   }, [xml, scale, measuresPerSection, font]);
 
