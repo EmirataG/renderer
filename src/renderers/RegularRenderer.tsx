@@ -17,6 +17,8 @@ import {
   resetNoteheadAnimations,
   resetEventNoteheads,
   reorderNoteheadsAboveStems,
+  buildElementCache,
+  type ElementCache,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
@@ -119,6 +121,7 @@ export default memo(function RegularRenderer({
   const scoreRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pageContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const elementCacheRef = useRef<ElementCache>(new Map());
 
   // Event cache from Zustand store (useShallow prevents re-renders on unrelated state changes)
   const { events, svgPagesRef, setEvents: setEventsInStore } = useEventStore(
@@ -252,6 +255,7 @@ export default memo(function RegularRenderer({
       }
       reorderNoteheadsAboveStems(scoreRef.current);
       resetNoteheadAnimations(scoreRef.current);
+      elementCacheRef.current = buildElementCache(scoreRef.current);
       prevActiveRangeRef.current = null;
 
       // Cache validity check: skip extraction if svgPages reference unchanged
@@ -460,7 +464,7 @@ export default memo(function RegularRenderer({
             exitMs: activeNoteheadAnimationExitMs,
             color: activeNoteheadColor,
             colorFullNote,
-          });
+          }, elementCacheRef.current);
         }
       }
     }
@@ -692,7 +696,7 @@ export default memo(function RegularRenderer({
         for (let i = prev.start; i <= resetEnd; i++) {
           const evt = events[i];
           if (evt.svgIds?.length) {
-            resetEventNoteheads(scoreRef.current, evt.svgIds, colorFullNote);
+            resetEventNoteheads(scoreRef.current, evt.svgIds, colorFullNote, elementCacheRef.current);
           }
         }
       }
@@ -721,13 +725,14 @@ export default memo(function RegularRenderer({
         } else {
           // Animation complete -- this event shouldn't be in the window but
           // guard defensively. Reset it and continue.
-          resetEventNoteheads(scoreRef.current!, event.svgIds, colorFullNote);
+          resetEventNoteheads(scoreRef.current!, event.svgIds, colorFullNote, elementCacheRef.current);
           continue;
         }
 
         // Apply animation directly to SVG elements (no CSS transitions)
         for (const id of event.svgIds) {
-          const stavenote = scoreRef.current.querySelector<SVGGElement>(
+          const cached = elementCacheRef.current.get(id);
+          const stavenote = (cached?.isConnected ? cached : null) ?? scoreRef.current.querySelector<SVGGElement>(
             `#${CSS.escape(id)}`,
           );
           if (!stavenote) continue;

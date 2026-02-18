@@ -7,6 +7,36 @@ export interface NoteheadAnimationOptions {
   colorFullNote?: boolean;
 }
 
+/** Cached DOM element references for O(1) lookup by SVG id. */
+export type ElementCache = Map<string, SVGGElement>;
+
+/**
+ * Build a cache of all id'd SVG group elements under `root`.
+ * Call once after each SVG render; pass the result to animateNoteheads /
+ * resetEventNoteheads to avoid per-frame querySelector overhead.
+ */
+export function buildElementCache(root: HTMLElement): ElementCache {
+  const cache: ElementCache = new Map();
+  const elements = root.querySelectorAll<SVGGElement>('[id]');
+  elements.forEach((el) => {
+    cache.set(el.id, el);
+  });
+  return cache;
+}
+
+/** Look up an element by id, using cache when available and valid. */
+function cachedLookup(
+  root: HTMLElement,
+  id: string,
+  cache?: ElementCache,
+): SVGGElement | null {
+  const cached = cache?.get(id);
+  // Guard: if the cached node was detached (e.g. dangerouslySetInnerHTML
+  // replaced the SVG), fall back to a live querySelector.
+  if (cached && cached.isConnected) return cached;
+  return root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
+}
+
 // Selectors for note sub-elements beyond the notehead (stems, accidentals, etc.)
 const FULL_NOTE_SELECTORS = "g.stem, g.accid, g.flag, g.dots, g.artic";
 
@@ -35,12 +65,13 @@ export function animateNoteheads(
     exitMs = 120,
     color,
     colorFullNote = false,
-  }: NoteheadAnimationOptions = {}
+  }: NoteheadAnimationOptions = {},
+  cache?: ElementCache,
 ) {
   if (!root) return;
 
   svgIds.forEach((id) => {
-    const element = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
+    const element = cachedLookup(root, id, cache);
     if (!element) return;
 
     // Determine the animation target(s):
@@ -228,9 +259,10 @@ export function resetEventNoteheads(
   root: HTMLElement,
   svgIds: string[],
   colorFullNote: boolean,
+  cache?: ElementCache,
 ): void {
   for (const id of svgIds) {
-    const stavenote = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
+    const stavenote = cachedLookup(root, id, cache);
     if (!stavenote) continue;
 
     // Reset noteheads: scale and color

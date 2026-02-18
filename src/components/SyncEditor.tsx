@@ -360,12 +360,17 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
       const time = audioRef.current.currentTime;
       setCurrentTime(time);
 
-      // Find current event based on interpolated timestamps
+      // Binary search for the last event whose computedTimestamp <= time
       let newEventIndex = -1;
-      for (let i = interpolatedEvents.length - 1; i >= 0; i--) {
-        if (interpolatedEvents[i].computedTimestamp <= time) {
-          newEventIndex = i;
-          break;
+      let low = 0;
+      let high = interpolatedEvents.length - 1;
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (interpolatedEvents[mid].computedTimestamp <= time) {
+          newEventIndex = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
         }
       }
 
@@ -414,11 +419,17 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
 
     // Update highlight for scrubbed position
     if (interpolatedEvents.length > 0 && scoreRef.current) {
+      // Binary search for the last event whose computedTimestamp <= time
       let newEventIndex = -1;
-      for (let i = interpolatedEvents.length - 1; i >= 0; i--) {
-        if (interpolatedEvents[i].computedTimestamp <= time) {
-          newEventIndex = i;
-          break;
+      let low = 0;
+      let high = interpolatedEvents.length - 1;
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (interpolatedEvents[mid].computedTimestamp <= time) {
+          newEventIndex = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
         }
       }
 
