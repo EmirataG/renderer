@@ -1,14 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Rnd } from 'react-rnd';
-import type { ScoreRegion, PerspectiveCorners } from '../types/score';
-import { computeMatrix3d, hasPerspective } from '../lib/perspectiveTransform';
-
-const DEFAULT_CORNERS: PerspectiveCorners = {
-  topLeft: { x: 0, y: 0 },
-  topRight: { x: 0, y: 0 },
-  bottomRight: { x: 0, y: 0 },
-  bottomLeft: { x: 0, y: 0 },
-};
+import type { ScoreRegion } from '../types/score';
 
 interface Props {
   containerWidth: number;
@@ -35,16 +27,11 @@ export function ScoreRegionEditor({
   });
 
   const [rotation, setRotation] = useState(() => initialRegion?.rotation ?? 0);
-  const [perspectiveCorners, setPerspectiveCorners] = useState<PerspectiveCorners>(
-    () => initialRegion?.perspective ?? { ...DEFAULT_CORNERS }
-  );
-  const [perspectiveMode, setPerspectiveMode] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const rotationRef = useRef(rotation);
   const initialAngleRef = useRef(0);
   const startRotationRef = useRef(0);
   const regionRef = useRef(currentRegion);
-  const perspectiveCornersRef = useRef(perspectiveCorners);
 
   // Keep refs in sync
   useEffect(() => {
@@ -53,27 +40,15 @@ export function ScoreRegionEditor({
   useEffect(() => {
     regionRef.current = currentRegion;
   }, [currentRegion]);
-  useEffect(() => {
-    perspectiveCornersRef.current = perspectiveCorners;
-  }, [perspectiveCorners]);
-
-  /** Build a full ScoreRegion from current state */
-  const buildRegion = useCallback((
-    overrides?: Partial<{ x: number; y: number; width: number; height: number; rot: number; persp: PerspectiveCorners }>
-  ): ScoreRegion => {
-    const region = regionRef.current;
-    return {
-      x: overrides?.x ?? region.x,
-      y: overrides?.y ?? region.y,
-      width: overrides?.width ?? region.width,
-      height: overrides?.height ?? region.height,
-      rotation: overrides?.rot ?? rotationRef.current,
-      perspective: overrides?.persp ?? perspectiveCornersRef.current,
-    };
-  }, []);
 
   const handleDragStop = (_e: unknown, d: { x: number; y: number }) => {
-    const newRegion = buildRegion({ x: d.x, y: d.y });
+    const newRegion: ScoreRegion = {
+      x: d.x,
+      y: d.y,
+      width: currentRegion.width,
+      height: currentRegion.height,
+      rotation,
+    };
     setCurrentRegion(newRegion);
     onRegionChange(newRegion);
   };
@@ -85,7 +60,13 @@ export function ScoreRegionEditor({
     _delta: unknown,
     position: { x: number; y: number }
   ) => {
-    const newRegion = buildRegion({ x: position.x, y: position.y, width: ref.offsetWidth, height: ref.offsetHeight });
+    const newRegion: ScoreRegion = {
+      x: position.x,
+      y: position.y,
+      width: ref.offsetWidth,
+      height: ref.offsetHeight,
+      rotation,
+    };
     setCurrentRegion(newRegion);
     onRegionChange(newRegion);
   };
@@ -135,48 +116,12 @@ export function ScoreRegionEditor({
 
     const handleMouseUp = () => {
       setIsRotating(false);
-      const newRegion = buildRegion({ rot: rotationRef.current });
-      setCurrentRegion(newRegion);
-      onRegionChange(newRegion);
-
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [scale, onRegionChange, buildRegion]);
-
-  /** Handle perspective corner drag */
-  const handlePerspectiveMouseDown = useCallback((
-    e: React.MouseEvent,
-    cornerKey: keyof PerspectiveCorners,
-  ) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const startMouseX = e.clientX;
-    const startMouseY = e.clientY;
-    const startOffset = { ...perspectiveCornersRef.current[cornerKey] };
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const dx = (moveEvent.clientX - startMouseX) / scale;
-      const dy = (moveEvent.clientY - startMouseY) / scale;
-
-      const newCorners: PerspectiveCorners = {
-        ...perspectiveCornersRef.current,
-        [cornerKey]: {
-          x: Math.round(startOffset.x + dx),
-          y: Math.round(startOffset.y + dy),
-        },
+      const finalRotation = rotationRef.current;
+      const region = regionRef.current;
+      const newRegion: ScoreRegion = {
+        ...region,
+        rotation: finalRotation,
       };
-
-      perspectiveCornersRef.current = newCorners;
-      setPerspectiveCorners(newCorners);
-    };
-
-    const handleMouseUp = () => {
-      const newRegion = buildRegion({ persp: perspectiveCornersRef.current });
       setCurrentRegion(newRegion);
       onRegionChange(newRegion);
 
@@ -186,24 +131,11 @@ export function ScoreRegionEditor({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [scale, onRegionChange, buildRegion]);
+  }, [scale, onRegionChange]);
 
   // Position of rotation handle: centered above the Rnd box
   const handleLineHeight = 30;
   const handleSize = 22;
-
-  // Perspective corner handle positions (relative to rotation wrapper)
-  const cornerPositions: { key: keyof PerspectiveCorners; baseX: number; baseY: number }[] = [
-    { key: 'topLeft', baseX: 0, baseY: 0 },
-    { key: 'topRight', baseX: currentRegion.width, baseY: 0 },
-    { key: 'bottomRight', baseX: currentRegion.width, baseY: currentRegion.height },
-    { key: 'bottomLeft', baseX: 0, baseY: currentRegion.height },
-  ];
-
-  // Compute the matrix3d preview
-  const perspectiveMatrix = hasPerspective(perspectiveCorners)
-    ? computeMatrix3d(currentRegion.width, currentRegion.height, perspectiveCorners)
-    : '';
 
   return (
     <div
@@ -224,10 +156,10 @@ export function ScoreRegionEditor({
           transform: `rotate(${rotation}deg)`,
           transformOrigin: 'center center',
           pointerEvents: 'none',
-          zIndex: perspectiveMode ? 20 : 10,
+          zIndex: 10,
         }}
       >
-        {/* Rotation handle + perspective toggle - positioned above the region center */}
+        {/* Rotation handle - positioned above the region center */}
         <div
           style={{
             position: 'absolute',
@@ -241,66 +173,25 @@ export function ScoreRegionEditor({
             zIndex: 20,
           }}
         >
-          {/* Row: rotation circle + perspective toggle */}
+          {/* Handle circle with rotation icon */}
           <div
+            onMouseDown={handleRotateMouseDown}
             style={{
+              width: handleSize,
+              height: handleSize,
+              borderRadius: '50%',
+              backgroundColor: 'white',
+              border: '1px solid #525252',
               display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 6,
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: isRotating ? 'grabbing' : 'grab',
             }}
           >
-            {/* Handle circle with rotation icon */}
-            <div
-              onMouseDown={handleRotateMouseDown}
-              style={{
-                width: handleSize,
-                height: handleSize,
-                borderRadius: '50%',
-                backgroundColor: 'white',
-                border: '1px solid #525252',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: isRotating ? 'grabbing' : 'grab',
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                <polyline points="21 3 21 9 15 9" />
-              </svg>
-            </div>
-            {/* Perspective mode toggle button */}
-            <button
-              onClick={() => setPerspectiveMode((prev) => !prev)}
-              title="Toggle perspective mode"
-              style={{
-                width: handleSize,
-                height: handleSize,
-                borderRadius: '50%',
-                backgroundColor: perspectiveMode ? '#06b6d4' : 'white',
-                border: perspectiveMode ? '1px solid white' : '1px solid #525252',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <rect
-                  x="6"
-                  y="1"
-                  width="5"
-                  height="5"
-                  rx="0.5"
-                  transform="rotate(45 6 1)"
-                  stroke={perspectiveMode ? 'white' : '#525252'}
-                  strokeWidth="1.5"
-                  fill="none"
-                />
-              </svg>
-            </button>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              <polyline points="21 3 21 9 15 9" />
+            </svg>
           </div>
           {/* Connecting line */}
           <div
@@ -340,49 +231,6 @@ export function ScoreRegionEditor({
             </div>
           </div>
         )}
-
-        {/* Perspective preview overlay */}
-        {perspectiveMatrix && (
-          <div
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              width: currentRegion.width,
-              height: currentRegion.height,
-              transform: perspectiveMatrix,
-              transformOrigin: '0 0',
-              border: '1px dashed #06b6d4',
-              pointerEvents: 'none',
-              zIndex: 15,
-              opacity: 0.5,
-            }}
-          />
-        )}
-
-        {/* Perspective corner handles - only shown in perspective mode */}
-        {perspectiveMode && cornerPositions.map(({ key, baseX, baseY }) => {
-          const offset = perspectiveCorners[key];
-          return (
-            <div
-              key={key}
-              onMouseDown={(e) => handlePerspectiveMouseDown(e, key)}
-              style={{
-                position: 'absolute',
-                left: baseX + offset.x - 6,
-                top: baseY + offset.y - 6,
-                width: 12,
-                height: 12,
-                transform: 'rotate(45deg)',
-                backgroundColor: 'rgba(6, 182, 212, 0.3)',
-                border: '1.5px solid #06b6d4',
-                cursor: 'move',
-                pointerEvents: 'auto',
-                zIndex: 25,
-              }}
-            />
-          );
-        })}
       </div>
 
       {/* Draggable/resizable region */}
@@ -408,7 +256,6 @@ export function ScoreRegionEditor({
           bounds="parent"
           onDragStop={handleDragStop}
           onResizeStop={handleResizeStop}
-          enableResizing={!perspectiveMode}
           resizeHandleStyles={{
             top: { cursor: 'ns-resize' },
             right: { cursor: 'ew-resize' },
@@ -419,7 +266,7 @@ export function ScoreRegionEditor({
             bottomLeft: { cursor: 'nesw-resize' },
             topLeft: { cursor: 'nwse-resize' },
           }}
-          resizeHandleComponent={perspectiveMode ? {} : {
+          resizeHandleComponent={{
             topLeft: <ResizeHandle />,
             topRight: <ResizeHandle />,
             bottomLeft: <ResizeHandle />,
@@ -430,10 +277,7 @@ export function ScoreRegionEditor({
         >
           <div className="w-full h-full flex items-center justify-center">
             <div className="bg-black/70 border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 pointer-events-none uppercase tracking-wider">
-              {perspectiveMode
-                ? <>Drag to move &middot; Diamond handles for perspective &middot; Click button to exit</>
-                : <>Drag to move &middot; Corners to resize &middot; Top handle to rotate</>
-              }
+              Drag to move &middot; Corners to resize &middot; Top handle to rotate
             </div>
           </div>
         </Rnd>

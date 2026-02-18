@@ -33,7 +33,7 @@ interface ExportConfig {
   scoreShadowDistance: number;
   hideUnplayedNotes: boolean;
   smoothReveal: boolean;
-  scoreRegion: { x: number; y: number; width: number; height: number; rotation?: number; perspective?: { topLeft: { x: number; y: number }; topRight: { x: number; y: number }; bottomRight: { x: number; y: number }; bottomLeft: { x: number; y: number } } } | null;
+  scoreRegion: { x: number; y: number; width: number; height: number; rotation?: number } | null;
   scoreBorder: string;
   scoreScale: number;
   musicFont: string;
@@ -365,104 +365,6 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
 }
 
 // ---------------------------------------------------------------------------
-// Perspective transform (duplicated from src/lib/perspectiveTransform.ts)
-// ---------------------------------------------------------------------------
-
-interface PerspectiveCorners {
-  topLeft: { x: number; y: number };
-  topRight: { x: number; y: number };
-  bottomRight: { x: number; y: number };
-  bottomLeft: { x: number; y: number };
-}
-
-function hasPerspective(corners: PerspectiveCorners | undefined): boolean {
-  if (!corners) return false;
-  return (
-    corners.topLeft.x !== 0 || corners.topLeft.y !== 0 ||
-    corners.topRight.x !== 0 || corners.topRight.y !== 0 ||
-    corners.bottomRight.x !== 0 || corners.bottomRight.y !== 0 ||
-    corners.bottomLeft.x !== 0 || corners.bottomLeft.y !== 0
-  );
-}
-
-function computeHomography(
-  src: [number, number][],
-  dst: [number, number][],
-): number[] {
-  const A: number[][] = [];
-  const b: number[] = [];
-
-  for (let i = 0; i < 4; i++) {
-    const [sx, sy] = src[i];
-    const [dx, dy] = dst[i];
-    A.push([sx, sy, 1, 0, 0, 0, -sx * dx, -sy * dx]);
-    b.push(dx);
-    A.push([0, 0, 0, sx, sy, 1, -sx * dy, -sy * dy]);
-    b.push(dy);
-  }
-
-  const n = 8;
-  const aug: number[][] = A.map((row, i) => [...row, b[i]]);
-
-  for (let col = 0; col < n; col++) {
-    let maxVal = Math.abs(aug[col][col]);
-    let maxRow = col;
-    for (let row = col + 1; row < n; row++) {
-      if (Math.abs(aug[row][col]) > maxVal) {
-        maxVal = Math.abs(aug[row][col]);
-        maxRow = row;
-      }
-    }
-    if (maxRow !== col) {
-      [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
-    }
-    const pivot = aug[col][col];
-    if (Math.abs(pivot) < 1e-10) return [1, 0, 0, 0, 1, 0, 0, 0];
-    for (let row = col + 1; row < n; row++) {
-      const factor = aug[row][col] / pivot;
-      for (let j = col; j <= n; j++) {
-        aug[row][j] -= factor * aug[col][j];
-      }
-    }
-  }
-
-  const x = new Array(n).fill(0);
-  for (let i = n - 1; i >= 0; i--) {
-    x[i] = aug[i][n];
-    for (let j = i + 1; j < n; j++) {
-      x[i] -= aug[i][j] * x[j];
-    }
-    x[i] /= aug[i][i];
-  }
-  return x;
-}
-
-function computeMatrix3d(
-  width: number,
-  height: number,
-  corners: PerspectiveCorners,
-): string {
-  if (!hasPerspective(corners)) return '';
-
-  const src: [number, number][] = [
-    [0, 0], [width, 0], [width, height], [0, height],
-  ];
-  const dst: [number, number][] = [
-    [corners.topLeft.x, corners.topLeft.y],
-    [width + corners.topRight.x, corners.topRight.y],
-    [width + corners.bottomRight.x, height + corners.bottomRight.y],
-    [corners.bottomLeft.x, height + corners.bottomLeft.y],
-  ];
-
-  const h = computeHomography(src, dst);
-  const a = h[0], b = h[1], c = h[2];
-  const d = h[3], e = h[4], f = h[5];
-  const g = h[6], hh = h[7];
-
-  return `matrix3d(${a}, ${d}, 0, ${g}, ${b}, ${e}, 0, ${hh}, 0, 0, 1, 0, ${c}, ${f}, 0, 1)`;
-}
-
-// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -520,7 +422,6 @@ async function main(): Promise<void> {
   const regionX = config.scoreRegion?.x ?? 0;
   const regionY = config.scoreRegion?.y ?? 0;
   const regionRotation = config.scoreRegion?.rotation ?? 0;
-  const regionPerspective = config.scoreRegion?.perspective;
 
   // Rotation wrapper - positions and rotates the entire score region + borders
   const rotationWrapperEl = document.createElement('div');
@@ -532,19 +433,6 @@ async function main(): Promise<void> {
   if (regionRotation !== 0) {
     rotationWrapperEl.style.transform = `rotate(${regionRotation}deg)`;
     rotationWrapperEl.style.transformOrigin = 'center center';
-  }
-
-  // Perspective wrapper - applies matrix3d inside rotation wrapper
-  // Parent for regionEl and borders when perspective is active
-  let contentParentEl: HTMLElement = rotationWrapperEl;
-  if (hasPerspective(regionPerspective)) {
-    const perspectiveWrapperEl = document.createElement('div');
-    perspectiveWrapperEl.style.width = `${regionWidth}px`;
-    perspectiveWrapperEl.style.height = `${regionHeight}px`;
-    perspectiveWrapperEl.style.transform = computeMatrix3d(regionWidth, regionHeight, regionPerspective!);
-    perspectiveWrapperEl.style.transformOrigin = '0 0';
-    rotationWrapperEl.appendChild(perspectiveWrapperEl);
-    contentParentEl = perspectiveWrapperEl;
   }
 
   const regionEl = document.createElement('div');
@@ -573,7 +461,7 @@ async function main(): Promise<void> {
   // Assemble DOM hierarchy
   cameraEl.appendChild(scoreEl);
   regionEl.appendChild(cameraEl);
-  contentParentEl.appendChild(regionEl);
+  rotationWrapperEl.appendChild(regionEl);
   bgEl.appendChild(rotationWrapperEl);
   mainEl.appendChild(bgEl);
   scaleEl.appendChild(mainEl);
@@ -688,7 +576,7 @@ async function main(): Promise<void> {
     svgIds: evt.svgIds,
   }));
 
-  // 11. Setup borders (positioned relative to content parent so they distort with perspective)
+  // 11. Setup borders (positioned relative to rotation wrapper so they rotate with the score)
   const borderStyle = (config.scoreBorder ?? 'none') as BorderStyle;
   if (borderStyle !== 'none') {
     const borderHeight = getBorderHeight(borderStyle);
@@ -707,7 +595,7 @@ async function main(): Promise<void> {
       config.scoreColor,
       'top',
     );
-    contentParentEl.appendChild(topBorderDiv);
+    rotationWrapperEl.appendChild(topBorderDiv);
 
     // Bottom border - top edge aligns with bottom of region
     const bottomBorderDiv = document.createElement('div');
@@ -723,7 +611,7 @@ async function main(): Promise<void> {
       config.scoreColor,
       'bottom',
     );
-    contentParentEl.appendChild(bottomBorderDiv);
+    rotationWrapperEl.appendChild(bottomBorderDiv);
 
     console.log(`[Standalone] Borders set up: ${borderStyle}`);
   }

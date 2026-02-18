@@ -3,7 +3,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useSingleLineVerovio } from "../hooks/useSingleLineVerovio";
 import { extractTimemapEvents, computeEventPositions, computeSectionPositions } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
-import { computeMatrix3d, hasPerspective } from "../lib/perspectiveTransform";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
 import { interpolateTimestamps } from "../lib/interpolation";
 import {
@@ -304,8 +303,7 @@ export default function SingleLineRenderer({
       shape-rendering: crispEdges !important;
     }
     .preview-score g.notehead {
-      transform-box: fill-box;
-      transform-origin: center;
+      will-change: transform;
     }
     .preview-score svg {
       display: block;
@@ -807,14 +805,21 @@ export default function SingleLineRenderer({
             const regionY = scoreRegion?.y ?? 0;
             const regionHeight = scoreRegion?.height ?? containerHeight;
             const regionRotation = scoreRegion?.rotation ?? 0;
-            const regionPerspective = scoreRegion?.perspective;
-            const hasPerspectiveTransform = hasPerspective(regionPerspective);
             const BorderComponent = scoreBorder !== "none" ? getBorderComponent(scoreBorder) : null;
             const borderHeight = scoreBorder !== "none" ? getBorderHeight(scoreBorder) : 0;
 
-            // Inner content: score container + borders
-            const innerContent = (
-              <>
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  left: regionX,
+                  top: regionY,
+                  width: regionWidth,
+                  height: regionHeight,
+                  transform: regionRotation !== 0 ? `rotate(${regionRotation}deg)` : undefined,
+                  transformOrigin: "center center",
+                }}
+              >
                 {/* Score container */}
                 <div
                   style={{
@@ -825,7 +830,7 @@ export default function SingleLineRenderer({
                     height: regionHeight,
                     overflow: "hidden",
                     display: "flex",
-                    alignItems: "center",
+                    alignItems: "center", // Vertical centering within region
                   }}
                 >
                   <div
@@ -834,6 +839,7 @@ export default function SingleLineRenderer({
                       display: "flex",
                       flexDirection: "row",
                       pointerEvents: "none",
+                      // No CSS transition - camera position is interpolated frame-by-frame
                     }}
                   >
                     <div
@@ -866,9 +872,10 @@ export default function SingleLineRenderer({
                   </div>
                 </div>
 
-                {/* Score borders */}
+                {/* Score borders - positioned relative to rotation wrapper */}
                 {BorderComponent && (
                   <>
+                    {/* Top border - bottom edge aligns with top of region */}
                     <div
                       style={{
                         position: "absolute",
@@ -885,6 +892,7 @@ export default function SingleLineRenderer({
                         position="top"
                       />
                     </div>
+                    {/* Bottom border - top edge aligns with bottom of region */}
                     <div
                       style={{
                         position: "absolute",
@@ -903,34 +911,6 @@ export default function SingleLineRenderer({
                     </div>
                   </>
                 )}
-              </>
-            );
-
-            return (
-              <div
-                style={{
-                  position: "absolute",
-                  left: regionX,
-                  top: regionY,
-                  width: regionWidth,
-                  height: regionHeight,
-                  transform: regionRotation !== 0 ? `rotate(${regionRotation}deg)` : undefined,
-                  transformOrigin: "center center",
-                }}
-              >
-                {/* Perspective wrapper - always mounted to avoid React unmount/remount of SVG children */}
-                <div
-                  style={{
-                    width: regionWidth,
-                    height: regionHeight,
-                    transform: hasPerspectiveTransform
-                      ? computeMatrix3d(regionWidth, regionHeight, regionPerspective!)
-                      : undefined,
-                    transformOrigin: hasPerspectiveTransform ? "0 0" : undefined,
-                  }}
-                >
-                  {innerContent}
-                </div>
               </div>
             );
           })()}
