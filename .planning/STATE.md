@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-18 - Completed quick task 61: fix region drag and thick SVG strokes
+Last activity: 2026-02-18 - Completed quick task 62: revert perspective transform
 
 Progress: [##########] 42/42
 
@@ -127,15 +127,16 @@ None.
 | 54 | add rotation handle to score region editor with CSS transform in renderers and export | 2026-02-13 | 47d3d73 | [54-add-an-option-to-rotate-the-score-region](./quick/54-add-an-option-to-rotate-the-score-region/) |
 | 55 | add route protection middleware redirecting unauthenticated users to /login | 2026-02-13 | f4afd91 | [55-add-route-protection-so-unauthenticated-](./quick/55-add-route-protection-so-unauthenticated-/) |
 | 56 | fix background image loading twice when selecting new image in project | 2026-02-17 | 866b946 | [56-fix-background-image-loading-twice-when-](./quick/56-fix-background-image-loading-twice-when-/) |
-| 57 | add perspective transform to score region via CSS matrix3d and corner handles | 2026-02-18 | 8c4c8fe | [57-add-perspective-transform-to-score-regio](./quick/57-add-perspective-transform-to-score-regio/) |
-| 58 | add perspective toggle button so diamond and resize handles don't overlap | 2026-02-18 | 0ca2e8d | [58-add-perspective-toggle-button-so-diamond](./quick/58-add-perspective-toggle-button-so-diamond/) |
-| 59 | fix perspective diamond handles intercepted by Rnd resize handlers | 2026-02-18 | 67917a0 | [59-fix-perspective-diamond-handles-being-in](./quick/59-fix-perspective-diamond-handles-being-in/) |
-| 60 | fix rendering artifacts when perspective transform is applied | 2026-02-18 | fabb98d | [60-fix-rendering-artifacts-when-perspective](./quick/60-fix-rendering-artifacts-when-perspective/) |
+| 57 | ~~add perspective transform to score region via CSS matrix3d and corner handles~~ REVERTED (1cd705b) | 2026-02-18 | 8c4c8fe | [57-add-perspective-transform-to-score-regio](./quick/57-add-perspective-transform-to-score-regio/) |
+| 58 | ~~add perspective toggle button so diamond and resize handles don't overlap~~ REVERTED (1cd705b) | 2026-02-18 | 0ca2e8d | [58-add-perspective-toggle-button-so-diamond](./quick/58-add-perspective-toggle-button-so-diamond/) |
+| 59 | ~~fix perspective diamond handles intercepted by Rnd resize handlers~~ REVERTED (1cd705b) | 2026-02-18 | 67917a0 | [59-fix-perspective-diamond-handles-being-in](./quick/59-fix-perspective-diamond-handles-being-in/) |
+| 60 | ~~fix rendering artifacts when perspective transform is applied~~ REVERTED (1cd705b) | 2026-02-18 | fabb98d | [60-fix-rendering-artifacts-when-perspective](./quick/60-fix-rendering-artifacts-when-perspective/) |
 | 61 | fix region drag moving background and thick SVG hairpin strokes | 2026-02-18 | 4c5aeee | [61-fix-region-drag-moving-background-and-fi](./quick/61-fix-region-drag-moving-background-and-fi/) |
+| 62 | revert all perspective transform changes (quick 57-60) | 2026-02-18 | 1cd705b | [62-revert-all-perspective-transform-changes](./quick/62-revert-all-perspective-transform-changes/) |
 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed quick-61 (fix region drag and thick SVG strokes)
+Stopped at: Completed quick-62 (revert perspective transform)
 Resume file: None
 Next: All plans complete (42/42)
