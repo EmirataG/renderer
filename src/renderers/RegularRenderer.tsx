@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useVerovio } from "../hooks/useVerovio";
 import { extractTimemapEvents, computeEventPositions } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
+import { computeMatrix3d, hasPerspective } from "../lib/perspectiveTransform";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
 import { interpolateTimestamps } from "../lib/interpolation";
 import {
@@ -858,21 +859,14 @@ export default memo(function RegularRenderer({
             const regionY = scoreRegion?.y ?? 0;
             const regionHeight = scoreRegion?.height ?? containerHeight;
             const regionRotation = scoreRegion?.rotation ?? 0;
+            const regionPerspective = scoreRegion?.perspective;
+            const hasPerspectiveTransform = hasPerspective(regionPerspective);
             const BorderComponent = scoreBorder !== "none" ? getBorderComponent(scoreBorder) : null;
             const borderHeight = scoreBorder !== "none" ? getBorderHeight(scoreBorder) : 0;
 
-            return (
-              <div
-                style={{
-                  position: "absolute",
-                  left: regionX,
-                  top: regionY,
-                  width: regionWidth,
-                  height: regionHeight,
-                  transform: regionRotation !== 0 ? `rotate(${regionRotation}deg)` : undefined,
-                  transformOrigin: "center center",
-                }}
-              >
+            // Inner content: score container + borders
+            const innerContent = (
+              <>
                 {/* Score container */}
                 <div
                   style={{
@@ -931,10 +925,9 @@ export default memo(function RegularRenderer({
                   </div>
                 </div>
 
-                {/* Score borders - positioned relative to rotation wrapper */}
+                {/* Score borders */}
                 {BorderComponent && (
                   <>
-                    {/* Top border - bottom edge aligns with top of region */}
                     <div
                       style={{
                         position: "absolute",
@@ -951,7 +944,6 @@ export default memo(function RegularRenderer({
                         position="top"
                       />
                     </div>
-                    {/* Bottom border - top edge aligns with bottom of region */}
                     <div
                       style={{
                         position: "absolute",
@@ -969,6 +961,36 @@ export default memo(function RegularRenderer({
                       />
                     </div>
                   </>
+                )}
+              </>
+            );
+
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  left: regionX,
+                  top: regionY,
+                  width: regionWidth,
+                  height: regionHeight,
+                  transform: regionRotation !== 0 ? `rotate(${regionRotation}deg)` : undefined,
+                  transformOrigin: "center center",
+                }}
+              >
+                {hasPerspectiveTransform ? (
+                  /* Perspective wrapper - applies matrix3d inside rotation wrapper */
+                  <div
+                    style={{
+                      width: regionWidth,
+                      height: regionHeight,
+                      transform: computeMatrix3d(regionWidth, regionHeight, regionPerspective!),
+                      transformOrigin: "0 0",
+                    }}
+                  >
+                    {innerContent}
+                  </div>
+                ) : (
+                  innerContent
                 )}
               </div>
             );
