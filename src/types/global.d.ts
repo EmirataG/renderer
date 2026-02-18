@@ -19,7 +19,7 @@ declare global {
     scoreShadowDistance: number;
     hideUnplayedNotes: boolean;
     smoothReveal: boolean;
-    scoreRegion: { x: number; y: number; width: number; height: number; rotation?: number } | null;
+    scoreRegion: { x: number; y: number; width: number; height: number; rotation?: number; perspective?: { topLeft: { x: number; y: number }; topRight: { x: number; y: number }; bottomRight: { x: number; y: number }; bottomLeft: { x: number; y: number } } } | null;
     scoreBorder: string;
     scoreScale: number;
     musicFont: string;
