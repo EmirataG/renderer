@@ -224,7 +224,7 @@ export function ScoreRegionEditor({
           transform: `rotate(${rotation}deg)`,
           transformOrigin: 'center center',
           pointerEvents: 'none',
-          zIndex: 10,
+          zIndex: perspectiveMode ? 20 : 10,
         }}
       >
         {/* Rotation handle + perspective toggle - positioned above the region center */}
@@ -408,6 +408,7 @@ export function ScoreRegionEditor({
           bounds="parent"
           onDragStop={handleDragStop}
           onResizeStop={handleResizeStop}
+          enableResizing={!perspectiveMode}
           resizeHandleStyles={{
             top: { cursor: 'ns-resize' },
             right: { cursor: 'ew-resize' },
