@@ -1030,7 +1030,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       onTransformed={(_, state) => setZoomScale(state.scale)}
                       minScale={0.25}
                       maxScale={5}
-                      panning={{ activationKeys: [] }}
+                      panning={{ activationKeys: [], disabled: isEditingRegion }}
                       wheel={{ disabled: !zoomEnabled }}
                       pinch={{ disabled: !zoomEnabled }}
                       doubleClick={{ disabled: !zoomEnabled, mode: "reset" }}

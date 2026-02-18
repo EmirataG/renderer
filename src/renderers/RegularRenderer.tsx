@@ -299,6 +299,9 @@ export default memo(function RegularRenderer({
     .preview-score svg text {
       fill: ${scoreColor};
     }
+    .preview-score svg [fill="none"] {
+      fill: none !important;
+    }
     .preview-score g.staff > path {
       fill: none !important;
       stroke: ${scoreColor} !important;
