@@ -38,6 +38,7 @@ export function ScoreRegionEditor({
   const [perspectiveCorners, setPerspectiveCorners] = useState<PerspectiveCorners>(
     () => initialRegion?.perspective ?? { ...DEFAULT_CORNERS }
   );
+  const [perspectiveMode, setPerspectiveMode] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const rotationRef = useRef(rotation);
   const initialAngleRef = useRef(0);
@@ -226,7 +227,7 @@ export function ScoreRegionEditor({
           zIndex: 10,
         }}
       >
-        {/* Rotation handle - positioned above the region center */}
+        {/* Rotation handle + perspective toggle - positioned above the region center */}
         <div
           style={{
             position: 'absolute',
@@ -240,25 +241,66 @@ export function ScoreRegionEditor({
             zIndex: 20,
           }}
         >
-          {/* Handle circle with rotation icon */}
+          {/* Row: rotation circle + perspective toggle */}
           <div
-            onMouseDown={handleRotateMouseDown}
             style={{
-              width: handleSize,
-              height: handleSize,
-              borderRadius: '50%',
-              backgroundColor: 'white',
-              border: '1px solid #525252',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: isRotating ? 'grabbing' : 'grab',
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: 6,
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-              <polyline points="21 3 21 9 15 9" />
-            </svg>
+            {/* Handle circle with rotation icon */}
+            <div
+              onMouseDown={handleRotateMouseDown}
+              style={{
+                width: handleSize,
+                height: handleSize,
+                borderRadius: '50%',
+                backgroundColor: 'white',
+                border: '1px solid #525252',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: isRotating ? 'grabbing' : 'grab',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                <polyline points="21 3 21 9 15 9" />
+              </svg>
+            </div>
+            {/* Perspective mode toggle button */}
+            <button
+              onClick={() => setPerspectiveMode((prev) => !prev)}
+              title="Toggle perspective mode"
+              style={{
+                width: handleSize,
+                height: handleSize,
+                borderRadius: '50%',
+                backgroundColor: perspectiveMode ? '#06b6d4' : 'white',
+                border: perspectiveMode ? '1px solid white' : '1px solid #525252',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <rect
+                  x="6"
+                  y="1"
+                  width="5"
+                  height="5"
+                  rx="0.5"
+                  transform="rotate(45 6 1)"
+                  stroke={perspectiveMode ? 'white' : '#525252'}
+                  strokeWidth="1.5"
+                  fill="none"
+                />
+              </svg>
+            </button>
           </div>
           {/* Connecting line */}
           <div
@@ -318,8 +360,8 @@ export function ScoreRegionEditor({
           />
         )}
 
-        {/* Perspective corner handles */}
-        {cornerPositions.map(({ key, baseX, baseY }) => {
+        {/* Perspective corner handles - only shown in perspective mode */}
+        {perspectiveMode && cornerPositions.map(({ key, baseX, baseY }) => {
           const offset = perspectiveCorners[key];
           return (
             <div
@@ -376,7 +418,7 @@ export function ScoreRegionEditor({
             bottomLeft: { cursor: 'nesw-resize' },
             topLeft: { cursor: 'nwse-resize' },
           }}
-          resizeHandleComponent={{
+          resizeHandleComponent={perspectiveMode ? {} : {
             topLeft: <ResizeHandle />,
             topRight: <ResizeHandle />,
             bottomLeft: <ResizeHandle />,
@@ -387,7 +429,10 @@ export function ScoreRegionEditor({
         >
           <div className="w-full h-full flex items-center justify-center">
             <div className="bg-black/70 border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 pointer-events-none uppercase tracking-wider">
-              Drag to move &middot; Corners to resize &middot; Top handle to rotate &middot; Diamond handles for perspective
+              {perspectiveMode
+                ? <>Drag to move &middot; Diamond handles for perspective &middot; Click button to exit</>
+                : <>Drag to move &middot; Corners to resize &middot; Top handle to rotate</>
+              }
             </div>
           </div>
         </Rnd>
