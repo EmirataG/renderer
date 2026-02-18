@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-18 - Completed quick task 60: fix perspective rendering artifacts
+Last activity: 2026-02-18 - Completed quick task 61: fix region drag and thick SVG strokes
 
 Progress: [##########] 42/42
 
@@ -131,10 +131,11 @@ None.
 | 58 | add perspective toggle button so diamond and resize handles don't overlap | 2026-02-18 | 0ca2e8d | [58-add-perspective-toggle-button-so-diamond](./quick/58-add-perspective-toggle-button-so-diamond/) |
 | 59 | fix perspective diamond handles intercepted by Rnd resize handlers | 2026-02-18 | 67917a0 | [59-fix-perspective-diamond-handles-being-in](./quick/59-fix-perspective-diamond-handles-being-in/) |
 | 60 | fix rendering artifacts when perspective transform is applied | 2026-02-18 | fabb98d | [60-fix-rendering-artifacts-when-perspective](./quick/60-fix-rendering-artifacts-when-perspective/) |
+| 61 | fix region drag moving background and thick SVG hairpin strokes | 2026-02-18 | 4c5aeee | [61-fix-region-drag-moving-background-and-fi](./quick/61-fix-region-drag-moving-background-and-fi/) |
 
 ## Session Continuity
 
 Last session: 2026-02-18
-Stopped at: Completed quick-60 (fix perspective rendering artifacts)
+Stopped at: Completed quick-61 (fix region drag and thick SVG strokes)
 Resume file: None
 Next: All plans complete (42/42)
