@@ -13,6 +13,7 @@ import { useEventStore } from "./stores/eventStore";
 import { SaveIndicator } from "./components/SaveIndicator";
 import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
+import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
 import { requestExport } from "./lib/exportClient";
 import type { ExportSettings } from "./lib/exportClient";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -1018,10 +1019,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           <section className="flex-1 flex flex-col bg-black">
             {/* Main content */}
             {isLoadingProject ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-sm text-neutral-400">Loading project...</p>
-                </div>
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <TrebleClefSpinner size={64} className="text-neutral-400" />
+                <p
+                  className="mt-5 text-xs text-neutral-500 uppercase tracking-widest"
+                  style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                >
+                  Loading project
+                </p>
               </div>
             ) : musicXMLFile ? (
               <>

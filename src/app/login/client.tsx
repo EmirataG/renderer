@@ -26,16 +26,17 @@ export function GoogleSignInButton() {
       });
 
       if (response.ok) {
+        // Keep loading=true — the loading.tsx spinner takes over during navigation
         router.push('/');
+        return;
       } else {
         setError('Failed to create session. Please try again.');
       }
     } catch (err) {
       console.error('Sign-in failed:', err);
       setError('Sign-in failed. Please try again.');
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   return (

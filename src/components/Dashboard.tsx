@@ -9,6 +9,8 @@ import { ProjectCard } from "@/components/ProjectCard";
 import { CreateProjectModal } from "@/components/CreateProjectModal";
 import type { Project } from "@/types/project";
 
+import { TrebleClefSpinner } from "./TrebleClefSpinner";
+
 interface DashboardProps {
   initialProjects: Project[];
 }
