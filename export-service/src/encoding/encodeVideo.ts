@@ -54,26 +54,41 @@ const encoder = detectEncoder();
 // ---------------------------------------------------------------------------
 
 /**
- * Start an FFmpeg process that reads JPEG frames from stdin and encodes
+ * Start an FFmpeg process that reads frames from stdin and encodes
  * to a silent H.264 MP4 file. Returns drain-aware write/finish helpers.
  *
  * The caller pipes each captured frame via writeFrame(), then calls finish()
  * to signal EOF and wait for FFmpeg to complete encoding.
  *
  * Automatically uses the best available H.264 encoder (hardware or software).
+ *
+ * @param inputFormat - 'jpeg' for JPEG frames, 'png' for PNG frames, 'rawvideo' for raw RGBA pixels
  */
 export function startVideoEncode(
   outputPath: string,
   fps: number,
   width: number,
   height: number,
+  inputFormat: 'jpeg' | 'png' | 'rawvideo' = 'jpeg',
 ): { writeFrame: (buffer: Uint8Array) => Promise<void>; finish: () => Promise<void>; kill: () => void } {
+  const inputArgs: string[] = inputFormat === 'rawvideo'
+    ? [
+        '-f', 'rawvideo',
+        '-pixel_format', 'rgba',
+        '-video_size', `${width}x${height}`,
+        '-framerate', String(fps),
+        '-i', 'pipe:0',
+      ]
+    : [
+        '-f', 'image2pipe',
+        '-c:v', inputFormat === 'png' ? 'png' : 'mjpeg',
+        '-framerate', String(fps),
+        '-i', 'pipe:0',
+      ];
+
   const proc = spawn('ffmpeg', [
     '-y',
-    '-f', 'image2pipe',
-    '-c:v', 'mjpeg',
-    '-framerate', String(fps),
-    '-i', 'pipe:0',
+    ...inputArgs,
     '-c:v', encoder.codec,
     '-pix_fmt', 'yuv420p',
     ...encoder.flags,
