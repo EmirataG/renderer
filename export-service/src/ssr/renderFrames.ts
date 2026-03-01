@@ -11,7 +11,8 @@
  */
 
 import { DOMParser } from 'linkedom';
-import { Resvg } from '@resvg/resvg-js';
+import { Resvg, renderAsync } from '@resvg/resvg-js';
+import { availableParallelism } from 'node:os';
 import createVerovioModule from 'verovio/wasm';
 import { VerovioToolkit } from 'verovio/esm';
 
@@ -446,6 +447,18 @@ export async function* renderFrames(
   // PER-FRAME LOOP
   // =========================================================================
 
+  // Sliding-window pipeline: SVG generation is sequential (shared DOM),
+  // but rasterization runs in parallel on libuv thread pool via renderAsync().
+  const CONCURRENCY = Math.min(availableParallelism(), 8);
+  const resvgOpts = {
+    fitTo: { mode: 'width' as const, value: exportConfig.viewportWidth },
+    font: { loadSystemFonts: false },
+    logLevel: 'off' as const,
+  };
+
+  type PendingFrame = { frame: number; promise: Promise<Uint8Array> };
+  const queue: PendingFrame[] = [];
+
   for (let frame = 0; frame < totalFrames; frame++) {
     if (signal?.aborted) break;
 
@@ -463,10 +476,6 @@ export async function* renderFrames(
     );
 
     // 2. Serialize only visible pages.
-    // resvg v2.x panics when intermediate pixmap exceeds ~16384px in any
-    // dimension. With high scaleFactor (e.g. 4K output), stacking all pages
-    // creates pixmaps over this limit. Culling to visible pages keeps the
-    // intermediate height well within bounds and improves performance.
     const visTop = cameraY;
     const visBottom = cameraY + visibleSvgHeight;
     const pageInfos: PageInfo[] = [];
@@ -487,37 +496,47 @@ export async function* renderFrames(
     // 3. Build composite SVG
     const compositeSvg = buildCompositeSvg(compositorConfig, pageInfos, cameraY);
 
-    // 4. Rasterize with resvg-js → raw RGBA pixels (skip PNG encoding)
-    const resvg = new Resvg(compositeSvg, {
-      fitTo: { mode: 'width', value: exportConfig.viewportWidth },
-      font: { loadSystemFonts: false },
-      logLevel: 'off',
-    });
-    const rendered = resvg.render();
-    let pixels: Uint8Array = rendered.pixels;
+    // 4. Start async rasterization on libuv thread pool
+    const promise = renderAsync(compositeSvg, resvgOpts).then((rendered) => {
+      let pixels: Uint8Array = rendered.pixels;
 
-    // 5. Alpha-composite score onto pre-rendered background
-    if (bgPixels) {
-      const out = Buffer.from(bgPixels);
-      for (let j = 0; j < out.length; j += 4) {
-        const a = pixels[j + 3];
-        if (a === 255) {
-          out[j] = pixels[j];
-          out[j + 1] = pixels[j + 1];
-          out[j + 2] = pixels[j + 2];
-        } else if (a > 0) {
-          const ia = 255 - a;
-          out[j] = (pixels[j] * a + out[j] * ia + 127) / 255 | 0;
-          out[j + 1] = (pixels[j + 1] * a + out[j + 1] * ia + 127) / 255 | 0;
-          out[j + 2] = (pixels[j + 2] * a + out[j + 2] * ia + 127) / 255 | 0;
+      // Alpha-composite score onto pre-rendered background
+      if (bgPixels) {
+        const out = Buffer.from(bgPixels);
+        for (let j = 0; j < out.length; j += 4) {
+          const a = pixels[j + 3];
+          if (a === 255) {
+            out[j] = pixels[j];
+            out[j + 1] = pixels[j + 1];
+            out[j + 2] = pixels[j + 2];
+          } else if (a > 0) {
+            const ia = 255 - a;
+            out[j] = (pixels[j] * a + out[j] * ia + 127) / 255 | 0;
+            out[j + 1] = (pixels[j + 1] * a + out[j + 1] * ia + 127) / 255 | 0;
+            out[j + 2] = (pixels[j + 2] * a + out[j + 2] * ia + 127) / 255 | 0;
+          }
+          out[j + 3] = 255;
         }
-        out[j + 3] = 255;
+        pixels = out;
       }
-      pixels = out;
-    }
 
-    // 6. Yield frame
-    yield { buffer: pixels, frame, totalFrames };
+      return pixels;
+    });
+
+    queue.push({ frame, promise });
+
+    // Drain oldest when queue is full
+    if (queue.length >= CONCURRENCY) {
+      const oldest = queue.shift()!;
+      const buffer = await oldest.promise;
+      yield { buffer, frame: oldest.frame, totalFrames };
+    }
+  }
+
+  // Drain remaining queued frames in order
+  for (const pending of queue) {
+    const buffer = await pending.promise;
+    yield { buffer, frame: pending.frame, totalFrames };
   }
 
   console.log('[SSR] Frame generation complete');
