@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
-import { unlink } from 'node:fs/promises';
+import { mkdir, rm, unlink } from 'node:fs/promises';
 import type { Browser, BrowserContext, Page } from 'puppeteer';
 import type { ExportJob, JobProgressEvent, JobStatus } from './types.js';
 import type { ExportSettings } from '../shared/exportSettings.js';
@@ -8,8 +8,9 @@ import { cleanupTempDir } from '../utils/tempDir.js';
 import { browserPool } from '../browser/browserPool.js';
 import { buildExportConfig, setupPage } from '../browser/pageSetup.js';
 import { captureFrames } from '../browser/captureFrames.js';
+import { parallelCapture } from '../browser/parallelCapture.js';
 import { config } from '../shared/config.js';
-import { startVideoEncode } from '../encoding/encodeVideo.js';
+import { startVideoEncode, startVideoEncodeFromFiles } from '../encoding/encodeVideo.js';
 import { muxAudio, findAudioFile } from '../encoding/muxAudio.js';
 
 /** Minimum interval between progress event emissions (ms). */
@@ -139,8 +140,12 @@ class JobManager extends EventEmitter {
     const { signal } = abortController;
 
     let browser: Browser | undefined;
+    const numTabs = config.parallelTabs;
+    const useParallel = numTabs > 1;
+    // Only used in single-tab fallback path
     let context: BrowserContext | undefined;
     let page: Page | undefined;
+    let framesDir: string | undefined;
 
     try {
       this.updateStatus(jobId, 'preparing');
@@ -153,63 +158,125 @@ class JobManager extends EventEmitter {
       // Acquire browser from pool
       browser = await browserPool.acquire();
 
-      // Setup page with config injection, readiness wait, duration verification
       const frontendUrl = config.frontendUrl;
       const viewport = { width: exportConfig.viewportWidth, height: exportConfig.viewportHeight };
-      console.log(`[renderJob] Setting up page for job ${jobId}...`);
-      const result = await setupPage(browser, frontendUrl, exportConfig, viewport);
-      context = result.context;
-      page = result.page;
-      console.log(`[renderJob] Page ready. Duration: ${result.duration}s, totalFrames: ${result.totalFrames}`);
-
-      // Emit rendering stage
-      this.updateStatus(jobId, 'rendering');
-      job.stage = 'rendering';
-      this.emitJobEvent({ type: 'stage', jobId, stage: 'rendering' });
-
-      // Start FFmpeg encode process
       const silentVideoPath = join(job.tempDir, 'video-silent.mp4');
-      const encoder = startVideoEncode(silentVideoPath, exportConfig.fps, viewport.width, viewport.height);
-      console.log(`[renderJob] FFmpeg started. Capturing ${result.totalFrames} frames...`);
 
-      // Pipe captured frames directly to FFmpeg stdin (bounded memory)
-      // with throttled progress emission
-      let lastProgressTime = 0;
+      if (useParallel) {
+        // ── Parallel multi-tab capture path ──
 
-      for await (const { buffer, frame, totalFrames } of captureFrames(page, result.totalFrames, exportConfig.fps, signal)) {
-        if (signal.aborted) break;
-        await encoder.writeFrame(buffer);
+        // Setup page once to get duration/totalFrames, then close it
+        console.log(`[renderJob] Setting up probe page for job ${jobId}...`);
+        const probe = await setupPage(browser, frontendUrl, exportConfig, viewport);
+        const totalFrames = probe.totalFrames;
+        console.log(`[renderJob] Duration: ${probe.duration}s, totalFrames: ${totalFrames}`);
+        // Close the probe page — parallelCapture creates its own tabs
+        try { await probe.page.close(); } catch { /* ignore */ }
+        try { await probe.context.close(); } catch { /* ignore */ }
 
-        // Update job progress state (always, for reconnection sync)
-        job.currentFrame = frame + 1;
+        // Emit rendering stage
+        this.updateStatus(jobId, 'rendering');
+        job.stage = 'rendering';
         job.totalFrames = totalFrames;
-        job.percent = Math.round(((frame + 1) / totalFrames) * 100);
+        this.emitJobEvent({ type: 'stage', jobId, stage: 'rendering' });
 
-        // Throttle progress event emission to 250ms intervals
-        const now = Date.now();
-        if (now - lastProgressTime >= PROGRESS_INTERVAL_MS || frame === totalFrames - 1) {
-          lastProgressTime = now;
-          this.emitJobEvent({
-            type: 'progress',
-            jobId,
-            frame: frame + 1,
-            totalFrames,
-            percent: job.percent,
-          });
+        // Create frames directory
+        framesDir = join(job.tempDir, 'frames');
+        await mkdir(framesDir, { recursive: true });
+
+        // Throttled progress callback
+        let lastProgressTime = 0;
+        const onProgress = (capturedFrames: number, total: number) => {
+          job.currentFrame = capturedFrames;
+          job.totalFrames = total;
+          job.percent = Math.round((capturedFrames / total) * 100);
+
+          const now = Date.now();
+          if (now - lastProgressTime >= PROGRESS_INTERVAL_MS || capturedFrames === total) {
+            lastProgressTime = now;
+            this.emitJobEvent({
+              type: 'progress',
+              jobId,
+              frame: capturedFrames,
+              totalFrames: total,
+              percent: job.percent,
+            });
+          }
+        };
+
+        console.log(`[renderJob] Starting parallel capture with ${numTabs} tabs...`);
+        await parallelCapture({
+          browser,
+          exportConfig,
+          frontendUrl,
+          totalFrames,
+          framesDir,
+          numTabs,
+          signal,
+          onProgress,
+        });
+
+        if (signal.aborted) {
+          throw new Error('Export cancelled by user');
         }
-      }
 
-      // Check cancellation after capture loop
-      if (signal.aborted) {
-        encoder.kill();
-        throw new Error('Export cancelled by user');
-      }
+        // Encode frames from disk
+        this.updateStatus(jobId, 'encoding');
+        job.stage = 'encoding';
+        this.emitJobEvent({ type: 'stage', jobId, stage: 'encoding' });
 
-      // Signal end of frames, wait for FFmpeg to finish encoding
-      this.updateStatus(jobId, 'encoding');
-      job.stage = 'encoding';
-      this.emitJobEvent({ type: 'stage', jobId, stage: 'encoding' });
-      await encoder.finish();
+        console.log(`[renderJob] Encoding ${totalFrames} frames from disk...`);
+        const encoder = startVideoEncodeFromFiles(framesDir, silentVideoPath, exportConfig.fps);
+        await encoder.finish();
+      } else {
+        // ── Single-tab sequential fallback (PARALLEL_TABS=1) ──
+
+        console.log(`[renderJob] Setting up page for job ${jobId}...`);
+        const result = await setupPage(browser, frontendUrl, exportConfig, viewport);
+        context = result.context;
+        page = result.page;
+        console.log(`[renderJob] Page ready. Duration: ${result.duration}s, totalFrames: ${result.totalFrames}`);
+
+        this.updateStatus(jobId, 'rendering');
+        job.stage = 'rendering';
+        this.emitJobEvent({ type: 'stage', jobId, stage: 'rendering' });
+
+        const encoder = startVideoEncode(silentVideoPath, exportConfig.fps, viewport.width, viewport.height);
+        console.log(`[renderJob] FFmpeg started. Capturing ${result.totalFrames} frames...`);
+
+        let lastProgressTime = 0;
+
+        for await (const { buffer, frame, totalFrames } of captureFrames(page, result.totalFrames, exportConfig.fps, signal)) {
+          if (signal.aborted) break;
+          await encoder.writeFrame(buffer);
+
+          job.currentFrame = frame + 1;
+          job.totalFrames = totalFrames;
+          job.percent = Math.round(((frame + 1) / totalFrames) * 100);
+
+          const now = Date.now();
+          if (now - lastProgressTime >= PROGRESS_INTERVAL_MS || frame === totalFrames - 1) {
+            lastProgressTime = now;
+            this.emitJobEvent({
+              type: 'progress',
+              jobId,
+              frame: frame + 1,
+              totalFrames,
+              percent: job.percent,
+            });
+          }
+        }
+
+        if (signal.aborted) {
+          encoder.kill();
+          throw new Error('Export cancelled by user');
+        }
+
+        this.updateStatus(jobId, 'encoding');
+        job.stage = 'encoding';
+        this.emitJobEvent({ type: 'stage', jobId, stage: 'encoding' });
+        await encoder.finish();
+      }
 
       // Check cancellation before muxing
       if (signal.aborted) {
@@ -246,8 +313,12 @@ class JobManager extends EventEmitter {
       // Clear abort controller reference
       job.abortController = undefined;
 
-      // Close page and context in reverse order, then release browser
-      // Each step in its own try/catch to ensure subsequent cleanup runs
+      // Clean up frames directory if it was created
+      if (framesDir) {
+        try { await rm(framesDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      }
+
+      // Close page and context (only relevant for single-tab path)
       if (page) {
         try { await page.close(); } catch { /* ignore */ }
       }

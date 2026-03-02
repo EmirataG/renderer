@@ -18,6 +18,11 @@ export function createBrowserPool(): Pool<Browser> {
             '--disable-extensions',
             '--no-first-run',
             '--mute-audio',
+            // Prevent Chrome from throttling background tabs (needed for multi-tab capture)
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-ipc-flooding-protection',
           ],
           defaultViewport: null,
         });
@@ -33,7 +38,7 @@ export function createBrowserPool(): Pool<Browser> {
     },
     {
       max: config.maxBrowsers,
-      min: 0,
+      min: config.browserPoolMin,
       acquireTimeoutMillis: config.browserAcquireTimeoutMs,
       idleTimeoutMillis: config.browserIdleTimeoutMs,
       testOnBorrow: true,

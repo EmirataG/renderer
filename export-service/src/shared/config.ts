@@ -37,4 +37,10 @@ export const config = {
 
   /** Timeout for waiting for renderer to become ready (30s) */
   pageReadyTimeoutMs: 30_000,
+
+  /** Number of parallel browser tabs per export job */
+  parallelTabs: parseInt(process.env.PARALLEL_TABS ?? '4', 10),
+
+  /** Minimum browser instances kept alive in the pool */
+  browserPoolMin: parseInt(process.env.BROWSER_POOL_MIN ?? '0', 10),
 } as const;

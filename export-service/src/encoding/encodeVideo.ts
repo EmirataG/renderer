@@ -137,3 +137,63 @@ export function startVideoEncode(
 
   return { writeFrame, finish, kill };
 }
+
+/**
+ * Start an FFmpeg process that reads numbered JPEG frames from a directory
+ * and encodes to a silent H.264 MP4 file. Returns a finish/kill interface.
+ *
+ * Uses FFmpeg's `image2` demuxer with a glob pattern (`frame-%06d.jpg`)
+ * to read frames in sequential order. No backpressure management needed
+ * since FFmpeg reads files from disk at its own pace.
+ *
+ * Used by the parallel capture pipeline where frames are written to disk
+ * out of order by multiple tabs, then encoded sequentially afterward.
+ */
+export function startVideoEncodeFromFiles(
+  framesDir: string,
+  outputPath: string,
+  fps: number,
+): { finish: () => Promise<void>; kill: () => void } {
+  const inputPattern = `${framesDir}/frame-%06d.jpg`;
+
+  const proc = spawn('ffmpeg', [
+    '-y',
+    '-framerate', String(fps),
+    '-i', inputPattern,
+    '-c:v', encoder.codec,
+    '-pix_fmt', 'yuv420p',
+    ...encoder.flags,
+    '-movflags', '+faststart',
+    '-an',
+    outputPath,
+  ], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+
+  let stderr = '';
+  proc.stderr!.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+
+  const finish = (): Promise<void> => {
+    return new Promise<void>((resolve, reject) => {
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`FFmpeg encode failed (code ${code}): ${stderr.slice(-500)}`));
+        }
+      });
+
+      proc.on('error', (err) => {
+        reject(new Error(`FFmpeg failed to start: ${err.message}`));
+      });
+    });
+  };
+
+  const kill = (): void => {
+    try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+  };
+
+  return { finish, kill };
+}
