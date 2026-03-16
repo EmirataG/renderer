@@ -7,6 +7,8 @@ primary_region = "iad"
 [env]
   NODE_ENV = "production"
   PORT = "8080"
+  PARALLEL_TABS = "4"
+  MAX_BROWSERS = "2"
 
 [http_service]
   internal_port = 8080

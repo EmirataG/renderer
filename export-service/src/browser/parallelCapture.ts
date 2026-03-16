@@ -8,7 +8,6 @@ export interface ParallelCaptureOptions {
   browser: Browser;
   exportConfig: ExportConfig;
   frontendUrl: string;
-  totalFrames: number;
   framesDir: string;
   numTabs: number;
   signal: AbortSignal;
@@ -122,12 +121,11 @@ async function captureChunk(
  * Uses CDP Page.captureScreenshot directly for ~10-15% faster captures
  * versus Puppeteer's page.screenshot() abstraction.
  */
-export async function parallelCapture(opts: ParallelCaptureOptions): Promise<void> {
+export async function parallelCapture(opts: ParallelCaptureOptions): Promise<{ totalFrames: number }> {
   const {
     browser,
     exportConfig,
     frontendUrl,
-    totalFrames,
     framesDir,
     numTabs,
     signal,
@@ -146,9 +144,9 @@ export async function parallelCapture(opts: ParallelCaptureOptions): Promise<voi
     const setupResults = await Promise.all(setupPromises);
     tabs.push(...setupResults);
 
-    if (signal.aborted) return;
+    if (signal.aborted) return { totalFrames: 0 };
 
-    // Verify duration from the first tab
+    // Get duration from the first tab to compute totalFrames
     const duration = await tabs[0].page.evaluate(
       () => (window as any).animationController!.getDuration(),
     );
@@ -158,6 +156,9 @@ export async function parallelCapture(opts: ParallelCaptureOptions): Promise<voi
         `Animation has no duration (got ${duration}) -- check MusicXML and sync anchors`,
       );
     }
+
+    const totalFrames = Math.ceil(duration * exportConfig.fps);
+    console.log(`[parallelCapture] Duration: ${duration}s, totalFrames: ${totalFrames}`);
 
     // Atomic progress counter
     let capturedCount = 0;
@@ -193,10 +194,11 @@ export async function parallelCapture(opts: ParallelCaptureOptions): Promise<voi
     }
 
     console.log(`[parallelCapture] All ${totalFrames} frames captured.`);
+    return { totalFrames };
   } finally {
     // Close all tabs and their contexts
     for (const tab of tabs) {
-      try { tab.cdp.detach().catch(() => {}); } catch { /* ignore */ }
+      try { await tab.cdp.detach(); } catch { /* ignore */ }
       const ctx = tab.page.browserContext();
       try { await tab.page.close(); } catch { /* ignore */ }
       try { await ctx.close(); } catch { /* ignore */ }

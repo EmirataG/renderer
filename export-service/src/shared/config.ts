@@ -3,7 +3,7 @@ export const config = {
   port: parseInt(process.env.PORT ?? '3001', 10),
 
   /** URL for Puppeteer to load the standalone render page. The export service serves its own /render route; override via FRONTEND_URL for production. */
-  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:3001/render',
+  frontendUrl: process.env.FRONTEND_URL ?? `http://localhost:${process.env.PORT ?? '3001'}/render`,
 
   /** HTTP server host (0.0.0.0 = all interfaces) */
   host: '0.0.0.0',

@@ -165,19 +165,9 @@ class JobManager extends EventEmitter {
       if (useParallel) {
         // ── Parallel multi-tab capture path ──
 
-        // Setup page once to get duration/totalFrames, then close it
-        console.log(`[renderJob] Setting up probe page for job ${jobId}...`);
-        const probe = await setupPage(browser, frontendUrl, exportConfig, viewport);
-        const totalFrames = probe.totalFrames;
-        console.log(`[renderJob] Duration: ${probe.duration}s, totalFrames: ${totalFrames}`);
-        // Close the probe page — parallelCapture creates its own tabs
-        try { await probe.page.close(); } catch { /* ignore */ }
-        try { await probe.context.close(); } catch { /* ignore */ }
-
-        // Emit rendering stage
+        // Emit rendering stage (totalFrames resolved inside parallelCapture)
         this.updateStatus(jobId, 'rendering');
         job.stage = 'rendering';
-        job.totalFrames = totalFrames;
         this.emitJobEvent({ type: 'stage', jobId, stage: 'rendering' });
 
         // Create frames directory
@@ -205,11 +195,10 @@ class JobManager extends EventEmitter {
         };
 
         console.log(`[renderJob] Starting parallel capture with ${numTabs} tabs...`);
-        await parallelCapture({
+        const { totalFrames } = await parallelCapture({
           browser,
           exportConfig,
           frontendUrl,
-          totalFrames,
           framesDir,
           numTabs,
           signal,

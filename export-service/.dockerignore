@@ -1,0 +1,6 @@
+node_modules
+dist
+standalone-dist
+.git
+*.md
+tsconfig.tsbuildinfo

@@ -44,9 +44,11 @@ export function muxAudio(
       stdio: ['ignore', 'ignore', 'pipe'],
     });
 
+    // Ring-buffer: keep last 2KB of stderr for error diagnostics
     let stderr = '';
     proc.stderr!.on('data', (chunk: Buffer) => {
       stderr += chunk.toString();
+      if (stderr.length > 2048) stderr = stderr.slice(-2048);
     });
 
     proc.on('error', (err) => {
