@@ -486,19 +486,26 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const totalHeight = cumulative;
 
   // ── 4. Build hidden DOM ───────────────────────────────────────────
+  // Use Shadow DOM to isolate SVG element IDs from the preview.
+  // Without this, querySelector('#note-id') fails because the preview
+  // has Verovio SVGs with the same IDs already in the document.
+  const shadowHost = document.createElement('div');
+  shadowHost.style.position = 'fixed';
+  shadowHost.style.left = '-99999px';
+  shadowHost.style.top = '0';
+  document.body.appendChild(shadowHost);
+  const shadow = shadowHost.attachShadow({ mode: 'open' });
+
   const hostEl = document.createElement('div');
-  hostEl.style.position = 'fixed';
-  hostEl.style.left = '-99999px';
-  hostEl.style.top = '0';
   hostEl.style.width = `${viewportWidth}px`;
   hostEl.style.height = `${viewportHeight}px`;
   hostEl.style.overflow = 'hidden';
-  document.body.appendChild(hostEl);
+  shadow.appendChild(hostEl);
 
-  // Score color CSS (scoped to our hidden container)
+  // Score color CSS (scoped inside shadow DOM)
   const styleEl = document.createElement('style');
   styleEl.textContent = buildScoreColorCss(settings.scoreColor, settings.hideLabels);
-  hostEl.appendChild(styleEl);
+  shadow.appendChild(styleEl);
 
   // Scale wrapper
   const scaleEl = document.createElement('div');
@@ -762,7 +769,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // ── 11. Cleanup ───────────────────────────────────────────────────
   bgImage?.close();
-  hostEl.remove();
+  shadowHost.remove();
 
   onProgress(100, 'Complete');
 
