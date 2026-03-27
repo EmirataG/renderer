@@ -286,6 +286,49 @@ function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
 }
 
 /**
+ * Promote inline CSS fill/stroke/transform to SVG attributes.
+ *
+ * SVG-as-image rendering (data URL → Image) doesn't reliably apply
+ * CSS properties like `style.fill` on `use` elements to their shadow
+ * content. Converting them to SVG attributes fixes this.
+ */
+function promoteCssToSvgAttributes(svgEl: Element): void {
+  // Promote fill/stroke on use elements (notehead color highlights)
+  svgEl.querySelectorAll('use').forEach((el) => {
+    const s = (el as unknown as ElementCSSInlineStyle).style;
+    if (s.fill) el.setAttribute('fill', s.fill);
+    if (s.stroke) el.setAttribute('stroke', s.stroke);
+  });
+
+  // Promote notehead scale transforms (CSS transform → SVG transform)
+  svgEl.querySelectorAll('g.notehead').forEach((el) => {
+    const s = (el as unknown as ElementCSSInlineStyle).style;
+    const transform = s.transform;
+    if (!transform || transform === 'scale(1)') return;
+    const m = transform.match(/scale\(([\d.]+)\)/);
+    if (!m) return;
+    const scale = parseFloat(m[1]);
+    if (scale === 1) return;
+    const bbox = (el as unknown as SVGGraphicsElement).getBBox();
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+    el.setAttribute('transform', `translate(${cx},${cy}) scale(${scale}) translate(${-cx},${-cy})`);
+  });
+
+  // Promote fill/stroke on stem, accidental, flag, dots, artic groups (colorFullNote)
+  svgEl.querySelectorAll('g.stem, g.accid, g.flag, g.dots, g.artic').forEach((el) => {
+    const s = (el as unknown as ElementCSSInlineStyle).style;
+    if (s.fill) el.setAttribute('fill', s.fill);
+    if (s.stroke) el.setAttribute('stroke', s.stroke);
+    el.querySelectorAll('path, use, polygon, line').forEach((child) => {
+      const cs = (child as unknown as ElementCSSInlineStyle).style;
+      if (cs.fill) child.setAttribute('fill', cs.fill);
+      if (cs.stroke) child.setAttribute('stroke', cs.stroke);
+    });
+  });
+}
+
+/**
  * Render an SVG page element to a drawable Image.
  * Serializes the live SVG (with animation state applied), ensures
  * explicit width/height (required for rasterization), and loads
@@ -298,6 +341,9 @@ async function svgPageToImage(
 ): Promise<HTMLImageElement> {
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
+
+  // Promote CSS styles to SVG attributes for SVG-as-image compatibility
+  promoteCssToSvgAttributes(svgEl);
 
   let svgString = new XMLSerializer().serializeToString(svgEl);
   svgString = inlineScoreColorInSvg(svgString, scoreColor);
@@ -366,8 +412,16 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       img.onerror = () => reject(new Error('Failed to load background image for dimensions'));
       img.src = bgImageUrl;
     });
-    viewportWidth = dims.w;
-    viewportHeight = dims.h;
+    // Cap longest side to 1920 (preserving aspect ratio)
+    const MAX_DIM = 1920;
+    if (dims.w > MAX_DIM || dims.h > MAX_DIM) {
+      const scale = MAX_DIM / Math.max(dims.w, dims.h);
+      dims.w = Math.round(dims.w * scale);
+      dims.h = Math.round(dims.h * scale);
+    }
+    // H.264 requires even dimensions
+    viewportWidth = dims.w & ~1;
+    viewportHeight = dims.h & ~1;
   }
   const scaleFactor = viewportWidth / EDITOR_WIDTH;
   const containerWidth = EDITOR_WIDTH;
