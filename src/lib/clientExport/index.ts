@@ -276,13 +276,18 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
  * rasterized outside the document context.
  */
 function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
+  // NOTE: 'use' is intentionally excluded from the element selector.
+  // CSS rules override SVG presentation attributes, so an explicit
+  // `use { fill: ... }` would prevent animated fill from showing.
+  // Instead, use elements inherit fill from the root svg attribute.
   const style = `<style>
-    path, rect, polygon, ellipse, use { fill: ${scoreColor}; }
+    path, rect, polygon, ellipse { fill: ${scoreColor}; }
     text { fill: ${scoreColor}; }
     [fill="none"] { fill: none !important; }
     g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
   </style>`;
-  return svgString.replace(/<svg([^>]*)>/, `<svg$1>${style}`);
+  // Set fill on root svg for inheritance to use elements
+  return svgString.replace(/<svg([^>]*)>/, `<svg$1 fill="${scoreColor}">${style}`);
 }
 
 /**
@@ -595,10 +600,34 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const positions = computeEventPositions(timemapEvents, toolkit, pageContainers, pageOffsets);
   const yMap = new Map(positions.map((p) => [p.id, p.globalY]));
 
+  // ── 5b. Prefix SVG IDs to avoid collision with preview ─────────
+  // The preview's Verovio SVGs have the same element IDs. Browsers may
+  // fail scoped querySelector('#id') when duplicate IDs exist in the
+  // document. Prefix after position computation (which needs original IDs).
+  const ID_PREFIX = '_ce_';
+  for (const container of pageContainers) {
+    container.querySelectorAll('[id]').forEach((el) => {
+      el.id = ID_PREFIX + el.id;
+    });
+    // Update internal href references (use elements referencing symbols)
+    container.querySelectorAll('[href]').forEach((el) => {
+      const href = el.getAttribute('href');
+      if (href?.startsWith('#')) {
+        el.setAttribute('href', '#' + ID_PREFIX + href.slice(1));
+      }
+    });
+    container.querySelectorAll('[xlink\\:href]').forEach((el) => {
+      const href = el.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+      if (href?.startsWith('#')) {
+        el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + ID_PREFIX + href.slice(1));
+      }
+    });
+  }
+
   const events: AnimationEvent[] = interpolated.map((evt) => ({
     computedTimestamp: evt.computedTimestamp,
     y: yMap.get(evt.id) ?? 0,
-    svgIds: evt.svgIds,
+    svgIds: evt.svgIds.map((id) => ID_PREFIX + id),
   }));
 
   // ── 6. Setup animation ────────────────────────────────────────────
