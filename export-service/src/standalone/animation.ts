@@ -260,7 +260,13 @@ export function setTimestamp(
 
   // Detect target change -- start a new transition
   if (Math.abs(newTargetCameraY - state.transitionTarget) > 0.5) {
-    state.transitionFrom = state.cameraY; // from current visual position
+    if (state.eventIndex === -1) {
+      // First frame: snap directly (no transition from Y=0).
+      // Critical for parallel capture where each tab starts mid-video.
+      state.transitionFrom = newTargetCameraY;
+    } else {
+      state.transitionFrom = state.cameraY; // from current visual position
+    }
     state.transitionTarget = newTargetCameraY;
     state.transitionStart = seconds;
   }

@@ -16,6 +16,7 @@ import type { ScoreRegion } from "./types/score";
 import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
 import { requestExport } from "./lib/exportClient";
 import type { ExportSettings } from "./lib/exportClient";
+import { auth } from "./lib/firebase-client";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 interface AppProps {
@@ -422,7 +423,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         process.env.NODE_ENV !== "production"
           ? "ws://localhost:3001"
           : `${wsProtocol}//${window.location.host}`;
-      const ws = new WebSocket(`${wsBase}/api/export/${response.jobId}/ws`);
+      const wsToken = await auth.currentUser?.getIdToken();
+      const wsUrl = wsToken
+        ? `${wsBase}/api/export/${response.jobId}/ws?token=${encodeURIComponent(wsToken)}`
+        : `${wsBase}/api/export/${response.jobId}/ws`;
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
@@ -487,11 +492,21 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (exportState.downloadUrl) {
       const base =
         process.env.NODE_ENV !== "production" ? "http://localhost:3001" : "";
-      window.open(`${base}${exportState.downloadUrl}`, "_blank");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${base}${exportState.downloadUrl}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "export.mp4";
+      a.click();
+      URL.revokeObjectURL(url);
     }
   };
 

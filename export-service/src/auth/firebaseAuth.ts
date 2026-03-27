@@ -41,8 +41,10 @@ function initAdminAuth() {
 const PUBLIC_PATHS = new Set(['/health', '/render']);
 
 function isPublicRoute(url: string): boolean {
-  if (PUBLIC_PATHS.has(url)) return true;
-  if (url.startsWith('/static/')) return true;
+  const path = url.split('?')[0];
+  if (PUBLIC_PATHS.has(path)) return true;
+  if (path.startsWith('/static/')) return true;
+  if (path === '/favicon.ico') return true;
   return false;
 }
 
@@ -52,12 +54,14 @@ async function firebaseAuthPlugin(server: FastifyInstance) {
   server.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     if (isPublicRoute(request.url)) return;
 
+    // Accept token from Authorization header or ?token= query param (WebSocket)
     const authHeader = request.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+    const queryToken = (request.query as Record<string, string>).token;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
+
+    if (!token) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
-
-    const token = authHeader.slice(7);
     try {
       request.firebaseUser = await adminAuth.verifyIdToken(token);
     } catch {
