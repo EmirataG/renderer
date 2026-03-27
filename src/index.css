@@ -323,3 +323,122 @@ body {
   background: #111;
   color: white;
 }
+
+/* ============================================
+   LOGIN PAGE LAYOUT
+   ============================================ */
+
+.login-page {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* --- Hero Section --- */
+.hero-section {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: black;
+  overflow: hidden;
+  padding: 1rem;
+}
+
+/* --- Scroll Arrow --- */
+.scroll-arrow-btn {
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  animation: arrow-bounce 2s ease-in-out infinite;
+  opacity: 0.7;
+  transition: opacity 200ms;
+}
+
+.scroll-arrow-btn:hover {
+  opacity: 1;
+}
+
+@keyframes arrow-bounce {
+  0%, 100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(10px);
+  }
+}
+
+/* --- Showcase Section --- */
+.showcase-section {
+  background: black;
+  padding: 5rem 1.5rem;
+  border-top: 1px solid #333;
+}
+
+.showcase-inner {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.showcase-heading {
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: white;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.showcase-divider {
+  width: 4rem;
+  height: 2px;
+  background: white;
+  margin: 0 auto 3rem;
+}
+
+.showcase-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+}
+
+@media (min-width: 768px) {
+  .showcase-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+.showcase-video-card {
+  border: 1px solid #333;
+  background: #0a0a0a;
+  transition: border-color 200ms;
+}
+
+.showcase-video-card:hover {
+  border-color: #666;
+}
+
+.showcase-video-wrapper {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 aspect ratio */
+}
+
+.showcase-video-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
