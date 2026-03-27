@@ -276,8 +276,10 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
  * rasterized outside the document context.
  */
 function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
+  // NOTE: `use` is handled via SVG fill attributes in bakeAnimationToAttributes,
+  // not CSS — CSS fill on `use` doesn't cascade to shadow content in SVG-as-image.
   const style = `<style>
-    path, rect, polygon, ellipse, use { fill: ${scoreColor}; }
+    path, rect, polygon, ellipse { fill: ${scoreColor}; }
     text { fill: ${scoreColor}; }
     [fill="none"] { fill: none !important; }
     g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
@@ -286,25 +288,26 @@ function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
 }
 
 /**
- * Ensure animation styles survive SVG-as-image rendering.
+ * Bake animation state into SVG attributes.
  *
- * The animation sets inline CSS (style.fill) on elements, but the
- * <style> block in inlineScoreColorInSvg has `use { fill: scoreColor }`
- * which can override non-!important inline styles in some SVG contexts.
+ * The animation sets inline CSS (style.fill, style.transform) which the
+ * browser renders directly in the preview. But for the export we serialize
+ * SVG → data URL → Image, and CSS properties on SVG `use` elements don't
+ * reliably cascade to their referenced content in that context.
  *
- * Fix: re-apply animated fills/strokes with !important so they win
- * against any CSS rule. Also convert CSS transforms to SVG transform
- * attributes (CSS transform with transform-origin isn't reliable in
- * SVG-as-image).
+ * Fix: copy the CSS values to SVG attributes which ARE respected in
+ * SVG-as-image. For notehead scale, convert CSS transform to SVG
+ * transform attribute (with manual center-point computation via getBBox).
  */
-function ensureAnimationStyles(svgEl: Element): void {
-  // Promote fill/stroke on use elements with !important
+function bakeAnimationToAttributes(svgEl: Element, scoreColor: string): void {
+  // Set fill attribute on ALL use elements: either animated color or scoreColor.
+  // This replaces the CSS `use { fill }` rule entirely — attributes work
+  // reliably in SVG-as-image while CSS on `use` shadow content does not.
   svgEl.querySelectorAll('use').forEach((el) => {
-    const s = (el as unknown as ElementCSSInlineStyle).style;
-    if (s.fill) {
-      s.setProperty('fill', s.fill, 'important');
-      s.setProperty('stroke', s.stroke, 'important');
-    }
+    const fill = (el as unknown as ElementCSSInlineStyle).style.fill;
+    el.setAttribute('fill', fill || scoreColor);
+    const stroke = (el as unknown as ElementCSSInlineStyle).style.stroke;
+    if (stroke) el.setAttribute('stroke', stroke);
   });
 
   // Convert notehead CSS transforms to SVG transform attributes
@@ -324,19 +327,15 @@ function ensureAnimationStyles(svgEl: Element): void {
     } catch { /* getBBox can fail on hidden elements */ }
   });
 
-  // Promote fill/stroke on full-note groups with !important
+  // Bake fill/stroke on full-note elements (stems, accidentals, flags, etc.)
   svgEl.querySelectorAll('g.stem, g.accid, g.flag, g.dots, g.artic').forEach((el) => {
     const s = (el as unknown as ElementCSSInlineStyle).style;
-    if (s.fill) {
-      s.setProperty('fill', s.fill, 'important');
-      s.setProperty('stroke', s.stroke, 'important');
-    }
+    if (s.fill) el.setAttribute('fill', s.fill);
+    if (s.stroke) el.setAttribute('stroke', s.stroke);
     el.querySelectorAll('path, use, polygon, line').forEach((child) => {
       const cs = (child as unknown as ElementCSSInlineStyle).style;
-      if (cs.fill) {
-        cs.setProperty('fill', cs.fill, 'important');
-        cs.setProperty('stroke', cs.stroke, 'important');
-      }
+      if (cs.fill) child.setAttribute('fill', cs.fill);
+      if (cs.stroke) child.setAttribute('stroke', cs.stroke);
     });
   });
 }
@@ -355,8 +354,9 @@ async function svgPageToImage(
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
 
-  // Ensure animation styles survive SVG-as-image rendering
-  ensureAnimationStyles(svgEl);
+  // Bake animation state into SVG attributes (CSS on use elements
+  // doesn't work in SVG-as-image, but SVG attributes do)
+  bakeAnimationToAttributes(svgEl, scoreColor);
 
   let svgString = new XMLSerializer().serializeToString(svgEl);
   svgString = inlineScoreColorInSvg(svgString, scoreColor);
