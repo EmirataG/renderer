@@ -38,11 +38,23 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 
 WORKDIR /app
 
+# Create non-root user for running the service
+RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
+    && mkdir -p /home/pptruser && chown -R pptruser:pptruser /home/pptruser
+
 # Copy build artifacts from builder
 COPY --from=builder /app/dist/ dist/
 COPY --from=builder /app/standalone-dist/ standalone-dist/
 COPY --from=builder /app/node_modules/ node_modules/
 COPY --from=builder /app/package.json package.json
+
+RUN chown -R pptruser:pptruser /app
+
+# Run as non-root
+USER pptruser
+
+# Limit Node.js heap to leave room for Chromium + FFmpeg
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # dumb-init as PID 1 for proper signal forwarding
 ENTRYPOINT ["dumb-init", "--"]

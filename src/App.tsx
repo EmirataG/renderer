@@ -399,7 +399,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       }
 
       const backendUrl =
-        process.env.NODE_ENV !== "production" ? "http://localhost:3001" : "";
+        process.env.NEXT_PUBLIC_EXPORT_SERVICE_URL || "http://localhost:3001";
       const response = await requestExport(
         {
           settings,
@@ -418,11 +418,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         jobId: response.jobId,
       }));
 
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsBase =
-        process.env.NODE_ENV !== "production"
-          ? "ws://localhost:3001"
-          : `${wsProtocol}//${window.location.host}`;
+      const exportUrl = process.env.NEXT_PUBLIC_EXPORT_SERVICE_URL || "http://localhost:3001";
+      const wsBase = exportUrl.replace(/^http/, "ws");
       const wsToken = await auth.currentUser?.getIdToken();
       const wsUrl = wsToken
         ? `${wsBase}/api/export/${response.jobId}/ws?token=${encodeURIComponent(wsToken)}`
@@ -495,7 +492,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const handleDownload = async () => {
     if (exportState.downloadUrl) {
       const base =
-        process.env.NODE_ENV !== "production" ? "http://localhost:3001" : "";
+        process.env.NEXT_PUBLIC_EXPORT_SERVICE_URL || "http://localhost:3001";
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`${base}${exportState.downloadUrl}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

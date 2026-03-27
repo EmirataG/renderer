@@ -62,7 +62,7 @@ export interface ExportResponse {
  */
 export async function requestExport(
   request: ExportRequest,
-  backendUrl = 'http://localhost:3001',
+  backendUrl = process.env.NEXT_PUBLIC_EXPORT_SERVICE_URL || 'http://localhost:3001',
 ): Promise<ExportResponse> {
   const formData = new FormData();
 

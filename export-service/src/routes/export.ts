@@ -143,9 +143,11 @@ export default async function exportRoutes(
           .send({ error: anchorsErrors.join('; ') });
       }
 
-      // Create job
+      // Create job (associate with authenticated user)
+      const userId = request.firebaseUser!.uid;
       const job = jobManager.createJob(
         jobId,
+        userId,
         tempDir,
         settings as import('../shared/exportSettings.js').ExportSettings,
         syncAnchors as Record<string, number>,

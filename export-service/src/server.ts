@@ -11,7 +11,7 @@ import progressRoutes from './routes/progress.js';
 import downloadRoutes from './routes/download.js';
 import { config } from './shared/config.js';
 import { jobManager } from './jobs/jobManager.js';
-import { shutdownPool } from './browser/browserPool.js';
+import { browserPool, shutdownPool } from './browser/browserPool.js';
 import firebaseAuth from './auth/firebaseAuth.js';
 
 async function main() {
@@ -47,8 +47,15 @@ async function main() {
   // WebSocket support (must register before websocket routes)
   await server.register(websocket);
 
-  // Health check
-  server.get('/health', async () => ({ status: 'ok' }));
+  // Health check (includes browser pool availability)
+  server.get('/health', async () => ({
+    status: 'ok',
+    pool: {
+      available: browserPool.available,
+      borrowed: browserPool.borrowed,
+      pending: browserPool.pending,
+    },
+  }));
 
   // API routes
   await server.register(exportRoutes, { prefix: '/api' });

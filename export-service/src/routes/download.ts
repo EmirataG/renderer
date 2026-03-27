@@ -12,7 +12,7 @@ export default async function downloadRoutes(
     const { jobId } = request.params;
     const job = jobManager.getJob(jobId);
 
-    if (!job) {
+    if (!job || job.userId !== request.firebaseUser!.uid) {
       return reply.status(404).send({ error: 'Job not found' });
     }
 

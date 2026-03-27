@@ -17,6 +17,7 @@ export type JobProgressEvent =
 
 export interface ExportJob {
   id: string;
+  userId: string;
   status: JobStatus;
   createdAt: number;
   completedAt: number | undefined;

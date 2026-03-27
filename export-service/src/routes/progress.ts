@@ -11,7 +11,7 @@ export default async function progressRoutes(
     const { jobId } = request.params as { jobId: string };
     const job = jobManager.getJob(jobId);
 
-    if (!job) {
+    if (!job || job.userId !== request.firebaseUser!.uid) {
       socket.send(JSON.stringify({ type: 'error', error: 'Job not found' }));
       socket.close(4004, 'Job not found');
       return;

@@ -23,8 +23,8 @@ export const config = {
   /** Maximum age of a job before cleanup (2 hours) */
   jobMaxAgeMs: 2 * 60 * 60 * 1000,
 
-  /** CORS origin setting (true = reflect request origin) */
-  corsOrigin: true as const,
+  /** CORS origin setting — restrict to CORS_ORIGIN env var in production */
+  corsOrigin: process.env.CORS_ORIGIN ?? true,
 
   /** Maximum concurrent Puppeteer browser instances */
   maxBrowsers: parseInt(process.env.MAX_BROWSERS ?? '3', 10),

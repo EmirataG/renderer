@@ -33,12 +33,14 @@ class JobManager extends EventEmitter {
    */
   createJob(
     jobId: string,
+    userId: string,
     tempDir: string,
     settings: ExportSettings,
     syncAnchors: Record<string, number>,
   ): ExportJob {
     const job: ExportJob = {
       id: jobId,
+      userId,
       status: 'queued',
       createdAt: Date.now(),
       completedAt: undefined,
