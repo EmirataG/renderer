@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-03-27 - Completed quick task 260327-dnh: fix client export notehead animations and video quality
+Last activity: 2026-03-27 - Completed quick task 260327-dnh: fix client export notehead animations (ID prefixing + CSS specificity + quality)
 
 Progress: [##########] 42/42
 

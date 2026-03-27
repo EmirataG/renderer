@@ -1,24 +1,17 @@
-# Quick Task 260327-dnh: Fix client export animations and quality
+# Quick Task 260327-dnh Summary
 
 **Completed:** 2026-03-27
+**Commits:** 965a976, f547008
 
-## Changes
+## Fixes
 
-### Animation visibility (`src/lib/clientExport/index.ts`)
+### 1. ID prefixing (f547008)
+Prefix all SVG element IDs in the hidden export container with `_ce_` to prevent collision with the preview's identical Verovio IDs. Applied after `computeEventPositions` (needs original IDs for toolkit) but before the animation loop. Also updates internal `href`/`xlink:href` references.
 
-Added `promoteCssToSvgAttributes()` — called before SVG serialization on each frame. Converts:
-- Inline CSS `fill`/`stroke` on `use` elements → SVG `fill`/`stroke` attributes
-- CSS `transform: scale(X)` on `g.notehead` → SVG `transform` attribute with translate-scale-translate (preserving center origin via `getBBox()`)
-- Inline CSS `fill`/`stroke` on stem/accidental/flag groups → SVG attributes (for `colorFullNote` mode)
+### 2. CSS specificity fix (f547008)
+Removed `use` from the explicit CSS element selector in `inlineScoreColorInSvg`. CSS rules override SVG presentation attributes, so `use { fill: scoreColor }` was preventing animated fill from showing. Now `use` elements inherit fill from the root `<svg fill="...">` attribute, which inline animation styles properly override.
 
-**Root cause:** SVG-as-image rendering doesn't apply CSS `style.fill` on `use` elements to their referenced shadow content. SVG attributes work reliably.
-
-### Video quality
-
-- **Bitrate:** 8 Mbps → 20 Mbps (matches backend CRF 23 equivalent)
-- **Max dimension:** 1080 → 1920 (H.264 Level 5.1 supports up to 4096x2304)
-
-## Files changed
-
-- `src/lib/clientExport/index.ts` — promoteCssToSvgAttributes + max dim
-- `src/lib/clientExport/encode.ts` — bitrate increase
+### 3. Quality improvements (965a976)
+- Bitrate: 8 Mbps → 20 Mbps
+- Max dimension: 1080 → 1920
+- SVG-to-attribute promotion for fill/stroke/transform

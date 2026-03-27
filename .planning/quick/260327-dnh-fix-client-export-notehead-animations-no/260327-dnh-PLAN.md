@@ -1,13 +1,15 @@
-# Quick Task 260327-dnh: Fix client export animations and quality
+# Quick Task 260327-dnh: Fix client export notehead animations
 
-## Task 1: Promote CSS to SVG attributes for animation visibility
+## Root Causes
 
-SVG-as-image rendering (data URL → Image) doesn't reliably apply CSS `style.fill` on `use` elements to their shadow content. Fix by promoting inline CSS fill/stroke/transform to SVG attributes before serialization.
+1. **Duplicate SVG IDs** — Preview and export container both have Verovio SVGs with identical IDs. `scoreEl.querySelector('#note-id')` fails when duplicate IDs exist in the document.
 
-**Files:** `src/lib/clientExport/index.ts`
+2. **CSS specificity** — `inlineScoreColorInSvg` had `use { fill: scoreColor }` which overrides both SVG fill attributes and promoted fill from animation.
 
-## Task 2: Increase video quality
+3. **Low bitrate** — 8 Mbps vs backend's CRF 23 (~20-30 Mbps equivalent).
 
-Bitrate was 8 Mbps (backend uses CRF 23 ≈ 20-30 Mbps). Max dimension was capped to 1080. Fix both.
+## Tasks
 
-**Files:** `src/lib/clientExport/encode.ts`, `src/lib/clientExport/index.ts`
+1. Prefix export container SVG IDs with `_ce_` after position computation
+2. Remove `use` from CSS selector; set fill on root svg for inheritance
+3. Increase bitrate to 20 Mbps and max dimension to 1920
