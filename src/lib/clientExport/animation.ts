@@ -114,31 +114,33 @@ export interface AnimationEvent {
 
 const FULL_NOTE_SELECTORS = 'g.stem, g.accid, g.flag, g.dots, g.artic';
 
+/**
+ * Reset notehead colors and transforms using SVG ATTRIBUTES (not CSS).
+ *
+ * Using setAttribute/removeAttribute instead of style.fill because
+ * CSS fill on SVG <use> elements doesn't work reliably in SVG-as-image
+ * rendering or in Safari.
+ */
 function resetEventNoteheads(
-  root: HTMLElement, svgIds: string[], colorFullNote: boolean,
+  root: HTMLElement, svgIds: string[], colorFullNote: boolean, scoreColor: string,
 ): void {
   for (const id of svgIds) {
     const stavenote = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
     if (!stavenote) continue;
     stavenote.querySelectorAll<SVGGElement>('g.notehead').forEach((nh) => {
-      nh.style.transform = 'scale(1)';
-      nh.style.transition = '';
+      nh.removeAttribute('transform');
       nh.querySelectorAll<SVGGraphicsElement>('use').forEach((shape) => {
-        shape.style.removeProperty('fill');
-        shape.style.removeProperty('stroke');
-        shape.style.removeProperty('color');
+        shape.setAttribute('fill', scoreColor);
+        shape.removeAttribute('stroke');
       });
     });
     if (colorFullNote) {
       stavenote.querySelectorAll<SVGGraphicsElement>(FULL_NOTE_SELECTORS).forEach((group) => {
-        group.style.removeProperty('fill');
-        group.style.removeProperty('stroke');
-        group.style.removeProperty('color');
-        group.style.transition = '';
+        group.removeAttribute('fill');
+        group.removeAttribute('stroke');
         group.querySelectorAll<SVGGraphicsElement>('path, use, polygon, line').forEach((child) => {
-          child.style.removeProperty('fill');
-          child.style.removeProperty('stroke');
-          child.style.removeProperty('color');
+          child.removeAttribute('fill');
+          child.removeAttribute('stroke');
         });
       });
     }
@@ -228,7 +230,7 @@ export function setTimestamp(
     const resetEnd = Math.min(prev.end, firstActiveIndex - 1);
     for (let i = prev.start; i <= resetEnd; i++) {
       if (events[i].svgIds?.length) {
-        resetEventNoteheads(scoreEl, events[i].svgIds, config.colorFullNote);
+        resetEventNoteheads(scoreEl, events[i].svgIds, config.colorFullNote, config.scoreColor);
       }
     }
   }
@@ -250,37 +252,45 @@ export function setTimestamp(
       scale = config.activeNoteheadScale + (1 - config.activeNoteheadScale) * easedProgress;
       color = interpolateColor(config.activeNoteheadColor, config.scoreColor, easedProgress);
     } else {
-      resetEventNoteheads(scoreEl, event.svgIds, config.colorFullNote);
+      resetEventNoteheads(scoreEl, event.svgIds, config.colorFullNote, config.scoreColor);
       continue;
     }
 
+    // Apply animation using SVG ATTRIBUTES (not CSS style properties).
+    // CSS style.fill on <use> elements doesn't work in SVG-as-image
+    // rendering or in Safari. SVG attributes work everywhere.
     for (const id of event.svgIds) {
       const stavenote = scoreEl.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
       if (!stavenote) continue;
 
       stavenote.querySelectorAll<SVGGElement>('g.notehead').forEach((nh) => {
-        nh.style.transformBox = 'fill-box';
-        nh.style.transformOrigin = 'center';
-        nh.style.transition = '';
-        nh.style.transform = `scale(${scale})`;
+        // Scale via SVG transform attribute (with manual center-point)
+        if (scale !== 1) {
+          try {
+            const bbox = (nh as unknown as SVGGraphicsElement).getBBox();
+            const cx = bbox.x + bbox.width / 2;
+            const cy = bbox.y + bbox.height / 2;
+            nh.setAttribute('transform', `translate(${cx},${cy}) scale(${scale}) translate(${-cx},${-cy})`);
+          } catch { /* getBBox can fail */ }
+        } else {
+          nh.removeAttribute('transform');
+        }
+
         if (color) {
           nh.querySelectorAll<SVGGraphicsElement>('use').forEach((shape) => {
-            shape.style.fill = color!;
-            shape.style.stroke = color!;
-            shape.style.color = color!;
+            shape.setAttribute('fill', color!);
+            shape.setAttribute('stroke', color!);
           });
         }
       });
 
       if (color && config.colorFullNote) {
         stavenote.querySelectorAll<SVGGraphicsElement>(FULL_NOTE_SELECTORS).forEach((group) => {
-          group.style.fill = color!;
-          group.style.stroke = color!;
-          group.style.color = color!;
+          group.setAttribute('fill', color!);
+          group.setAttribute('stroke', color!);
           group.querySelectorAll<SVGGraphicsElement>('path, use, polygon, line').forEach((child) => {
-            child.style.fill = color!;
-            child.style.stroke = color!;
-            child.style.color = color!;
+            child.setAttribute('fill', color!);
+            child.setAttribute('stroke', color!);
           });
         });
       }

@@ -299,44 +299,16 @@ function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
  * SVG-as-image. For notehead scale, convert CSS transform to SVG
  * transform attribute (with manual center-point computation via getBBox).
  */
-function bakeAnimationToAttributes(svgEl: Element, scoreColor: string): void {
-  // Set fill attribute on ALL use elements: either animated color or scoreColor.
-  // This replaces the CSS `use { fill }` rule entirely — attributes work
-  // reliably in SVG-as-image while CSS on `use` shadow content does not.
+/**
+ * Set scoreColor fill on use elements that don't already have a fill
+ * attribute from the animation. The animation now sets fill as SVG
+ * attributes directly, so we just need to fill in the default.
+ */
+function setDefaultFillOnUseElements(svgEl: Element, scoreColor: string): void {
   svgEl.querySelectorAll('use').forEach((el) => {
-    const fill = (el as unknown as ElementCSSInlineStyle).style.fill;
-    el.setAttribute('fill', fill || scoreColor);
-    const stroke = (el as unknown as ElementCSSInlineStyle).style.stroke;
-    if (stroke) el.setAttribute('stroke', stroke);
-  });
-
-  // Convert notehead CSS transforms to SVG transform attributes
-  svgEl.querySelectorAll('g.notehead').forEach((el) => {
-    const s = (el as unknown as ElementCSSInlineStyle).style;
-    const transform = s.transform;
-    if (!transform || transform === 'scale(1)') return;
-    const m = transform.match(/scale\(([\d.]+)\)/);
-    if (!m) return;
-    const scale = parseFloat(m[1]);
-    if (scale === 1) return;
-    try {
-      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-      const cx = bbox.x + bbox.width / 2;
-      const cy = bbox.y + bbox.height / 2;
-      el.setAttribute('transform', `translate(${cx},${cy}) scale(${scale}) translate(${-cx},${-cy})`);
-    } catch { /* getBBox can fail on hidden elements */ }
-  });
-
-  // Bake fill/stroke on full-note elements (stems, accidentals, flags, etc.)
-  svgEl.querySelectorAll('g.stem, g.accid, g.flag, g.dots, g.artic').forEach((el) => {
-    const s = (el as unknown as ElementCSSInlineStyle).style;
-    if (s.fill) el.setAttribute('fill', s.fill);
-    if (s.stroke) el.setAttribute('stroke', s.stroke);
-    el.querySelectorAll('path, use, polygon, line').forEach((child) => {
-      const cs = (child as unknown as ElementCSSInlineStyle).style;
-      if (cs.fill) child.setAttribute('fill', cs.fill);
-      if (cs.stroke) child.setAttribute('stroke', cs.stroke);
-    });
+    if (!el.getAttribute('fill')) {
+      el.setAttribute('fill', scoreColor);
+    }
   });
 }
 
@@ -354,9 +326,8 @@ async function svgPageToImage(
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
 
-  // Bake animation state into SVG attributes (CSS on use elements
-  // doesn't work in SVG-as-image, but SVG attributes do)
-  bakeAnimationToAttributes(svgEl, scoreColor);
+  // Set default fill on use elements without an animated fill attribute
+  setDefaultFillOnUseElements(svgEl, scoreColor);
 
   let svgString = new XMLSerializer().serializeToString(svgEl);
   svgString = inlineScoreColorInSvg(svgString, scoreColor);
@@ -683,7 +654,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
     const seconds = frame / fps;
 
-    // Apply animation state (modifies SVG DOM: noteheads + camera)
+    // Apply animation state (sets SVG attributes on noteheads + camera translateY)
     applyAnimation(seconds, events, animState, animConfig, cameraEl, scoreEl);
     void scoreEl.offsetHeight; // force reflow
 
