@@ -1,3 +1,8 @@
+# Required secrets (set via `fly secrets set`):
+#   FIREBASE_ADMIN_PROJECT_ID
+#   FIREBASE_ADMIN_CLIENT_EMAIL
+#   FIREBASE_ADMIN_PRIVATE_KEY
+
 app = "manuscript-export"
 primary_region = "iad"
 

@@ -12,6 +12,7 @@ import downloadRoutes from './routes/download.js';
 import { config } from './shared/config.js';
 import { jobManager } from './jobs/jobManager.js';
 import { shutdownPool } from './browser/browserPool.js';
+import firebaseAuth from './auth/firebaseAuth.js';
 
 async function main() {
   const server = Fastify({ logger: true });
@@ -28,6 +29,9 @@ async function main() {
       fieldSize: config.maxFieldSize,
     },
   });
+
+  // Firebase auth — verifies Bearer token on /api/* routes
+  await server.register(firebaseAuth);
 
   // Serve standalone render page assets (animation bundle + verovio WASM)
   await server.register(fastifyStatic, {

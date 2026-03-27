@@ -16,6 +16,8 @@
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.0",
     "fastify": "^5.7.4",
+    "fastify-plugin": "^5.1.0",
+    "firebase-admin": "^13.7.0",
     "generic-pool": "^3.9.0",
     "puppeteer": "^24.37.2",
     "react-zoom-pan-pinch": "^3.7.0"

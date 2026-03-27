@@ -1,5 +1,6 @@
 import type { ScoreRegion } from '../types/score';
 import type { BorderStyle } from '../borders';
+import { auth } from '@/lib/firebase-client';
 
 /**
  * Settings for a video export job.
@@ -84,9 +85,13 @@ export async function requestExport(
     formData.append('bgImage', request.bgImageFile);
   }
 
+  // Get Firebase ID token for authenticated request
+  const token = await auth.currentUser?.getIdToken();
+
   // Do NOT set Content-Type header -- browser auto-sets multipart boundary
   const response = await fetch(`${backendUrl}/api/export`, {
     method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
 
