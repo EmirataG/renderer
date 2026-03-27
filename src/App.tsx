@@ -546,7 +546,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
         <div className="flex-1 flex min-h-0">
           <aside
-            className="w-80 bg-black border-r border-neutral-800 flex flex-col overflow-hidden"
+            className="w-80 shrink-0 bg-black border-r border-neutral-800 flex flex-col overflow-hidden"
             style={{ display: currentView === "sync" ? "none" : undefined }}
           >
             <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">

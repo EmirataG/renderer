@@ -7,7 +7,11 @@ import { validateMusicXML, isLikelyMusicXML } from "../lib/musicxmlValidation";
 
 interface UploadDropZoneProps {
   projectId?: string;
-  onMusicXMLUpload: (xml: string, fileName: string, measureCount: number) => void;
+  onMusicXMLUpload: (
+    xml: string,
+    fileName: string,
+    measureCount: number,
+  ) => void;
   onAudioUpload: (audioUrl: string, fileName: string, file?: File) => void;
   onImageUpload: (imageUrl: string, fileName: string, file?: File) => void;
   currentFiles: {
@@ -51,7 +55,7 @@ export function UploadDropZone({
         if (!isLikelyMusicXML(text)) {
           showToast(
             "File does not appear to be MusicXML. Expected score-partwise or score-timewise root element.",
-            "error"
+            "error",
           );
           return;
         }
@@ -64,14 +68,17 @@ export function UploadDropZone({
         }
 
         onMusicXMLUpload(text, file.name, result.measureCount ?? 0);
-        showToast(`Loaded ${file.name} (${result.measureCount} measures)`, "success");
+        showToast(
+          `Loaded ${file.name} (${result.measureCount} measures)`,
+          "success",
+        );
       } catch {
         showToast("Failed to read MusicXML file", "error");
       } finally {
         setIsValidating(false);
       }
     },
-    [showToast, onMusicXMLUpload]
+    [showToast, onMusicXMLUpload],
   );
 
   const processAudio = useCallback(
@@ -80,7 +87,7 @@ export function UploadDropZone({
       onAudioUpload(url, file.name, file);
       showToast(`Loaded audio: ${file.name}`, "success");
     },
-    [showToast, onAudioUpload]
+    [showToast, onAudioUpload],
   );
 
   const processImage = useCallback(
@@ -93,33 +100,36 @@ export function UploadDropZone({
 
         // Upload to Firebase Storage in background
         const formData = new FormData();
-        formData.append('background', file);
+        formData.append("background", file);
         try {
           const res = await fetch(`/api/projects/${projectId}/background`, {
-            method: 'PUT',
+            method: "PUT",
             body: formData,
           });
           if (!res.ok) {
             const data = await res.json();
-            throw new Error(data.error || 'Failed to upload background');
+            throw new Error(data.error || "Failed to upload background");
           }
           // Upload succeeded -- blob URL stays as display source, file is in bgFile for export.
           // Do NOT call onImageUpload again to avoid a second image load/flash.
-          showToast(`Background uploaded: ${file.name}`, 'success');
+          showToast(`Background uploaded: ${file.name}`, "success");
         } catch (err) {
           // Revert optimistic preview on failure
           URL.revokeObjectURL(blobUrl);
-          onImageUpload('', '');
-          showToast(err instanceof Error ? err.message : 'Failed to upload background', 'error');
+          onImageUpload("", "");
+          showToast(
+            err instanceof Error ? err.message : "Failed to upload background",
+            "error",
+          );
         }
       } else {
         // Local-only mode (no project yet)
         const url = URL.createObjectURL(file);
         onImageUpload(url, file.name, file);
-        showToast(`Loaded background: ${file.name}`, 'success');
+        showToast(`Loaded background: ${file.name}`, "success");
       }
     },
-    [projectId, showToast, onImageUpload]
+    [projectId, showToast, onImageUpload],
   );
 
   const processFile = useCallback(
@@ -135,7 +145,10 @@ export function UploadDropZone({
 
       // Block score/audio uploads for existing projects (immutable after creation)
       if (projectId && (category === "musicxml" || category === "audio")) {
-        showToast("Score and audio files cannot be changed after project creation.", "error");
+        showToast(
+          "Score and audio files cannot be changed after project creation.",
+          "error",
+        );
         return;
       }
 
@@ -151,7 +164,7 @@ export function UploadDropZone({
           break;
       }
     },
-    [showToast, projectId, processMusicXML, processAudio, processImage]
+    [showToast, projectId, processMusicXML, processAudio, processImage],
   );
 
   const handleDrop = useCallback(
@@ -168,7 +181,7 @@ export function UploadDropZone({
         await processFile(file);
       }
     },
-    [processFile]
+    [processFile],
   );
 
   const handleFileInputChange = useCallback(
@@ -180,7 +193,7 @@ export function UploadDropZone({
       // Reset input so same file can be selected again
       e.target.value = "";
     },
-    [processFile]
+    [processFile],
   );
 
   const handleClick = () => {
@@ -239,16 +252,20 @@ export function UploadDropZone({
           {isValidating ? (
             <>
               <LoadingIcon className="mx-auto h-8 w-8 text-blue-400 animate-spin" />
-              <p className="mt-2 text-sm text-neutral-300">Validating MusicXML...</p>
+              <p className="mt-2 text-sm text-neutral-300">
+                Validating MusicXML...
+              </p>
             </>
           ) : (
             <>
               <UploadIcon className="mx-auto h-8 w-8 text-neutral-400" />
               <p className="mt-2 text-sm text-neutral-300">
-                {projectId ? "Drop image here or click to browse" : "Drop files here or click to browse"}
+                {projectId
+                  ? "Drop image here or click to browse"
+                  : "Drop files here or click to browse"}
               </p>
               <p className="mt-1 text-xs text-neutral-500">
-                {projectId ? "Background image only" : "MusicXML, Audio, or Image files"}
+                {projectId ? "" : "MusicXML, Audio, or Image files"}
               </p>
             </>
           )}
@@ -363,7 +380,13 @@ function UploadIcon({ className }: { className?: string }) {
 
 function LoadingIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <circle cx="12" cy="12" r="10" opacity="0.25" />
       <path d="M12 2a10 10 0 0 1 10 10" />
     </svg>
