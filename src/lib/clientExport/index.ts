@@ -276,15 +276,25 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
  * rasterized outside the document context.
  */
 function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
-  // NOTE: `use` is handled via SVG fill attributes in bakeAnimationToAttributes,
-  // not CSS — CSS fill on `use` doesn't cascade to shadow content in SVG-as-image.
+  // IMPORTANT: `path` and `use` are NOT targeted by CSS here.
+  //
+  // Music glyphs are <path> elements inside <use> shadow trees. A CSS
+  // rule `path { fill: scoreColor }` penetrates into the <use> shadow
+  // and overrides the fill that paths would inherit from their <use>
+  // parent — breaking animated highlight colors.
+  //
+  // Instead, fill is set on the root <svg> element as an attribute.
+  // All paths inherit scoreColor via SVG inheritance. Animated <use>
+  // elements have fill="highlightColor" set by the animation, which
+  // cascades to their shadow paths without CSS interference.
   const style = `<style>
-    path, rect, polygon, ellipse { fill: ${scoreColor}; }
+    rect, polygon, ellipse { fill: ${scoreColor}; }
     text { fill: ${scoreColor}; }
     [fill="none"] { fill: none !important; }
     g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
   </style>`;
-  return svgString.replace(/<svg([^>]*)>/, `<svg$1>${style}`);
+  // Set fill on root SVG for inheritance to all descendant paths
+  return svgString.replace(/<svg([^>]*)>/, `<svg$1 fill="${scoreColor}">${style}`);
 }
 
 /**
