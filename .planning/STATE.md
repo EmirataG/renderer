@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-03-27 - Completed quick task 260327-dnh: fix client export notehead animations (ID prefixing + CSS specificity + quality)
+Last activity: 2026-03-27 - Completed quick task 260327-e04: Simplify project files section to background image only
 
 Progress: [##########] 42/42
 
@@ -139,6 +139,7 @@ None.
 | 260327-dab | fix client-side export to match preview dimensions and animations | 2026-03-27 | fa734a9 | [260327-dab-fix-client-side-export-to-match-preview-](./quick/260327-dab-fix-client-side-export-to-match-preview-/) |
 | 260327-dev | Add showcase section with YouTube videos to login page | 2026-03-27 | 781ab58 | [260327-dev-add-showcase-section-with-youtube-videos](./quick/260327-dev-add-showcase-section-with-youtube-videos/) |
 | 260327-dnh | fix client export notehead animations and video quality | 2026-03-27 | 965a976 | [260327-dnh-fix-client-export-notehead-animations-no](./quick/260327-dnh-fix-client-export-notehead-animations-no/) |
+| 260327-e04 | Simplify project files section to background image only | 2026-03-27 | 23085ce | [260327-e04-simplify-project-files-section-to-backgr](./quick/260327-e04-simplify-project-files-section-to-backgr/) |
 
 ## Session Continuity
 
