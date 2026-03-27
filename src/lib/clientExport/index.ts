@@ -276,36 +276,38 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
  * rasterized outside the document context.
  */
 function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
-  // NOTE: 'use' is intentionally excluded from the element selector.
-  // CSS rules override SVG presentation attributes, so an explicit
-  // `use { fill: ... }` would prevent animated fill from showing.
-  // Instead, use elements inherit fill from the root svg attribute.
   const style = `<style>
-    path, rect, polygon, ellipse { fill: ${scoreColor}; }
+    path, rect, polygon, ellipse, use { fill: ${scoreColor}; }
     text { fill: ${scoreColor}; }
     [fill="none"] { fill: none !important; }
     g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
   </style>`;
-  // Set fill on root svg for inheritance to use elements
-  return svgString.replace(/<svg([^>]*)>/, `<svg$1 fill="${scoreColor}">${style}`);
+  return svgString.replace(/<svg([^>]*)>/, `<svg$1>${style}`);
 }
 
 /**
- * Promote inline CSS fill/stroke/transform to SVG attributes.
+ * Ensure animation styles survive SVG-as-image rendering.
  *
- * SVG-as-image rendering (data URL → Image) doesn't reliably apply
- * CSS properties like `style.fill` on `use` elements to their shadow
- * content. Converting them to SVG attributes fixes this.
+ * The animation sets inline CSS (style.fill) on elements, but the
+ * <style> block in inlineScoreColorInSvg has `use { fill: scoreColor }`
+ * which can override non-!important inline styles in some SVG contexts.
+ *
+ * Fix: re-apply animated fills/strokes with !important so they win
+ * against any CSS rule. Also convert CSS transforms to SVG transform
+ * attributes (CSS transform with transform-origin isn't reliable in
+ * SVG-as-image).
  */
-function promoteCssToSvgAttributes(svgEl: Element): void {
-  // Promote fill/stroke on use elements (notehead color highlights)
+function ensureAnimationStyles(svgEl: Element): void {
+  // Promote fill/stroke on use elements with !important
   svgEl.querySelectorAll('use').forEach((el) => {
     const s = (el as unknown as ElementCSSInlineStyle).style;
-    if (s.fill) el.setAttribute('fill', s.fill);
-    if (s.stroke) el.setAttribute('stroke', s.stroke);
+    if (s.fill) {
+      s.setProperty('fill', s.fill, 'important');
+      s.setProperty('stroke', s.stroke, 'important');
+    }
   });
 
-  // Promote notehead scale transforms (CSS transform → SVG transform)
+  // Convert notehead CSS transforms to SVG transform attributes
   svgEl.querySelectorAll('g.notehead').forEach((el) => {
     const s = (el as unknown as ElementCSSInlineStyle).style;
     const transform = s.transform;
@@ -314,21 +316,27 @@ function promoteCssToSvgAttributes(svgEl: Element): void {
     if (!m) return;
     const scale = parseFloat(m[1]);
     if (scale === 1) return;
-    const bbox = (el as unknown as SVGGraphicsElement).getBBox();
-    const cx = bbox.x + bbox.width / 2;
-    const cy = bbox.y + bbox.height / 2;
-    el.setAttribute('transform', `translate(${cx},${cy}) scale(${scale}) translate(${-cx},${-cy})`);
+    try {
+      const bbox = (el as unknown as SVGGraphicsElement).getBBox();
+      const cx = bbox.x + bbox.width / 2;
+      const cy = bbox.y + bbox.height / 2;
+      el.setAttribute('transform', `translate(${cx},${cy}) scale(${scale}) translate(${-cx},${-cy})`);
+    } catch { /* getBBox can fail on hidden elements */ }
   });
 
-  // Promote fill/stroke on stem, accidental, flag, dots, artic groups (colorFullNote)
+  // Promote fill/stroke on full-note groups with !important
   svgEl.querySelectorAll('g.stem, g.accid, g.flag, g.dots, g.artic').forEach((el) => {
     const s = (el as unknown as ElementCSSInlineStyle).style;
-    if (s.fill) el.setAttribute('fill', s.fill);
-    if (s.stroke) el.setAttribute('stroke', s.stroke);
+    if (s.fill) {
+      s.setProperty('fill', s.fill, 'important');
+      s.setProperty('stroke', s.stroke, 'important');
+    }
     el.querySelectorAll('path, use, polygon, line').forEach((child) => {
       const cs = (child as unknown as ElementCSSInlineStyle).style;
-      if (cs.fill) child.setAttribute('fill', cs.fill);
-      if (cs.stroke) child.setAttribute('stroke', cs.stroke);
+      if (cs.fill) {
+        cs.setProperty('fill', cs.fill, 'important');
+        cs.setProperty('stroke', cs.stroke, 'important');
+      }
     });
   });
 }
@@ -347,8 +355,8 @@ async function svgPageToImage(
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
 
-  // Promote CSS styles to SVG attributes for SVG-as-image compatibility
-  promoteCssToSvgAttributes(svgEl);
+  // Ensure animation styles survive SVG-as-image rendering
+  ensureAnimationStyles(svgEl);
 
   let svgString = new XMLSerializer().serializeToString(svgEl);
   svgString = inlineScoreColorInSvg(svgString, scoreColor);
@@ -600,34 +608,10 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const positions = computeEventPositions(timemapEvents, toolkit, pageContainers, pageOffsets);
   const yMap = new Map(positions.map((p) => [p.id, p.globalY]));
 
-  // ── 5b. Prefix SVG IDs to avoid collision with preview ─────────
-  // The preview's Verovio SVGs have the same element IDs. Browsers may
-  // fail scoped querySelector('#id') when duplicate IDs exist in the
-  // document. Prefix after position computation (which needs original IDs).
-  const ID_PREFIX = '_ce_';
-  for (const container of pageContainers) {
-    container.querySelectorAll('[id]').forEach((el) => {
-      el.id = ID_PREFIX + el.id;
-    });
-    // Update internal href references (use elements referencing symbols)
-    container.querySelectorAll('[href]').forEach((el) => {
-      const href = el.getAttribute('href');
-      if (href?.startsWith('#')) {
-        el.setAttribute('href', '#' + ID_PREFIX + href.slice(1));
-      }
-    });
-    container.querySelectorAll('[xlink\\:href]').forEach((el) => {
-      const href = el.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
-      if (href?.startsWith('#')) {
-        el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + ID_PREFIX + href.slice(1));
-      }
-    });
-  }
-
   const events: AnimationEvent[] = interpolated.map((evt) => ({
     computedTimestamp: evt.computedTimestamp,
     y: yMap.get(evt.id) ?? 0,
-    svgIds: evt.svgIds.map((id) => ID_PREFIX + id),
+    svgIds: evt.svgIds,
   }));
 
   // ── 6. Setup animation ────────────────────────────────────────────
