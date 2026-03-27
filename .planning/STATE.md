@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-03-27 - Completed quick task 260326-wyz: smart chunk splitting at system boundaries
+Last activity: 2026-03-27 - Completed quick task 260327-dab: fix client-side export to match preview dimensions and animations
 
 Progress: [##########] 42/42
 
@@ -136,6 +136,7 @@ None.
 | 260326-vur | fix scrolling behaviour in exported video - camera snap on parallel tab first frame | 2026-03-27 | 5cf15a6 | [260326-vur-fix-scrolling-behaviour-in-exported-vide](./quick/260326-vur-fix-scrolling-behaviour-in-exported-vide/) |
 | 260326-wir | fix score snap at parallel tab boundaries - warm-up frames for smooth transitions | 2026-03-27 | a543acd | [260326-wir-fix-score-snap-at-parallel-tab-boundarie](./quick/260326-wir-fix-score-snap-at-parallel-tab-boundarie/) |
 | 260326-wyz | smart chunk splitting at system boundaries for parallel capture | 2026-03-27 | 8c632a1 | [260326-wyz-smart-chunk-splitting-at-system-boundari](./quick/260326-wyz-smart-chunk-splitting-at-system-boundari/) |
+| 260327-dab | fix client-side export to match preview dimensions and animations | 2026-03-27 | fa734a9 | [260327-dab-fix-client-side-export-to-match-preview-](./quick/260327-dab-fix-client-side-export-to-match-preview-/) |
 
 ## Session Continuity
 
