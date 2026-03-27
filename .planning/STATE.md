@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-02-18 - Completed quick task 62: revert perspective transform
+Last activity: 2026-03-27 - Completed quick task 260326-vur: fix scrolling behaviour in exported video
 
 Progress: [##########] 42/42
 
@@ -133,6 +133,7 @@ None.
 | 60 | ~~fix rendering artifacts when perspective transform is applied~~ REVERTED (1cd705b) | 2026-02-18 | fabb98d | [60-fix-rendering-artifacts-when-perspective](./quick/60-fix-rendering-artifacts-when-perspective/) |
 | 61 | fix region drag moving background and thick SVG hairpin strokes | 2026-02-18 | 4c5aeee | [61-fix-region-drag-moving-background-and-fi](./quick/61-fix-region-drag-moving-background-and-fi/) |
 | 62 | revert all perspective transform changes (quick 57-60) | 2026-02-18 | 1cd705b | [62-revert-all-perspective-transform-changes](./quick/62-revert-all-perspective-transform-changes/) |
+| 260326-vur | fix scrolling behaviour in exported video - camera snap on parallel tab first frame | 2026-03-27 | 5cf15a6 | [260326-vur-fix-scrolling-behaviour-in-exported-vide](./quick/260326-vur-fix-scrolling-behaviour-in-exported-vide/) |
 
 ## Session Continuity
 
