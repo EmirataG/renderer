@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-02-11)
 Phase: 26 of 26 (Auto-Save & Data Persistence)
 Plan: 2 of 2 complete
 Status: Complete
-Last activity: 2026-03-27 - Completed quick task 260327-dab: fix client-side export to match preview dimensions and animations
+Last activity: 2026-03-27 - Completed quick task 260327-dev: Add showcase section with YouTube videos to login page
 
 Progress: [##########] 42/42
 
@@ -137,6 +137,7 @@ None.
 | 260326-wir | fix score snap at parallel tab boundaries - warm-up frames for smooth transitions | 2026-03-27 | a543acd | [260326-wir-fix-score-snap-at-parallel-tab-boundarie](./quick/260326-wir-fix-score-snap-at-parallel-tab-boundarie/) |
 | 260326-wyz | smart chunk splitting at system boundaries for parallel capture | 2026-03-27 | 8c632a1 | [260326-wyz-smart-chunk-splitting-at-system-boundari](./quick/260326-wyz-smart-chunk-splitting-at-system-boundari/) |
 | 260327-dab | fix client-side export to match preview dimensions and animations | 2026-03-27 | fa734a9 | [260327-dab-fix-client-side-export-to-match-preview-](./quick/260327-dab-fix-client-side-export-to-match-preview-/) |
+| 260327-dev | Add showcase section with YouTube videos to login page | 2026-03-27 | 781ab58 | [260327-dev-add-showcase-section-with-youtube-videos](./quick/260327-dev-add-showcase-section-with-youtube-videos/) |
 
 ## Session Continuity
 
