@@ -245,7 +245,7 @@ export function UploadDropZone({
             <>
               <UploadIcon className="mx-auto h-8 w-8 text-neutral-400" />
               <p className="mt-2 text-sm text-neutral-300">
-                Drop files here or click to browse
+                {projectId ? "Drop image here or click to browse" : "Drop files here or click to browse"}
               </p>
               <p className="mt-1 text-xs text-neutral-500">
                 {projectId ? "Background image only" : "MusicXML, Audio, or Image files"}
@@ -257,30 +257,34 @@ export function UploadDropZone({
 
       {/* Current Files Status */}
       <div className="space-y-2">
-        {/* MusicXML Status */}
-        <FileStatusCard
-          label="Score"
-          icon={<MusicIcon className="h-4 w-4" />}
-          file={
-            currentFiles.musicxml
-              ? {
-                  name: currentFiles.musicxml.name,
-                  detail: `${currentFiles.musicxml.measureCount} measures`,
-                }
-              : null
-          }
-          onRemove={() => handleRemove("musicxml")}
-          removable={false}
-        />
+        {/* MusicXML Status - hidden for saved projects (score is immutable) */}
+        {!projectId && (
+          <FileStatusCard
+            label="Score"
+            icon={<MusicIcon className="h-4 w-4" />}
+            file={
+              currentFiles.musicxml
+                ? {
+                    name: currentFiles.musicxml.name,
+                    detail: `${currentFiles.musicxml.measureCount} measures`,
+                  }
+                : null
+            }
+            onRemove={() => handleRemove("musicxml")}
+            removable={false}
+          />
+        )}
 
-        {/* Audio Status */}
-        <FileStatusCard
-          label="Audio"
-          icon={<AudioIcon className="h-4 w-4" />}
-          file={currentFiles.audio ? { name: currentFiles.audio.name } : null}
-          onRemove={() => handleRemove("audio")}
-          removable={!projectId && !!currentFiles.audio}
-        />
+        {/* Audio Status - hidden for saved projects (audio is immutable) */}
+        {!projectId && (
+          <FileStatusCard
+            label="Audio"
+            icon={<AudioIcon className="h-4 w-4" />}
+            file={currentFiles.audio ? { name: currentFiles.audio.name } : null}
+            onRemove={() => handleRemove("audio")}
+            removable={!!currentFiles.audio}
+          />
+        )}
 
         {/* Image Status */}
         <FileStatusCard

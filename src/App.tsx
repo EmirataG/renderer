@@ -552,7 +552,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">
               {/* UPLOAD SECTION */}
               <section className="mb-5">
-                <h2 className="grunge-section-title">Project Files</h2>
+                <h2 className="grunge-section-title">{projectId ? "Background Image" : "Project Files"}</h2>
                 <div className="p-3">
                   <UploadDropZone
                     projectId={projectId}
