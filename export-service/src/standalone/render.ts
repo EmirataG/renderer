@@ -649,6 +649,55 @@ async function main(): Promise<void> {
     },
     getDuration: () => config.audioDuration,
     getFps: () => config.fps,
+
+    /**
+     * Compute chunk boundaries for parallel capture that avoid splitting
+     * mid-scroll-transition. Returns [0, split1, split2, ..., totalFrames].
+     */
+    getChunkBoundaries: (numChunks: number): number[] => {
+      const fps = config.fps;
+      const totalFrames = Math.ceil(config.audioDuration * fps);
+      const transitionFrames = Math.ceil(0.2 * fps) + 1;
+      const viewportHeight = animConfig.scoreRegionHeight ?? animConfig.containerHeight;
+
+      // Find frames where camera target changes (system boundary transitions).
+      // Build [start, end] ranges that are unsafe to split within.
+      const unsafeRanges: [number, number][] = [];
+      let prevTarget = -1;
+      for (const event of events) {
+        let target = event.y - viewportHeight / 2;
+        target = Math.max(0, target);
+        target = Math.min(target, Math.max(0, animConfig.totalHeight - viewportHeight));
+        if (prevTarget !== -1 && Math.abs(target - prevTarget) > 0.5) {
+          const frame = Math.round(event.computedTimestamp * fps);
+          unsafeRanges.push([frame, frame + transitionFrames]);
+        }
+        prevTarget = target;
+      }
+
+      const isUnsafe = (f: number) =>
+        unsafeRanges.some(([s, e]) => f >= s && f <= e);
+
+      const boundaries: number[] = [0];
+      for (let i = 1; i < numChunks; i++) {
+        let split = Math.round((i * totalFrames) / numChunks);
+        if (isUnsafe(split)) {
+          for (let d = 1; d < totalFrames; d++) {
+            if (split + d < totalFrames && !isUnsafe(split + d)) {
+              split += d;
+              break;
+            }
+            if (split - d > 0 && !isUnsafe(split - d)) {
+              split -= d;
+              break;
+            }
+          }
+        }
+        boundaries.push(split);
+      }
+      boundaries.push(totalFrames);
+      return boundaries;
+    },
   };
 
   console.log('[Standalone] Animation controller exposed on window');

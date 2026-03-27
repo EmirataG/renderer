@@ -70,13 +70,6 @@ async function setupTab(
 }
 
 /**
- * Number of warm-up frames to run before capturing a chunk.
- * Covers the 200ms camera transition so tabs starting mid-transition
- * reproduce the correct eased camera position at their first real frame.
- */
-const WARMUP_FRAMES = 10;
-
-/**
  * Capture a contiguous chunk of frames in a single tab using CDP screenshots.
  */
 async function captureChunk(
@@ -89,22 +82,6 @@ async function captureChunk(
   signal: AbortSignal,
   onFrameCaptured: () => void,
 ): Promise<void> {
-  // Warm up animation state for non-first tabs so mid-transition
-  // camera positions are correctly reproduced (no snap/jump at boundaries).
-  if (startFrame > 0) {
-    const warmupStart = Math.max(0, startFrame - WARMUP_FRAMES);
-    for (let frame = warmupStart; frame < startFrame; frame++) {
-      if (signal.aborted) return;
-      await page.evaluate(
-        (f: number, fpsVal: number) => {
-          (window as any).animationController.setFrame(f, fpsVal);
-        },
-        frame,
-        fps,
-      );
-    }
-  }
-
   for (let frame = startFrame; frame < endFrame; frame++) {
     if (signal.aborted) return;
 
@@ -190,12 +167,18 @@ export async function parallelCapture(opts: ParallelCaptureOptions): Promise<{ t
       onProgress(capturedCount, totalFrames);
     };
 
-    // Divide frames into contiguous chunks
-    const framesPerTab = Math.ceil(totalFrames / numTabs);
+    // Get chunk boundaries that avoid splitting mid-scroll-transition.
+    // Returns [0, split1, split2, ..., totalFrames].
+    const boundaries: number[] = await tabs[0].page.evaluate(
+      (n: number) => (window as any).animationController.getChunkBoundaries(n),
+      numTabs,
+    );
+    console.log(`[parallelCapture] Chunk boundaries: ${boundaries.join(', ')}`);
+
     const capturePromises = tabs.map((tab, i) => {
-      const startFrame = i * framesPerTab;
-      const endFrame = Math.min(startFrame + framesPerTab, totalFrames);
-      if (startFrame >= totalFrames) return Promise.resolve();
+      const startFrame = boundaries[i];
+      const endFrame = boundaries[i + 1];
+      if (startFrame >= endFrame) return Promise.resolve();
 
       return captureChunk(
         tab.page,
