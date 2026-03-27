@@ -14,8 +14,8 @@ import { SaveIndicator } from "./components/SaveIndicator";
 import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
 import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
-import { requestExport } from "./lib/exportClient";
 import type { ExportSettings } from "./lib/exportClient";
+import { clientExport } from "./lib/clientExport";
 import { auth } from "./lib/firebase-client";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
@@ -292,12 +292,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     error: null,
     downloadUrl: null,
   });
-  const wsRef = useRef<WebSocket | null>(null);
+  const exportAbortRef = useRef<AbortController | null>(null);
 
-  // Cleanup WebSocket on unmount
+  // Cancel export on unmount
   useEffect(() => {
     return () => {
-      wsRef.current?.close();
+      exportAbortRef.current?.abort();
     };
   }, []);
 
@@ -357,6 +357,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       downloadUrl: null,
     });
 
+    // AbortController for cancellation
+    const abortController = new AbortController();
+    exportAbortRef.current = abortController;
+
     try {
       const settings: ExportSettings = {
         fps,
@@ -388,128 +392,64 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         });
       }
 
-      // If background was loaded from Storage (no local File), fetch it as a Blob
-      let bgFileForExport = bgFile;
-      if (!bgFileForExport && bgUrl) {
-        const bgRes = await fetch(bgUrl);
-        const bgBlob = await bgRes.blob();
-        bgFileForExport = new File([bgBlob], bgFileName || "background.jpg", {
-          type: bgBlob.type,
-        });
-      }
-
-      const backendUrl =
-        process.env.NEXT_PUBLIC_EXPORT_SERVICE_URL || "http://localhost:3001";
-      const response = await requestExport(
-        {
-          settings,
-          syncAnchors: anchors,
-          musicXmlContent: musicXMLFile.xml,
-          musicXmlFilename: musicXMLFile.name,
-          audioFile: audioFileForExport!,
-          bgImageFile: bgFileForExport || undefined,
+      // Client-side export: render + encode entirely in the browser
+      const mp4Blob = await clientExport({
+        musicXml: musicXMLFile.xml,
+        syncAnchors: anchors,
+        settings,
+        audioFile: audioFileForExport!,
+        bgImageUrl: bgUrl || undefined,
+        signal: abortController.signal,
+        onProgress: (percent, stage) => {
+          setExportState((prev) => ({
+            ...prev,
+            status: percent < 100 ? "rendering" : "complete",
+            percent,
+            stage,
+          }));
         },
-        backendUrl,
-      );
+      });
 
+      // Store blob URL for download
+      const downloadUrl = URL.createObjectURL(mp4Blob);
       setExportState((prev) => ({
         ...prev,
-        status: "rendering",
-        jobId: response.jobId,
+        status: "complete",
+        percent: 100,
+        downloadUrl,
       }));
-
-      const exportUrl = process.env.NEXT_PUBLIC_EXPORT_SERVICE_URL || "http://localhost:3001";
-      const wsBase = exportUrl.replace(/^http/, "ws");
-      const wsToken = await auth.currentUser?.getIdToken();
-      const wsUrl = wsToken
-        ? `${wsBase}/api/export/${response.jobId}/ws?token=${encodeURIComponent(wsToken)}`
-        : `${wsBase}/api/export/${response.jobId}/ws`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setExportState((prev) => {
-          const next = { ...prev };
-          // Handle all backend event types
-          if (data.type === "sync") {
-            next.percent = data.percent ?? prev.percent;
-            next.stage = data.stage ?? prev.stage;
-            next.error = data.error ?? prev.error;
-            next.downloadUrl = data.downloadUrl ?? prev.downloadUrl;
-            if (data.status === "complete") next.status = "complete";
-            else if (data.status === "error" || data.status === "failed")
-              next.status = "error";
-            else if (data.status === "cancelled") next.status = "cancelled";
-            else if (data.status === "encoding") next.status = "encoding";
-            else if (data.status === "rendering") next.status = "rendering";
-          } else if (data.type === "progress") {
-            next.percent = data.percent ?? prev.percent;
-            next.stage = "capturing";
-          } else if (data.type === "stage") {
-            next.stage = data.stage ?? prev.stage;
-            if (data.stage === "encoding") next.status = "encoding";
-          } else if (data.type === "complete") {
-            next.status = "complete";
-            next.percent = 100;
-            next.downloadUrl = data.downloadUrl ?? prev.downloadUrl;
-          } else if (data.type === "error") {
-            next.status = "error";
-            next.error = data.error ?? "Export failed";
-          } else if (data.type === "cancelled") {
-            next.status = "cancelled";
-          }
-          return next;
-        });
-      };
-
-      ws.onerror = () => {
+    } catch (err) {
+      if (abortController.signal.aborted) {
+        setExportState((prev) => ({ ...prev, status: "cancelled" }));
+      } else {
         setExportState((prev) => ({
           ...prev,
           status: "error",
-          error: "Connection lost",
+          error: (err as Error).message,
         }));
-      };
-
-      ws.onclose = () => {
-        wsRef.current = null;
-      };
-    } catch (err) {
-      setExportState((prev) => ({
-        ...prev,
-        status: "error",
-        error: (err as Error).message,
-      }));
+      }
+    } finally {
+      exportAbortRef.current = null;
     }
   };
 
   const handleCancelExport = () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "cancel" }));
-    }
+    exportAbortRef.current?.abort();
   };
 
   const handleDownload = async () => {
     if (exportState.downloadUrl) {
-      const base =
-        process.env.NEXT_PUBLIC_EXPORT_SERVICE_URL || "http://localhost:3001";
-      const token = await auth.currentUser?.getIdToken();
-      const res = await fetch(`${base}${exportState.downloadUrl}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = exportState.downloadUrl;
       a.download = "export.mp4";
       a.click();
-      URL.revokeObjectURL(url);
     }
   };
 
   const resetExport = () => {
-    wsRef.current?.close();
-    wsRef.current = null;
+    exportAbortRef.current?.abort();
+    exportAbortRef.current = null;
+    if (exportState.downloadUrl) URL.revokeObjectURL(exportState.downloadUrl);
     setExportState({
       status: "idle",
       jobId: null,

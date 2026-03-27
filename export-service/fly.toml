@@ -12,9 +12,9 @@ primary_region = "iad"
 [env]
   NODE_ENV = "production"
   PORT = "8080"
-  PARALLEL_TABS = "4"
+  PARALLEL_TABS = "8"
   MAX_BROWSERS = "2"
-  CORS_ORIGIN = "https://manuscript.app"
+  # CORS_ORIGIN = "https://your-frontend-domain.com"  # Set when you have a production domain
 
 [http_service]
   internal_port = 8080
@@ -36,5 +36,5 @@ primary_region = "iad"
   timeout = "5s"
 
 [[vm]]
-  size = "shared-cpu-4x"
-  memory = "4gb"
+  size = "performance-4x"
+  memory = "8gb"

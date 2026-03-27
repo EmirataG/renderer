@@ -13,7 +13,7 @@ interface EncoderProfile {
 
 const SW_PROFILE: EncoderProfile = {
   codec: 'libx264',
-  flags: ['-preset', 'veryfast', '-crf', '23'],
+  flags: ['-preset', 'ultrafast', '-crf', '23'],
 };
 
 /** Ordered preference: VideoToolbox (macOS) > NVENC (NVIDIA) > QSV (Intel) > software */
