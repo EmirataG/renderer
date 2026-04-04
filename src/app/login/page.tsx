@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "./client";
+import { SystemRequirementsButton } from "./system-requirements";
 import { ScrollArrow } from "./scroll-arrow";
 import Image from "next/image";
 
@@ -55,6 +56,9 @@ export default async function LoginPage() {
 
           {/* Sign-in */}
           <GoogleSignInButton />
+
+          {/* System requirements link */}
+          <SystemRequirementsButton />
         </div>
 
         {/* Scroll arrow */}
