@@ -96,6 +96,12 @@ function reorderNoteheadsInSvgString(svgString: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgString, 'image/svg+xml');
   if (doc.querySelector('parsererror')) return svgString;
+  doc.querySelectorAll('g.staff').forEach((staff) => {
+    const parent = staff.parentElement;
+    if (parent && parent.firstElementChild !== staff) {
+      parent.insertBefore(staff, parent.firstElementChild);
+    }
+  });
   doc.querySelectorAll('g.stem').forEach((stem) => {
     const parent = stem.parentElement;
     if (parent && parent.firstElementChild !== stem) {
@@ -255,7 +261,7 @@ function computeEventPositions(
       ? firstContainer.getBoundingClientRect().width / firstContainer.clientWidth
       : 1;
 
-  return timemapEvents.map((event) => {
+  const results = timemapEvents.map((event) => {
     if (event.svgIds.length === 0) return { id: event.id, globalY: 0 };
 
     const pageNum = toolkit.getPageWithElement(event.svgIds[0]);
@@ -279,6 +285,16 @@ function computeEventPositions(
     const localY = (noteRect.top - containerRect.top + noteRect.height / 2) / domScale;
     return { id: event.id, globalY: pageOffsets[pageIndex] + localY };
   });
+
+  // Enforce monotonically non-decreasing globalY. The camera should only
+  // scroll down during playback — never jump backwards to an earlier system.
+  for (let i = 1; i < results.length; i++) {
+    if (results[i].globalY < results[i - 1].globalY) {
+      results[i].globalY = results[i - 1].globalY;
+    }
+  }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,17 +386,21 @@ function setDefaultFillOnUseElements(svgEl: Element, scoreColor: string): void {
   });
 }
 
+/** Drawable source for canvas — either an Image or ImageBitmap. */
+type CanvasImageSource = HTMLImageElement | ImageBitmap;
+
 /**
- * Render an SVG page element to a drawable Image.
- * Serializes the live SVG (with animation state applied), ensures
- * explicit width/height (required for rasterization), and loads
- * via data URL for maximum browser compatibility.
+ * Render an SVG page element to a drawable image.
+ *
+ * Uses Blob URL instead of data URL to avoid the expensive
+ * encodeURIComponent call on large SVG strings.
  */
 async function svgPageToImage(
   pageContainer: HTMLElement,
   scoreColor: string,
   width: number,
-): Promise<HTMLImageElement> {
+  rasterScale: number,
+): Promise<CanvasImageSource> {
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
 
@@ -395,24 +415,34 @@ async function svgPageToImage(
     svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
   }
 
-  // Ensure explicit width/height (Verovio may only set viewBox).
-  // Extract height from the SVG or viewBox, set width to the score region width.
-  if (!svgString.match(/\swidth="[^"]+"/)) {
-    const vbMatch = svgString.match(VIEWBOX_REGEX);
-    const h = vbMatch ? parseFloat(vbMatch[4]) : 1000;
-    const w = vbMatch ? parseFloat(vbMatch[3]) : width;
-    svgString = svgString.replace(
-      /<svg([^>]*)>/,
-      `<svg$1 width="${w}" height="${h}">`,
-    );
-  }
+  // Set width/height to the final output pixel dimensions so the browser
+  // rasterizes the SVG at full resolution. The viewBox (SVG coordinate
+  // space) is preserved — the vector content scales up to fill the
+  // larger pixel grid, giving crisp output at 4K.
+  const vbMatch = svgString.match(VIEWBOX_REGEX);
+  const vbW = vbMatch ? parseFloat(vbMatch[3]) : width;
+  const vbH = vbMatch ? parseFloat(vbMatch[4]) : 1000;
+  const pixelW = Math.round(vbW * rasterScale);
+  const pixelH = Math.round(vbH * rasterScale);
+  // Strip existing width/height then inject scaled dimensions
+  svgString = svgString.replace(/\s(width|height)="[^"]*"/g, '');
+  svgString = svgString.replace(
+    /<svg([^>]*)>/,
+    `<svg$1 width="${pixelW}" height="${pixelH}">`,
+  );
 
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Failed to decode SVG page'));
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
-  });
+  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to decode SVG page'));
+      img.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -445,8 +475,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // ── 1. Compute layout constants ───────────────────────────────────
   // Derive viewport dimensions from background image (matching preview behavior)
-  let viewportWidth = 1920;
-  let viewportHeight = 1080;
+  let viewportWidth = 3840;
+  let viewportHeight = 2160;
   if (bgImageUrl) {
     const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
       const img = new Image();
@@ -454,8 +484,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       img.onerror = () => reject(new Error('Failed to load background image for dimensions'));
       img.src = bgImageUrl;
     });
-    // Cap longest side to 1920 (preserving aspect ratio)
-    const MAX_DIM = 1920;
+    // Cap longest side to 3840 for 4K (preserving aspect ratio)
+    const MAX_DIM = 3840;
     if (dims.w > MAX_DIM || dims.h > MAX_DIM) {
       const scale = MAX_DIM / Math.max(dims.w, dims.h);
       dims.w = Math.round(dims.w * scale);
@@ -650,6 +680,15 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     svgIds: evt.svgIds,
   }));
 
+  // Build event→page index for dirty tracking during frame loop.
+  // Maps each event index to the page (0-based) containing its first note.
+  const eventPageIndex: number[] = interpolated.map((evt) => {
+    const svgId = evt.svgIds[0];
+    if (!svgId) return -1;
+    const pageNum = toolkit.getPageWithElement(svgId);
+    return pageNum > 0 ? pageNum - 1 : -1;
+  });
+
   // ── 6. Setup animation ────────────────────────────────────────────
   const animState: AnimationState = createAnimationState();
   const animConfig: AnimationConfig = {
@@ -704,6 +743,23 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     bottomBorderImg = await loadSvgImg(generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'bottom'));
   }
 
+  // Pre-rasterize all SVG pages into a cache. During the frame loop,
+  // only pages with active notehead animations are re-rasterized.
+  const pageCache: (CanvasImageSource | null)[] = [];
+  for (let p = 0; p < pageContainers.length; p++) {
+    pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
+  }
+
+  // Start audio decoding in parallel with video frame rendering.
+  // AudioContext.decodeAudioData runs on a separate browser thread.
+  const audioBufferPromise = (async () => {
+    const buf = await audioFile.arrayBuffer();
+    const audioCtx = new AudioContext({ sampleRate: 44100 });
+    const decoded = await audioCtx.decodeAudioData(buf);
+    await audioCtx.close();
+    return decoded;
+  })();
+
   // ── 8. Frame capture loop ─────────────────────────────────────────
   onProgress(0, 'Rendering frames...');
 
@@ -714,7 +770,16 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
     // Apply animation state (sets SVG attributes on noteheads + camera translateY)
     applyAnimation(seconds, events, animState, animConfig, cameraEl, scoreEl);
-    void scoreEl.offsetHeight; // force reflow
+
+    // Determine which pages had noteheads modified (reset or animated)
+    // so only those pages need re-rasterization.
+    const dirtyPages = new Set<number>();
+    if (animState.prevActiveRange) {
+      for (let i = animState.prevActiveRange.start; i <= animState.prevActiveRange.end; i++) {
+        const pg = eventPageIndex[i];
+        if (pg >= 0) dirtyPages.add(pg);
+      }
+    }
 
     // Clear canvas
     ctx.clearRect(0, 0, viewportWidth, viewportHeight);
@@ -740,7 +805,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     ctx.rect(0, 0, regionWidth, regionHeight);
     ctx.clip();
 
-    // Draw each page at its offset, shifted by camera
+    // Draw each page at its offset, shifted by camera.
+    // Only re-rasterize pages with active notehead animations; reuse cache otherwise.
     const cameraY = animState.cameraY;
     for (let p = 0; p < pageContainers.length; p++) {
       const pageY = pageOffsets[p] - cameraY;
@@ -749,8 +815,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       // Skip pages entirely outside the viewport
       if (pageY + pageH < 0 || pageY > regionHeight) continue;
 
-      const img = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth);
-      ctx.drawImage(img, 0, pageY, regionWidth, pageH);
+      if (dirtyPages.has(p)) {
+        pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
+      }
+      if (pageCache[p]) {
+        ctx.drawImage(pageCache[p]!, 0, pageY, regionWidth, pageH);
+      }
     }
 
     // Draw borders (on top of clipped region)
@@ -771,8 +841,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     }
     ctx.restore();
 
-    // Encode frame
-    exporter.addFrame(canvas);
+    // Encode frame (async — respects encoder backpressure)
+    await exporter.addFrame(canvas);
 
     // Report progress
     if (frame % 10 === 0 || frame === totalFrames - 1) {
@@ -785,10 +855,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // ── 9. Encode audio ───────────────────────────────────────────────
   onProgress(92, 'Encoding audio...');
 
-  const audioArrayBuffer = await audioFile.arrayBuffer();
-  const audioCtx = new AudioContext({ sampleRate: 44100 });
-  const audioBuffer = await audioCtx.decodeAudioData(audioArrayBuffer);
-  await audioCtx.close();
+  const audioBuffer = await audioBufferPromise;
   await exporter.addAudio(audioBuffer);
 
   // ── 10. Finalize MP4 ──────────────────────────────────────────────

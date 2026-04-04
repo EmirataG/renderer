@@ -158,6 +158,16 @@ export function animateNoteheads(
 export function reorderNoteheadsAboveStems(root: HTMLElement | null): void {
   if (!root) return;
 
+  // Move staff line groups to be the first child of their parent so they
+  // paint behind all other elements (notes, beams, etc.).
+  const staffGroups = root.querySelectorAll<SVGGElement>('g.staff');
+  staffGroups.forEach((staff) => {
+    const parent = staff.parentElement;
+    if (parent && parent.firstElementChild !== staff) {
+      parent.insertBefore(staff, parent.firstElementChild);
+    }
+  });
+
   // Move stems to be the first child of their parent so they paint first.
   // This handles chord-level stems (g.chord > g.stem) that would otherwise
   // paint over all g.note children, as well as note-level stems.
@@ -193,6 +203,14 @@ export function reorderNoteheadsInSvgString(svgString: string): string {
   // Check for parse errors
   const parseError = doc.querySelector('parsererror');
   if (parseError) return svgString;
+
+  // Move staff line groups to first child so they paint behind everything
+  doc.querySelectorAll('g.staff').forEach((staff) => {
+    const parent = staff.parentElement;
+    if (parent && parent.firstElementChild !== staff) {
+      parent.insertBefore(staff, parent.firstElementChild);
+    }
+  });
 
   // Move stems to first child
   doc.querySelectorAll('g.stem').forEach((stem) => {

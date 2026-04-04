@@ -14,6 +14,7 @@ export interface EncoderOptions {
 }
 
 export class VideoExporter {
+  private static readonly MAX_QUEUE = 5;
   private muxer: Muxer<ArrayBufferTarget>;
   private videoEncoder: VideoEncoder;
   private frameIndex = 0;
@@ -43,20 +44,32 @@ export class VideoExporter {
       error: (e) => { throw new Error(`VideoEncoder error: ${e.message}`); },
     });
 
+    // Scale bitrate with resolution: 50Mbps for 4K, 20Mbps for 1080p
+    const pixels = options.width * options.height;
+    const bitrate = pixels > 1920 * 1080 ? 50_000_000 : 20_000_000;
+
     this.videoEncoder.configure({
-      codec: 'avc1.640033', // H.264 High Profile Level 5.1
+      codec: 'avc1.640033', // H.264 High Profile Level 5.1 (supports 4K@30fps)
       width: options.width,
       height: options.height,
-      bitrate: 20_000_000,
+      bitrate,
       framerate: options.fps,
     });
   }
 
   /**
    * Encode a single frame from a canvas element.
-   * Timestamp is derived from frameIndex / fps.
+   * Respects encoder backpressure — waits if the queue is too deep.
    */
-  addFrame(canvas: HTMLCanvasElement | OffscreenCanvas): void {
+  async addFrame(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void> {
+    // Backpressure: wait for encoder to drain before queuing more frames.
+    // Prevents unbounded memory growth, especially at 4K.
+    while (this.videoEncoder.encodeQueueSize > VideoExporter.MAX_QUEUE) {
+      await new Promise<void>((resolve) => {
+        this.videoEncoder.addEventListener('dequeue', () => resolve(), { once: true });
+      });
+    }
+
     const timestampUs = (this.frameIndex / this.fps) * 1_000_000;
     const frame = new VideoFrame(canvas, { timestamp: timestampUs });
     this.videoEncoder.encode(frame, { keyFrame: this.frameIndex % 60 === 0 });

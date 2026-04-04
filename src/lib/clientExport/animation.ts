@@ -298,5 +298,4 @@ export function setTimestamp(
   }
 
   state.prevActiveRange = { start: firstActiveIndex, end: currentIndex };
-  void scoreEl.offsetHeight;
 }

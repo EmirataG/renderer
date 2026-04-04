@@ -278,9 +278,13 @@ export default memo(function RegularRenderer({
       }
     });
 
-    // Camera starts at top
-    currentYRef.current = 0;
-    applyCamera(0);
+    // Reset camera to top only on initial load, not during playback.
+    // Dependencies like containerWidth/pageOffsets can change mid-playback
+    // (e.g., background image load, resize) which would yank the camera to 0.
+    if (!isPlaying) {
+      currentYRef.current = 0;
+      applyCamera(0);
+    }
   }, [svgPages, svgPagesRef, toolkit, pageOffsets, setEventsInStore, containerWidth]);
 
   /* ---------------- score color and styling ---------------- */

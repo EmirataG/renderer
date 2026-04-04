@@ -157,6 +157,14 @@ export function getEventsFromVerovio(
     }
   }
 
+  // Enforce monotonically non-decreasing Y. The camera should only scroll
+  // down during playback — never jump backwards to an earlier system.
+  for (let i = 1; i < events.length; i++) {
+    if (events[i].y < events[i - 1].y) {
+      events[i].y = events[i - 1].y;
+    }
+  }
+
   return events;
 }
 
@@ -280,6 +288,14 @@ export function computeEventPositions(
       const noteRect = noteEl.getBoundingClientRect();
       const localY = (noteRect.top - containerRect.top + noteRect.height / 2) / domScale;
       event.globalY = pageOffsets[pageIndex] + localY;
+    }
+  }
+
+  // Enforce monotonically non-decreasing globalY. The camera should only
+  // scroll down during playback — never jump backwards to an earlier system.
+  for (let i = 1; i < cachedEvents.length; i++) {
+    if (cachedEvents[i].globalY < cachedEvents[i - 1].globalY) {
+      cachedEvents[i].globalY = cachedEvents[i - 1].globalY;
     }
   }
 
