@@ -14,8 +14,7 @@ import { SaveIndicator } from "./components/SaveIndicator";
 import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
 import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
-import type { ExportSettings } from "./lib/exportClient";
-import { clientExport } from "./lib/clientExport";
+import { clientExport, type ExportSettings } from "./lib/clientExport";
 import { auth } from "./lib/firebase-client";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
@@ -279,14 +278,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       | "complete"
       | "error"
       | "cancelled";
-    jobId: string | null;
     percent: number;
     stage: string | null;
     error: string | null;
     downloadUrl: string | null;
   }>({
     status: "idle",
-    jobId: null,
     percent: 0,
     stage: null,
     error: null,
@@ -350,7 +347,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
     setExportState({
       status: "uploading",
-      jobId: null,
       percent: 0,
       stage: "Uploading...",
       error: null,
@@ -452,7 +448,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     if (exportState.downloadUrl) URL.revokeObjectURL(exportState.downloadUrl);
     setExportState({
       status: "idle",
-      jobId: null,
       percent: 0,
       stage: null,
       error: null,

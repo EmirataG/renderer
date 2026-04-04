@@ -25,7 +25,30 @@ import {
   type BorderStyle,
 } from './borders';
 import { VideoExporter } from './encode';
-import type { ExportSettings } from '../exportClient';
+import type { ScoreRegion } from '../../types/score';
+
+/**
+ * Settings for a video export job.
+ */
+export interface ExportSettings {
+  fps: number;
+  scoreColor: string;
+  scoreShadowDistance: number;
+  hideUnplayedNotes: boolean;
+  smoothReveal: boolean;
+  scoreRegion: ScoreRegion | null;
+  scoreBorder: BorderStyle;
+  scoreScale: number;
+  musicFont: 'Bravura' | 'Petaluma' | 'Leland' | 'Gootville' | 'Leipzig';
+  activeNoteheadColor: string | null;
+  activeNoteheadScale: number;
+  activeNoteheadEntryMs: number;
+  activeNoteheadHoldMs: number;
+  activeNoteheadExitMs: number;
+  colorFullNote: boolean;
+  hideLabels: boolean;
+  audioDuration?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Constants
