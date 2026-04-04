@@ -122,7 +122,32 @@ interface TimemapEvent {
   svgIds: string[];
 }
 
+/**
+ * Filter out tied continuation notes (tie="t" terminal or "m" medial).
+ */
+/**
+ * Build a Set of note xml:ids that are tie continuations by parsing MEI.
+ * Verovio encodes ties as separate <tie startid="#X" endid="#Y"/> elements.
+ * Any note referenced by @endid is a continuation and should not be highlighted.
+ */
+function buildTiedContinuationSet(toolkit: any): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const mei = toolkit.getMEI();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(mei, 'application/xml');
+    doc.querySelectorAll('tie').forEach((el: Element) => {
+      const endid = el.getAttribute('endid');
+      if (endid) ids.add(endid.replace(/^#/, ''));
+    });
+  } catch {
+    // Fall through with empty set
+  }
+  return ids;
+}
+
 function extractTimemapEvents(toolkit: any): TimemapEvent[] {
+  const tiedIds = buildTiedContinuationSet(toolkit);
   const timemap = toolkit.renderToTimemap();
   const onsetEntries = timemap.filter(
     (entry: any) => entry.on && entry.on.length > 0,
@@ -132,7 +157,7 @@ function extractTimemapEvents(toolkit: any): TimemapEvent[] {
       id: `evt-${index}`,
       beatOnset: entry.qstamp / 4,
       beatDuration: 0,
-      svgIds: entry.on!,
+      svgIds: (entry.on as string[]).filter((id) => !tiedIds.has(id)),
     }),
   );
   for (let i = 0; i < events.length - 1; i++) {

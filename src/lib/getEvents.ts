@@ -27,12 +27,46 @@ export interface MusicalEventWithY extends MusicalEvent {
  * @param svgContainer - DOM element containing the rendered Verovio SVG
  * @returns Array of musical events with Y positions for camera scrolling
  */
+/**
+ * Filter out tied continuation notes (tie="t" terminal or "m" medial).
+ * These notes are not re-struck and should not be highlighted.
+ */
+/**
+ * Build a Set of note xml:ids that are tie continuations (tie="t" or "m")
+ * by parsing the MEI output. getElementAttr() doesn't expose tie info.
+ */
+/**
+ * Build a Set of note xml:ids that are tie continuations by parsing MEI.
+ * Verovio encodes ties as separate <tie startid="#X" endid="#Y"/> elements.
+ * Any note referenced by @endid is a continuation and should not be highlighted.
+ * Notes that appear as both @endid AND @startid (middle of a chain) are also continuations.
+ */
+function buildTiedContinuationSet(toolkit: VerovioToolkit): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const mei = toolkit.getMEI();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(mei, 'application/xml');
+    doc.querySelectorAll('tie').forEach((el) => {
+      const endid = el.getAttribute('endid');
+      // endid is prefixed with "#", strip it to match svgId
+      if (endid) ids.add(endid.replace(/^#/, ''));
+    });
+  } catch {
+    // Fall through with empty set
+  }
+  return ids;
+}
+
 export function getEventsFromVerovio(
   toolkit: VerovioToolkit,
   svgContainer: HTMLElement,
   pageContainers?: HTMLElement[],
   pageOffsets?: number[]
 ): MusicalEventWithY[] {
+  // Build set of tied continuation note IDs from MEI
+  const tiedIds = buildTiedContinuationSet(toolkit);
+
   // Get the full timemap from Verovio (rests excluded by default)
   const timemap = toolkit.renderToTimemap();
 
@@ -41,12 +75,12 @@ export function getEventsFromVerovio(
     (entry) => entry.on && entry.on.length > 0
   );
 
-  // Build MusicalEvent array from onset entries
+  // Build MusicalEvent array from onset entries, excluding tied continuations
   const events: MusicalEventWithY[] = onsetEntries.map((entry, index) => ({
     id: `evt-${index}`,
     beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
     beatDuration: 0, // Calculated below
-    svgIds: entry.on!, // Verovio note xml:id values match SVG DOM id attributes directly
+    svgIds: entry.on!.filter((id) => !tiedIds.has(id)),
     x: 0, // Not used for vertical camera scrolling
     y: 0, // Calculated below from DOM
   }));
@@ -154,6 +188,9 @@ export interface TimemapEvent {
  * @returns Array of timemap events (no position data yet)
  */
 export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
+  // Build set of tied continuation note IDs from MEI
+  const tiedIds = buildTiedContinuationSet(toolkit);
+
   // Get the full timemap from Verovio (rests excluded by default)
   const timemap = toolkit.renderToTimemap();
 
@@ -162,12 +199,12 @@ export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
     (entry) => entry.on && entry.on.length > 0
   );
 
-  // Build TimemapEvent array from onset entries
+  // Build TimemapEvent array from onset entries, excluding tied continuations
   const events: TimemapEvent[] = onsetEntries.map((entry, index) => ({
     id: `evt-${index}`,
     beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
     beatDuration: 0, // Calculated below
-    svgIds: entry.on!, // Verovio note xml:id values
+    svgIds: entry.on!.filter((id) => !tiedIds.has(id)),
   }));
 
   // Calculate beatDuration for each event
