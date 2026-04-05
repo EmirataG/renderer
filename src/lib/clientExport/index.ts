@@ -45,6 +45,7 @@ export interface ExportSettings {
   activeNoteheadEntryMs: number;
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
+  activeNoteheadUseNoteDuration: boolean;
   colorFullNote: boolean;
   hideLabels: boolean;
   audioDuration?: number;
@@ -126,34 +127,86 @@ interface TimemapEvent {
   beatOnset: number;
   beatDuration: number;
   svgIds: string[];
+  tiedContinuationIds?: string[];
+  noteDurationBeats?: number;
+}
+
+interface TieChainInfo {
+  continuationIds: string[];
+  totalDurationBeats: number;
 }
 
 /**
- * Filter out tied continuation notes (tie="t" terminal or "m" medial).
+ * Build tie information from MEI: continuation IDs, tie chain map, and per-note durations.
  */
-/**
- * Build a Set of note xml:ids that are tie continuations by parsing MEI.
- * Verovio encodes ties as separate <tie startid="#X" endid="#Y"/> elements.
- * Any note referenced by @endid is a continuation and should not be highlighted.
- */
-function buildTiedContinuationSet(toolkit: any): Set<string> {
-  const ids = new Set<string>();
+function buildTieInfo(toolkit: any): {
+  continuationIds: Set<string>;
+  chainMap: Map<string, TieChainInfo>;
+  noteDurations: Map<string, number>;
+} {
+  const continuationIds = new Set<string>();
+  const chainMap = new Map<string, TieChainInfo>();
+  const noteDurations = new Map<string, number>();
+
   try {
     const mei = toolkit.getMEI();
     const parser = new DOMParser();
     const doc = parser.parseFromString(mei, 'application/xml');
-    doc.querySelectorAll('tie').forEach((el: Element) => {
-      const endid = el.getAttribute('endid');
-      if (endid) ids.add(endid.replace(/^#/, ''));
+
+    doc.querySelectorAll('note').forEach((noteEl: Element) => {
+      const id = noteEl.getAttribute('xml:id');
+      if (!id) return;
+      let dur = noteEl.getAttribute('dur');
+      let dots = noteEl.getAttribute('dots');
+      if (!dur) {
+        const parent = noteEl.parentElement;
+        if (parent && parent.tagName === 'chord') {
+          dur = parent.getAttribute('dur');
+          if (!dots) dots = parent.getAttribute('dots');
+        }
+      }
+      const durNum = parseInt(dur || '4', 10);
+      const dotsNum = parseInt(dots || '0', 10);
+      const dotMultiplier = dotsNum > 0 ? (2 - 1 / Math.pow(2, dotsNum)) : 1;
+      noteDurations.set(id, (1 / durNum) * dotMultiplier);
     });
+
+    const tieForward = new Map<string, string>();
+    const tieEndIds = new Set<string>();
+    doc.querySelectorAll('tie').forEach((el: Element) => {
+      const startid = el.getAttribute('startid')?.replace(/^#/, '');
+      const endid = el.getAttribute('endid')?.replace(/^#/, '');
+      if (startid && endid) {
+        tieForward.set(startid, endid);
+        tieEndIds.add(endid);
+        continuationIds.add(endid);
+      }
+    });
+
+    for (const [startId] of tieForward) {
+      if (tieEndIds.has(startId)) continue;
+      const chainContIds: string[] = [];
+      let totalDur = noteDurations.get(startId) || 0.25;
+      let current = startId;
+      while (tieForward.has(current)) {
+        const next = tieForward.get(current)!;
+        chainContIds.push(next);
+        totalDur += noteDurations.get(next) || 0.25;
+        current = next;
+      }
+      if (chainContIds.length > 0) {
+        chainMap.set(startId, { continuationIds: chainContIds, totalDurationBeats: totalDur });
+      }
+    }
   } catch {
-    // Fall through with empty set
+    // Fall through
   }
-  return ids;
+
+  return { continuationIds, chainMap, noteDurations };
 }
 
 function extractTimemapEvents(toolkit: any): TimemapEvent[] {
-  const tiedIds = buildTiedContinuationSet(toolkit);
+  const tieInfo = buildTieInfo(toolkit);
   const timemap = toolkit.renderToTimemap();
   const onsetEntries = timemap.filter(
     (entry: any) => entry.on && entry.on.length > 0,
@@ -163,7 +216,7 @@ function extractTimemapEvents(toolkit: any): TimemapEvent[] {
       id: `evt-${index}`,
       beatOnset: entry.qstamp / 4,
       beatDuration: 0,
-      svgIds: (entry.on as string[]).filter((id) => !tiedIds.has(id)),
+      svgIds: (entry.on as string[]).filter((id) => !tieInfo.continuationIds.has(id)),
     }),
   );
   for (let i = 0; i < events.length - 1; i++) {
@@ -172,6 +225,25 @@ function extractTimemapEvents(toolkit: any): TimemapEvent[] {
   if (events.length > 0) {
     events[events.length - 1].beatDuration = 1;
   }
+
+  // Populate tie chain info
+  for (const event of events) {
+    const allTiedIds: string[] = [];
+    let maxDuration = 0;
+    for (const id of event.svgIds) {
+      const chain = tieInfo.chainMap.get(id);
+      if (chain) {
+        allTiedIds.push(...chain.continuationIds);
+        maxDuration = Math.max(maxDuration, chain.totalDurationBeats);
+      } else {
+        const dur = tieInfo.noteDurations.get(id);
+        if (dur !== undefined) maxDuration = Math.max(maxDuration, dur);
+      }
+    }
+    if (allTiedIds.length > 0) event.tiedContinuationIds = allTiedIds;
+    if (maxDuration > 0) event.noteDurationBeats = maxDuration;
+  }
+
   return events;
 }
 
@@ -678,7 +750,42 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     computedTimestamp: evt.computedTimestamp,
     y: yMap.get(evt.id) ?? 0,
     svgIds: evt.svgIds,
+    tiedContinuationIds: evt.tiedContinuationIds,
   }));
+
+  // Precompute holdSeconds for "use note duration" mode
+  if (settings.activeNoteheadUseNoteDuration) {
+    for (let i = 0; i < events.length; i++) {
+      const tmEvt = interpolated[i];
+      if (tmEvt.noteDurationBeats && tmEvt.noteDurationBeats > 0) {
+        const endBeat = tmEvt.beatOnset + tmEvt.noteDurationBeats;
+        let holdSec = 0;
+        for (let j = i + 1; j < interpolated.length; j++) {
+          if (interpolated[j].beatOnset >= endBeat) {
+            const prev = interpolated[j - 1];
+            const next = interpolated[j];
+            const range = next.beatOnset - prev.beatOnset;
+            if (range > 0) {
+              const t = (endBeat - prev.beatOnset) / range;
+              holdSec = (prev.computedTimestamp + t * (next.computedTimestamp - prev.computedTimestamp)) - tmEvt.computedTimestamp;
+            } else {
+              holdSec = next.computedTimestamp - tmEvt.computedTimestamp;
+            }
+            break;
+          }
+        }
+        if (holdSec <= 0 && interpolated.length >= 2) {
+          const last = interpolated[interpolated.length - 1];
+          const prev = interpolated[interpolated.length - 2];
+          const range = last.beatOnset - prev.beatOnset;
+          if (range > 0) {
+            holdSec = tmEvt.noteDurationBeats * ((last.computedTimestamp - prev.computedTimestamp) / range);
+          }
+        }
+        events[i].holdSeconds = holdSec;
+      }
+    }
+  }
 
   // Build event→page index for dirty tracking during frame loop.
   // Maps each event index to the page (0-based) containing its first note.
@@ -697,6 +804,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     activeNoteheadScale: settings.activeNoteheadScale ?? 1,
     activeNoteheadHoldMs: settings.activeNoteheadHoldMs ?? 200,
     activeNoteheadExitMs: settings.activeNoteheadExitMs ?? 200,
+    activeNoteheadUseNoteDuration: settings.activeNoteheadUseNoteDuration ?? false,
     colorFullNote: settings.colorFullNote ?? false,
     scoreRegionHeight: settings.scoreRegion?.height ?? null,
     containerHeight,

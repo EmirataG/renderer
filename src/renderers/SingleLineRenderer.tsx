@@ -4,7 +4,7 @@ import { useSingleLineVerovio } from "../hooks/useSingleLineVerovio";
 import { extractTimemapEvents, computeEventPositions, computeSectionPositions } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
-import { interpolateTimestamps } from "../lib/interpolation";
+import { interpolateTimestamps, computeNoteDurationSeconds } from "../lib/interpolation";
 import {
   initAnimationController,
   destroyAnimationController,
@@ -51,6 +51,7 @@ interface Props {
   activeNoteheadAnimationEntryMs?: number;
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
+  activeNoteheadUseNoteDuration?: boolean;
   colorFullNote?: boolean;
   // hide instrument labels (Verovio .label elements)
   hideLabels?: boolean;
@@ -73,6 +74,7 @@ export default function SingleLineRenderer({
   activeNoteheadAnimationEntryMs = 50,
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
+  activeNoteheadUseNoteDuration = false,
   colorFullNote = false,
   hideLabels = false,
 }: Props) {
@@ -94,7 +96,7 @@ export default function SingleLineRenderer({
   // Interpolated events with computed timestamps (when syncAnchors provided)
   // Includes `x` for camera positioning (mapped from globalX)
   const [interpolatedEvents, setInterpolatedEvents] = useState<
-    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean; x: number })[]
+    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean; x: number; holdSeconds?: number })[]
   >([]);
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -162,12 +164,23 @@ export default function SingleLineRenderer({
       const merged = interpolated.map((evt) => ({
         ...evt,
         x: xMap.get(evt.id) ?? 0,
+        holdSeconds: undefined as number | undefined,
       }));
+
+      // Precompute holdSeconds for "use note duration" mode
+      if (activeNoteheadUseNoteDuration) {
+        for (let i = 0; i < merged.length; i++) {
+          if (merged[i].noteDurationBeats && merged[i].noteDurationBeats! > 0) {
+            merged[i].holdSeconds = computeNoteDurationSeconds(i, merged);
+          }
+        }
+      }
+
       setInterpolatedEvents(merged);
     } else {
       setInterpolatedEvents([]);
     }
-  }, [events, syncAnchors]);
+  }, [events, syncAnchors, activeNoteheadUseNoteDuration]);
 
   /* ---------------- detect render mode ---------------- */
 
@@ -417,10 +430,18 @@ export default function SingleLineRenderer({
             ? sectionContainerRefs.current[sectionIndex]
             : scoreRef.current;
 
-          animateNoteheads(root, evt.svgIds, {
+          // "Use note duration" mode: per-event hold + animate tied continuation IDs
+          const holdMs = activeNoteheadUseNoteDuration && evt.holdSeconds !== undefined
+            ? evt.holdSeconds * 1000
+            : activeNoteheadAnimationHoldMs;
+          const idsToAnimate = activeNoteheadUseNoteDuration && evt.tiedContinuationIds?.length
+            ? [...evt.svgIds, ...evt.tiedContinuationIds]
+            : evt.svgIds;
+
+          animateNoteheads(root, idsToAnimate, {
             scale: activeNoteheadScale,
             entryMs: activeNoteheadAnimationEntryMs,
-            holdMs: activeNoteheadAnimationHoldMs,
+            holdMs,
             exitMs: activeNoteheadAnimationExitMs,
             color: activeNoteheadColor,
             colorFullNote,
@@ -625,11 +646,21 @@ export default function SingleLineRenderer({
       applyCamera(currentXRef.current);
 
       // For frame capture: delta-based animation (only touch changed DOM elements)
-      const holdSeconds = activeNoteheadAnimationHoldMs / 1000;
+      const globalHoldSeconds = activeNoteheadAnimationHoldMs / 1000;
       const exitSeconds = activeNoteheadAnimationExitMs / 1000;
-      const animDuration = holdSeconds + exitSeconds;
+      const useNoteDur = activeNoteheadUseNoteDuration;
 
       if (!scoreRef.current) return;
+
+      // Helper: get per-event hold seconds (note duration mode or global)
+      const getEventHoldSeconds = (evt: typeof evts[number] & { holdSeconds?: number }) =>
+        useNoteDur && evt.holdSeconds !== undefined ? evt.holdSeconds : globalHoldSeconds;
+
+      // Helper: get all SVG IDs to animate (include tied continuation IDs in note duration mode)
+      const getEventIds = (evt: typeof evts[number]) =>
+        useNoteDur && evt.tiedContinuationIds?.length
+          ? [...evt.svgIds, ...evt.tiedContinuationIds]
+          : evt.svgIds;
 
       // Find firstActiveIndex: scan backwards from currentIndex to find the
       // earliest event still within the animation window
@@ -637,7 +668,8 @@ export default function SingleLineRenderer({
       while (firstActiveIndex > 0) {
         const prevEvent = evts[firstActiveIndex - 1];
         const timeSincePrev = seconds - prevEvent.computedTimestamp;
-        if (timeSincePrev >= animDuration || !prevEvent.svgIds?.length) {
+        const prevAnimDuration = getEventHoldSeconds(prevEvent) + exitSeconds;
+        if (timeSincePrev >= prevAnimDuration || !prevEvent.svgIds?.length) {
           break;
         }
         firstActiveIndex--;
@@ -654,7 +686,7 @@ export default function SingleLineRenderer({
         for (let i = prev.start; i <= resetEnd; i++) {
           const evt = evts[i];
           if (evt.svgIds?.length) {
-            resetEventNoteheads(scoreRef.current, evt.svgIds, colorFullNote, elementCacheRef.current);
+            resetEventNoteheads(scoreRef.current, getEventIds(evt), colorFullNote, elementCacheRef.current);
           }
         }
       }
@@ -667,27 +699,31 @@ export default function SingleLineRenderer({
 
         if (timeSinceEvent < 0 || !event.svgIds?.length) continue;
 
+        const eventHoldSeconds = getEventHoldSeconds(event);
+        const eventAnimDuration = eventHoldSeconds + exitSeconds;
+
         let scale: number;
         let color: string | undefined;
 
-        if (timeSinceEvent < holdSeconds) {
+        if (timeSinceEvent < eventHoldSeconds) {
           // Hold period: full scale and color
           scale = activeNoteheadScale;
           color = activeNoteheadColor;
-        } else if (timeSinceEvent < animDuration) {
+        } else if (timeSinceEvent < eventAnimDuration) {
           // Exit period: interpolate scale and color using ease-in curve
-          const exitProgress = (timeSinceEvent - holdSeconds) / exitSeconds;
+          const exitProgress = (timeSinceEvent - eventHoldSeconds) / exitSeconds;
           const easedProgress = Math.pow(exitProgress, 1.675);
           scale = activeNoteheadScale + (1 - activeNoteheadScale) * easedProgress;
           color = interpolateColor(activeNoteheadColor, scoreColor, easedProgress);
         } else {
           // Animation complete — reset and continue
-          resetEventNoteheads(scoreRef.current!, event.svgIds, colorFullNote, elementCacheRef.current);
+          resetEventNoteheads(scoreRef.current!, getEventIds(event), colorFullNote, elementCacheRef.current);
           continue;
         }
 
         // Apply animation directly to SVG elements (no CSS transitions)
-        for (const id of event.svgIds) {
+        const idsToAnimate = getEventIds(event);
+        for (const id of idsToAnimate) {
           const cached = elementCacheRef.current.get(id);
           const stavenote = (cached?.isConnected ? cached : null) ?? scoreRef.current.querySelector<SVGGElement>(
             `#${CSS.escape(id)}`,
@@ -745,6 +781,7 @@ export default function SingleLineRenderer({
       activeNoteheadColor,
       activeNoteheadAnimationHoldMs,
       activeNoteheadAnimationExitMs,
+      activeNoteheadUseNoteDuration,
       colorFullNote,
       scoreColor,
       interpolateColor,

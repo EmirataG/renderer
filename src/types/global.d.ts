@@ -28,6 +28,7 @@ declare global {
     activeNoteheadEntryMs: number;
     activeNoteheadHoldMs: number;
     activeNoteheadExitMs: number;
+    activeNoteheadUseNoteDuration: boolean;
     colorFullNote: boolean;
     hideLabels: boolean;
     bgUrl: string | null;

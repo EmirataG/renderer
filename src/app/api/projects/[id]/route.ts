@@ -76,6 +76,7 @@ const ALLOWED_SETTINGS = [
   'scoreColor', 'scoreScale', 'musicFont', 'scoreBorder', 'hideLabels',
   'scoreRegion', 'activeNoteheadColor', 'activeNoteheadScale',
   'activeNoteheadEntryMs', 'activeNoteheadHoldMs', 'activeNoteheadExitMs',
+  'activeNoteheadUseNoteDuration',
   'colorFullNote', 'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal',
 ];
 

@@ -9,6 +9,8 @@ export interface MusicalEvent {
   x: number; // Local x within segment
   globalX?: number; // Global x across entire score (for segmented rendering)
   segmentId?: string; // Which segment owns this event (for segmented rendering)
+  tiedContinuationIds?: string[]; // SVG IDs of tied continuation notes (for coloring entire tie chain)
+  noteDurationBeats?: number; // Actual sounding duration in whole-note fractions (including ties)
 }
 
 // Extended event interface with Y position for vertical camera scrolling
@@ -28,34 +30,129 @@ export interface MusicalEventWithY extends MusicalEvent {
  * @returns Array of musical events with Y positions for camera scrolling
  */
 /**
- * Filter out tied continuation notes (tie="t" terminal or "m" medial).
- * These notes are not re-struck and should not be highlighted.
+ * Tie chain info for a note that starts a tie chain.
  */
+export interface TieChainInfo {
+  continuationIds: string[]; // All tied continuation note IDs in the chain
+  totalDurationBeats: number; // Total sounding duration in whole-note fractions
+}
+
 /**
- * Build a Set of note xml:ids that are tie continuations (tie="t" or "m")
- * by parsing the MEI output. getElementAttr() doesn't expose tie info.
- */
-/**
- * Build a Set of note xml:ids that are tie continuations by parsing MEI.
+ * Build tie information from MEI: continuation IDs (for filtering),
+ * tie chain map (for "use note duration" mode), and per-note durations.
+ *
  * Verovio encodes ties as separate <tie startid="#X" endid="#Y"/> elements.
- * Any note referenced by @endid is a continuation and should not be highlighted.
- * Notes that appear as both @endid AND @startid (middle of a chain) are also continuations.
+ * Any note referenced by @endid is a continuation and should not be highlighted
+ * as a new onset. For tie chains (A→B→C), the chain map tracks all continuation
+ * IDs and the total sounding duration.
  */
-function buildTiedContinuationSet(toolkit: VerovioToolkit): Set<string> {
-  const ids = new Set<string>();
+function buildTieInfo(toolkit: VerovioToolkit): {
+  continuationIds: Set<string>;
+  chainMap: Map<string, TieChainInfo>;
+  noteDurations: Map<string, number>;
+} {
+  const continuationIds = new Set<string>();
+  const chainMap = new Map<string, TieChainInfo>();
+  const noteDurations = new Map<string, number>();
+
   try {
     const mei = toolkit.getMEI();
     const parser = new DOMParser();
     const doc = parser.parseFromString(mei, 'application/xml');
-    doc.querySelectorAll('tie').forEach((el) => {
-      const endid = el.getAttribute('endid');
-      // endid is prefixed with "#", strip it to match svgId
-      if (endid) ids.add(endid.replace(/^#/, ''));
+
+    // Step 1: Parse all note durations from MEI
+    doc.querySelectorAll('note').forEach((noteEl) => {
+      const id = noteEl.getAttribute('xml:id');
+      if (!id) return;
+      let dur = noteEl.getAttribute('dur');
+      let dots = noteEl.getAttribute('dots');
+      // Notes in chords may inherit duration from parent <chord> element
+      if (!dur) {
+        const parent = noteEl.parentElement;
+        if (parent && parent.tagName === 'chord') {
+          dur = parent.getAttribute('dur');
+          if (!dots) dots = parent.getAttribute('dots');
+        }
+      }
+      const durNum = parseInt(dur || '4', 10);
+      const dotsNum = parseInt(dots || '0', 10);
+      const dotMultiplier = dotsNum > 0 ? (2 - 1 / Math.pow(2, dotsNum)) : 1;
+      // Duration in whole-note fractions (matches beatOnset units)
+      noteDurations.set(id, (1 / durNum) * dotMultiplier);
     });
+
+    // Step 2: Parse ties to build forward map
+    const tieForward = new Map<string, string>(); // startid → endid
+    const tieEndIds = new Set<string>(); // all endids (continuation notes)
+    doc.querySelectorAll('tie').forEach((el) => {
+      const startid = el.getAttribute('startid')?.replace(/^#/, '');
+      const endid = el.getAttribute('endid')?.replace(/^#/, '');
+      if (startid && endid) {
+        tieForward.set(startid, endid);
+        tieEndIds.add(endid);
+        continuationIds.add(endid);
+      }
+    });
+
+    // Step 3: Build chains from each chain-start note
+    // A chain-start is a note that appears as startid but NOT as endid
+    for (const [startId] of tieForward) {
+      if (tieEndIds.has(startId)) continue; // middle or end of chain, skip
+
+      const chainContIds: string[] = [];
+      let totalDur = noteDurations.get(startId) || 0.25;
+      let current = startId;
+      while (tieForward.has(current)) {
+        const next = tieForward.get(current)!;
+        chainContIds.push(next);
+        totalDur += noteDurations.get(next) || 0.25;
+        current = next;
+      }
+      if (chainContIds.length > 0) {
+        chainMap.set(startId, {
+          continuationIds: chainContIds,
+          totalDurationBeats: totalDur,
+        });
+      }
+    }
   } catch {
-    // Fall through with empty set
+    // Fall through with empty data
   }
-  return ids;
+
+  return { continuationIds, chainMap, noteDurations };
+}
+
+/**
+ * Populate tiedContinuationIds and noteDurationBeats on events
+ * using tie chain info and per-note durations from MEI.
+ */
+function populateTieFields<T extends { svgIds: string[]; tiedContinuationIds?: string[]; noteDurationBeats?: number }>(
+  events: T[],
+  chainMap: Map<string, TieChainInfo>,
+  noteDurations: Map<string, number>,
+): void {
+  for (const event of events) {
+    const allTiedIds: string[] = [];
+    let maxDuration = 0;
+    for (const id of event.svgIds) {
+      const chain = chainMap.get(id);
+      if (chain) {
+        allTiedIds.push(...chain.continuationIds);
+        maxDuration = Math.max(maxDuration, chain.totalDurationBeats);
+      } else {
+        const dur = noteDurations.get(id);
+        if (dur !== undefined) {
+          maxDuration = Math.max(maxDuration, dur);
+        }
+      }
+    }
+    if (allTiedIds.length > 0) {
+      event.tiedContinuationIds = allTiedIds;
+    }
+    if (maxDuration > 0) {
+      event.noteDurationBeats = maxDuration;
+    }
+  }
 }
 
 export function getEventsFromVerovio(
@@ -64,8 +161,8 @@ export function getEventsFromVerovio(
   pageContainers?: HTMLElement[],
   pageOffsets?: number[]
 ): MusicalEventWithY[] {
-  // Build set of tied continuation note IDs from MEI
-  const tiedIds = buildTiedContinuationSet(toolkit);
+  // Build tie info from MEI (continuation IDs, tie chains, note durations)
+  const tieInfo = buildTieInfo(toolkit);
 
   // Get the full timemap from Verovio (rests excluded by default)
   const timemap = toolkit.renderToTimemap();
@@ -80,7 +177,7 @@ export function getEventsFromVerovio(
     id: `evt-${index}`,
     beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
     beatDuration: 0, // Calculated below
-    svgIds: entry.on!.filter((id) => !tiedIds.has(id)),
+    svgIds: entry.on!.filter((id) => !tieInfo.continuationIds.has(id)),
     x: 0, // Not used for vertical camera scrolling
     y: 0, // Calculated below from DOM
   }));
@@ -92,6 +189,9 @@ export function getEventsFromVerovio(
   if (events.length > 0) {
     events[events.length - 1].beatDuration = 1; // Last event convention
   }
+
+  // Populate tie chain info for "use note duration" mode
+  populateTieFields(events, tieInfo.chainMap, tieInfo.noteDurations);
 
   if (pageContainers && pageOffsets && pageContainers.length > 0) {
     // Page-aware Y computation: use Verovio API to find which page each
@@ -180,6 +280,8 @@ export interface TimemapEvent {
   beatOnset: number;
   beatDuration: number;
   svgIds: string[];
+  tiedContinuationIds?: string[]; // SVG IDs of tied continuation notes (for coloring entire tie chain)
+  noteDurationBeats?: number; // Actual sounding duration in whole-note fractions (including ties)
 }
 
 /**
@@ -196,8 +298,8 @@ export interface TimemapEvent {
  * @returns Array of timemap events (no position data yet)
  */
 export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
-  // Build set of tied continuation note IDs from MEI
-  const tiedIds = buildTiedContinuationSet(toolkit);
+  // Build tie info from MEI (continuation IDs, tie chains, note durations)
+  const tieInfo = buildTieInfo(toolkit);
 
   // Get the full timemap from Verovio (rests excluded by default)
   const timemap = toolkit.renderToTimemap();
@@ -212,7 +314,7 @@ export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
     id: `evt-${index}`,
     beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
     beatDuration: 0, // Calculated below
-    svgIds: entry.on!.filter((id) => !tiedIds.has(id)),
+    svgIds: entry.on!.filter((id) => !tieInfo.continuationIds.has(id)),
   }));
 
   // Calculate beatDuration for each event
@@ -222,6 +324,9 @@ export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
   if (events.length > 0) {
     events[events.length - 1].beatDuration = 1; // Last event convention
   }
+
+  // Populate tie chain info for "use note duration" mode
+  populateTieFields(events, tieInfo.chainMap, tieInfo.noteDurations);
 
   return events;
 }

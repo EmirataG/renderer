@@ -15,6 +15,7 @@ export interface ProjectSettings {
   activeNoteheadEntryMs: number;
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
+  activeNoteheadUseNoteDuration: boolean;
   colorFullNote: boolean;
   fps: number;
   scoreShadowDistance: number;
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   activeNoteheadEntryMs: 50,
   activeNoteheadHoldMs: 200,
   activeNoteheadExitMs: 500,
+  activeNoteheadUseNoteDuration: false,
   colorFullNote: false,
   fps: 30,
   scoreShadowDistance: 0,

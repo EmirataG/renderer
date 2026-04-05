@@ -43,6 +43,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const activeNoteheadEntryMs = useProjectStore((s) => s.activeNoteheadEntryMs);
   const activeNoteheadHoldMs = useProjectStore((s) => s.activeNoteheadHoldMs);
   const activeNoteheadExitMs = useProjectStore((s) => s.activeNoteheadExitMs);
+  const activeNoteheadUseNoteDuration = useProjectStore((s) => s.activeNoteheadUseNoteDuration);
   const colorFullNote = useProjectStore((s) => s.colorFullNote);
   const setSetting = useProjectStore((s) => s.setSetting);
   const projectName = useProjectStore((s) => s.projectName);
@@ -149,6 +150,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           activeNoteheadExitMs:
             project.activeNoteheadExitMs ??
             DEFAULT_SETTINGS.activeNoteheadExitMs,
+          activeNoteheadUseNoteDuration:
+            project.activeNoteheadUseNoteDuration ??
+            DEFAULT_SETTINGS.activeNoteheadUseNoteDuration,
           colorFullNote:
             project.colorFullNote ?? DEFAULT_SETTINGS.colorFullNote,
           fps: project.fps ?? DEFAULT_SETTINGS.fps,
@@ -373,6 +377,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         activeNoteheadEntryMs,
         activeNoteheadHoldMs,
         activeNoteheadExitMs,
+        activeNoteheadUseNoteDuration,
         colorFullNote,
         hideLabels,
         audioDuration: audioRef.current?.duration,
@@ -826,23 +831,39 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     <label className="flex justify-between text-xs font-medium">
                       <span className="text-neutral-300">Hold Duration</span>
                       <span className="text-white font-mono tabular-nums">
-                        {activeNoteheadHoldMs}ms
+                        {activeNoteheadUseNoteDuration ? 'note duration' : `${activeNoteheadHoldMs}ms`}
                       </span>
                     </label>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1000}
-                      step={20}
-                      value={activeNoteheadHoldMs}
-                      onChange={(e) =>
-                        setSetting(
-                          "activeNoteheadHoldMs",
-                          Number(e.target.value),
-                        )
-                      }
-                      className="grunge-range"
-                    />
+                    <label className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={activeNoteheadUseNoteDuration}
+                        onChange={(e) =>
+                          setSetting(
+                            "activeNoteheadUseNoteDuration",
+                            e.target.checked,
+                          )
+                        }
+                        className="accent-white"
+                      />
+                      Use note duration
+                    </label>
+                    {!activeNoteheadUseNoteDuration && (
+                      <input
+                        type="range"
+                        min={0}
+                        max={1000}
+                        step={20}
+                        value={activeNoteheadHoldMs}
+                        onChange={(e) =>
+                          setSetting(
+                            "activeNoteheadHoldMs",
+                            Number(e.target.value),
+                          )
+                        }
+                        className="grunge-range"
+                      />
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -1027,6 +1048,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               activeNoteheadAnimationExitMs={
                                 activeNoteheadExitMs
                               }
+                              activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
                               colorFullNote={colorFullNote}
                               hideLabels={hideLabels}
                             />
@@ -1058,6 +1080,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               activeNoteheadAnimationExitMs={
                                 activeNoteheadExitMs
                               }
+                              activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
                               colorFullNote={colorFullNote}
                               hideLabels={hideLabels}
                               transportPortalEl={transportEl}

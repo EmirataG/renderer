@@ -23,6 +23,7 @@ export interface Project {
   activeNoteheadEntryMs?: number;
   activeNoteheadHoldMs?: number;
   activeNoteheadExitMs?: number;
+  activeNoteheadUseNoteDuration?: boolean;
   colorFullNote?: boolean;
   fps?: number;
   scoreShadowDistance?: number;

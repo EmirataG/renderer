@@ -12,6 +12,10 @@ export interface CachedEvent {
   sectionIndex?: number; // Which section contains this event (0-based)
   localX?: number;       // X position within the section SVG
   globalX?: number;      // Absolute X = sectionOffsets[sectionIndex] + localX
+
+  // Tie chain fields for "use note duration" mode
+  tiedContinuationIds?: string[]; // SVG IDs of tied continuation notes
+  noteDurationBeats?: number;     // Actual sounding duration in whole-note fractions
 }
 
 interface EventStore {

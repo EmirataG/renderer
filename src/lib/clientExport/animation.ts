@@ -96,6 +96,7 @@ export interface AnimationConfig {
   activeNoteheadScale: number;
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
+  activeNoteheadUseNoteDuration: boolean;
   colorFullNote: boolean;
   scoreRegionHeight: number | null;
   containerHeight: number;
@@ -106,6 +107,8 @@ export interface AnimationEvent {
   computedTimestamp: number;
   y: number;
   svgIds: string[];
+  tiedContinuationIds?: string[];
+  holdSeconds?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,14 +214,25 @@ export function setTimestamp(
   state.currentY = currentEvent.y;
 
   // Notehead animation
-  const holdSeconds = config.activeNoteheadHoldMs / 1000;
+  const globalHoldSeconds = config.activeNoteheadHoldMs / 1000;
   const exitSeconds = config.activeNoteheadExitMs / 1000;
-  const animDuration = holdSeconds + exitSeconds;
+  const useNoteDur = config.activeNoteheadUseNoteDuration;
+
+  // Helper: get per-event hold seconds (note duration mode or global)
+  const getEventHoldSeconds = (evt: AnimationEvent) =>
+    useNoteDur && evt.holdSeconds !== undefined ? evt.holdSeconds : globalHoldSeconds;
+
+  // Helper: get all SVG IDs to animate (include tied continuation IDs in note duration mode)
+  const getEventIds = (evt: AnimationEvent) =>
+    useNoteDur && evt.tiedContinuationIds?.length
+      ? [...evt.svgIds, ...evt.tiedContinuationIds]
+      : evt.svgIds;
 
   let firstActiveIndex = currentIndex;
   while (firstActiveIndex > 0) {
     const prevEvent = events[firstActiveIndex - 1];
-    if (seconds - prevEvent.computedTimestamp >= animDuration || !prevEvent.svgIds?.length) break;
+    const prevAnimDuration = getEventHoldSeconds(prevEvent) + exitSeconds;
+    if (seconds - prevEvent.computedTimestamp >= prevAnimDuration || !prevEvent.svgIds?.length) break;
     firstActiveIndex--;
   }
   while (firstActiveIndex < currentIndex && !events[firstActiveIndex].svgIds?.length) {
@@ -230,7 +244,7 @@ export function setTimestamp(
     const resetEnd = Math.min(prev.end, firstActiveIndex - 1);
     for (let i = prev.start; i <= resetEnd; i++) {
       if (events[i].svgIds?.length) {
-        resetEventNoteheads(scoreEl, events[i].svgIds, config.colorFullNote, config.scoreColor);
+        resetEventNoteheads(scoreEl, getEventIds(events[i]), config.colorFullNote, config.scoreColor);
       }
     }
   }
@@ -240,26 +254,30 @@ export function setTimestamp(
     const timeSinceEvent = seconds - event.computedTimestamp;
     if (timeSinceEvent < 0 || !event.svgIds?.length) continue;
 
+    const eventHoldSeconds = getEventHoldSeconds(event);
+    const eventAnimDuration = eventHoldSeconds + exitSeconds;
+
     let scale: number;
     let color: string | undefined;
 
-    if (timeSinceEvent < holdSeconds) {
+    if (timeSinceEvent < eventHoldSeconds) {
       scale = config.activeNoteheadScale;
       color = config.activeNoteheadColor;
-    } else if (timeSinceEvent < animDuration) {
-      const exitProgress = (timeSinceEvent - holdSeconds) / exitSeconds;
+    } else if (timeSinceEvent < eventAnimDuration) {
+      const exitProgress = (timeSinceEvent - eventHoldSeconds) / exitSeconds;
       const easedProgress = Math.pow(exitProgress, 1.675);
       scale = config.activeNoteheadScale + (1 - config.activeNoteheadScale) * easedProgress;
       color = interpolateColor(config.activeNoteheadColor, config.scoreColor, easedProgress);
     } else {
-      resetEventNoteheads(scoreEl, event.svgIds, config.colorFullNote, config.scoreColor);
+      resetEventNoteheads(scoreEl, getEventIds(event), config.colorFullNote, config.scoreColor);
       continue;
     }
 
     // Apply animation using SVG ATTRIBUTES (not CSS style properties).
     // CSS style.fill on <use> elements doesn't work in SVG-as-image
     // rendering or in Safari. SVG attributes work everywhere.
-    for (const id of event.svgIds) {
+    const idsToAnimate = getEventIds(event);
+    for (const id of idsToAnimate) {
       const stavenote = scoreEl.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
       if (!stavenote) continue;
 

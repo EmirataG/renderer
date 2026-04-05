@@ -22,6 +22,7 @@ function getSaveableSettings(state: ReturnType<typeof useProjectStore.getState>)
     activeNoteheadEntryMs: state.activeNoteheadEntryMs,
     activeNoteheadHoldMs: state.activeNoteheadHoldMs,
     activeNoteheadExitMs: state.activeNoteheadExitMs,
+    activeNoteheadUseNoteDuration: state.activeNoteheadUseNoteDuration,
     colorFullNote: state.colorFullNote,
     fps: state.fps,
     scoreShadowDistance: state.scoreShadowDistance,

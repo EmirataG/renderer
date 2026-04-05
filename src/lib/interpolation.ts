@@ -7,6 +7,8 @@ export interface InterpolatableEvent {
   beatOnset: number;
   beatDuration: number;
   svgIds: string[];
+  tiedContinuationIds?: string[];
+  noteDurationBeats?: number;
 }
 
 export interface InterpolatedEvent extends InterpolatableEvent {
@@ -135,4 +137,48 @@ export function interpolateTimestamps<T extends InterpolatableEvent>(
       isAnchor: false,
     };
   });
+}
+
+/**
+ * Compute the sounding duration in seconds for an event based on its
+ * noteDurationBeats and the surrounding interpolated timestamps.
+ * Used by "use note duration" mode to set per-event hold times.
+ */
+export function computeNoteDurationSeconds(
+  eventIndex: number,
+  events: { beatOnset: number; computedTimestamp: number; noteDurationBeats?: number }[],
+): number {
+  const event = events[eventIndex];
+  const durationBeats = event.noteDurationBeats;
+  if (!durationBeats || durationBeats <= 0) return 0;
+
+  const endBeat = event.beatOnset + durationBeats;
+
+  // Find the first event at or after endBeat and interpolate
+  for (let i = eventIndex + 1; i < events.length; i++) {
+    if (events[i].beatOnset >= endBeat) {
+      const prev = events[i - 1];
+      const next = events[i];
+      const beatRange = next.beatOnset - prev.beatOnset;
+      if (beatRange > 0) {
+        const t = (endBeat - prev.beatOnset) / beatRange;
+        const endTimestamp = prev.computedTimestamp + t * (next.computedTimestamp - prev.computedTimestamp);
+        return endTimestamp - event.computedTimestamp;
+      }
+      return next.computedTimestamp - event.computedTimestamp;
+    }
+  }
+
+  // Past last event — extrapolate using local tempo from last two events
+  if (events.length >= 2) {
+    const last = events[events.length - 1];
+    const prev = events[events.length - 2];
+    const beatRange = last.beatOnset - prev.beatOnset;
+    if (beatRange > 0) {
+      const secsPerBeat = (last.computedTimestamp - prev.computedTimestamp) / beatRange;
+      return durationBeats * secsPerBeat;
+    }
+  }
+
+  return 0;
 }
