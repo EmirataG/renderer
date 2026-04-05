@@ -457,5 +457,15 @@ export function computeSectionPositions(
     }
   }
 
+  // Enforce monotonically non-decreasing globalX. The camera should only
+  // scroll right during playback — never jump backwards to an earlier position.
+  for (let i = 1; i < result.length; i++) {
+    const prevX = result[i - 1].globalX ?? 0;
+    const currX = result[i].globalX ?? 0;
+    if (currX < prevX) {
+      result[i].globalX = prevX;
+    }
+  }
+
   return result;
 }

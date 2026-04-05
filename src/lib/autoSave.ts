@@ -11,6 +11,7 @@ let savedDismissTimer: ReturnType<typeof setTimeout> | null = null;
 /** Extract only saveable settings keys from the project store state. */
 function getSaveableSettings(state: ReturnType<typeof useProjectStore.getState>): ProjectSettings {
   return {
+    viewMode: state.viewMode,
     scoreColor: state.scoreColor,
     scoreScale: state.scoreScale,
     musicFont: state.musicFont,

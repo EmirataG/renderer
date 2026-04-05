@@ -49,11 +49,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const projectName = useProjectStore((s) => s.projectName);
   const setProjectName = useProjectStore((s) => s.setProjectName);
 
-  // Check for renderer mode via URL query param
-  const useSingleLineRenderer =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("renderer") ===
-      "single-line";
+  // View mode from project store (page or single-line)
+  const viewMode = useProjectStore((s) => s.viewMode);
 
   // File upload state
   const [musicXMLFile, setMusicXMLFile] = useState<{
@@ -130,6 +127,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         setProjectId(projectId!);
         if (project.name) setProjectName(project.name);
         loadSettings({
+          viewMode: (project.viewMode ?? DEFAULT_SETTINGS.viewMode) as 'page' | 'single-line',
           scoreColor: project.scoreColor ?? DEFAULT_SETTINGS.scoreColor,
           scoreScale: project.scoreScale ?? DEFAULT_SETTINGS.scoreScale,
           musicFont: project.musicFont ?? DEFAULT_SETTINGS.musicFont,
@@ -197,6 +195,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       useEventStore.getState().invalidate();
     };
   }, [projectId]);
+
+  // Invalidate event store when viewMode changes (positions are axis-specific)
+  useEffect(() => {
+    useEventStore.getState().invalidate();
+  }, [viewMode]);
 
   // View toggle state
   const [currentView, setCurrentView] = useState<"renderer" | "sync">(
@@ -601,6 +604,25 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                 <div className="p-3 space-y-4">
                   <div className="space-y-2">
                     <label className="block text-xs text-neutral-300 font-medium">
+                      Layout
+                    </label>
+                    <select
+                      value={viewMode}
+                      onChange={(e) =>
+                        setSetting(
+                          "viewMode",
+                          e.target.value as "page" | "single-line",
+                        )
+                      }
+                      className="grunge-select w-full"
+                    >
+                      <option value="page">Page</option>
+                      <option value="single-line">Single Line</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs text-neutral-300 font-medium">
                       Color
                     </label>
                     <div className="flex gap-2 items-center">
@@ -918,30 +940,17 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               {(exportState.status === "uploading" ||
                 exportState.status === "rendering" ||
                 exportState.status === "encoding") && (
-                <>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-neutral-300 capitalize">
-                        {exportState.stage || exportState.status}
-                      </span>
-                      <span className="text-white font-mono tabular-nums">
-                        {Math.round(exportState.percent)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-neutral-700 h-1.5">
-                      <div
-                        className="bg-white h-1.5 transition-all duration-300"
-                        style={{ width: `${exportState.percent}%` }}
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleCancelExport}
-                    className="grunge-btn grunge-btn-sm w-full"
-                  >
-                    Cancel
-                  </button>
-                </>
+                <p
+                  className="text-neutral-500 text-center"
+                  style={{
+                    fontSize: "0.6875rem",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Exporting&hellip; {Math.round(exportState.percent)}%
+                </p>
               )}
 
               {exportState.status === "complete" && (
@@ -1021,7 +1030,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       >
                         {/* Wrapper for RegularRenderer + overlay */}
                         <div className="relative m-auto w-fit">
-                          {useSingleLineRenderer ? (
+                          {viewMode === 'single-line' ? (
                             <SingleLineRenderer
                               xml={musicXMLFile.xml}
                               bgUrl={bgUrl || undefined}
@@ -1157,6 +1166,123 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           </section>
         </div>
       </main>
+      {/* Export Progress Modal - blocks all interaction */}
+      {(exportState.status === "uploading" ||
+        exportState.status === "rendering" ||
+        exportState.status === "encoding") && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          {/* Blurred backdrop */}
+          <div
+            className="absolute inset-0"
+            style={{
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              background: "rgba(0, 0, 0, 0.7)",
+            }}
+          />
+          {/* Modal */}
+          <div
+            className="relative z-10 w-full max-w-md mx-4"
+            style={{
+              background: "black",
+              border: "1px solid #555",
+              padding: "2rem",
+            }}
+          >
+            <h3
+              className="text-sm font-bold text-white mb-6 uppercase tracking-wider text-center"
+              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            >
+              Exporting Video
+            </h3>
+
+            {/* Progress */}
+            <div className="space-y-2 mb-6">
+              <div className="flex justify-between text-xs">
+                <span
+                  className="text-neutral-400 uppercase"
+                  style={{
+                    fontSize: "0.6875rem",
+                    fontWeight: 700,
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {exportState.stage || exportState.status}
+                </span>
+                <span
+                  className="text-white font-mono tabular-nums"
+                  style={{ fontSize: "0.75rem" }}
+                >
+                  {Math.round(exportState.percent)}%
+                </span>
+              </div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "4px",
+                  background: "#222",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${exportState.percent}%`,
+                    height: "4px",
+                    background: "white",
+                    transition: "width 300ms",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Fun fact */}
+            <div
+              className="mb-6"
+              style={{
+                borderLeft: "2px solid #555",
+                paddingLeft: "0.75rem",
+              }}
+            >
+              <p
+                className="text-neutral-500 mb-1"
+                style={{
+                  fontFamily: 'Georgia, "Times New Roman", serif',
+                  fontSize: "0.6875rem",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                }}
+              >
+                Did you know?
+              </p>
+              <p className="text-neutral-400" style={{ fontSize: "0.75rem", lineHeight: "1.5" }}>
+                Bach loved coffee so much he wrote a comic cantata about it
+                &mdash; the &ldquo;Coffee Cantata&rdquo; (BWV 211), featuring a
+                father trying to cure his daughter&rsquo;s coffee addiction.
+              </p>
+              <p
+                className="text-neutral-500 mt-2"
+                style={{
+                  fontSize: "0.6875rem",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Maybe grab a cup while you wait.
+              </p>
+            </div>
+
+            {/* Cancel */}
+            <button
+              onClick={handleCancelExport}
+              className="grunge-btn w-full"
+            >
+              Cancel Export
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Reset Score Region Confirmation Dialog */}
       {showResetConfirm && (
         <div className="fixed inset-0 flex items-center justify-center z-[70]">

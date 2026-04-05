@@ -1,7 +1,7 @@
 export interface Project {
   id: string;
   name: string;
-  viewMode: 'page';
+  viewMode?: 'page' | 'single-line';
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
   scoreUrl?: string;

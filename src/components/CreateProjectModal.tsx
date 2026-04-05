@@ -28,6 +28,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
   const [scoreFile, setScoreFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [projectName, setProjectName] = useState('');
+  const [viewMode, setViewMode] = useState<'page' | 'single-line'>('page');
   const [isCreating, setIsCreating] = useState(false);
 
   const scoreInputRef = useRef<HTMLInputElement>(null);
@@ -38,6 +39,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
     setScoreFile(null);
     setAudioFile(null);
     setProjectName('');
+    setViewMode('page');
     setIsCreating(false);
   }, []);
 
@@ -75,6 +77,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
     try {
       const formData = new FormData();
       formData.append('name', projectName.trim());
+      formData.append('viewMode', viewMode);
       formData.append('score', scoreFile);
       formData.append('audio', audioFile);
 
@@ -99,7 +102,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
       const project: Project = {
         id,
         name: projectName.trim(),
-        viewMode: 'page',
+        viewMode,
         createdAt: now,
         updatedAt: now,
       };
@@ -200,22 +203,37 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
 
             {/* View mode cards */}
             <div className="grid grid-cols-2 gap-3 mt-4">
-              {/* Page view - active */}
-              <div className="border-2 border-white bg-white/5 p-3 flex items-center gap-3">
-                <div className="w-4 h-4 border-2 border-white flex items-center justify-center">
-                  <div className="w-2 h-2 bg-white" />
+              {/* Page view */}
+              <button
+                type="button"
+                onClick={() => setViewMode('page')}
+                className={`border-2 p-3 flex items-center gap-3 text-left transition-colors ${
+                  viewMode === 'page'
+                    ? 'border-white bg-white/5'
+                    : 'border-neutral-700 hover:border-neutral-500'
+                }`}
+              >
+                <div className="w-4 h-4 border-2 border-white flex items-center justify-center flex-shrink-0">
+                  {viewMode === 'page' && <div className="w-2 h-2 bg-white" />}
                 </div>
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Page view</span>
-              </div>
+              </button>
 
-              {/* Single line - disabled */}
-              <div className="border-2 border-neutral-700 bg-neutral-900 p-3 flex items-center gap-3 opacity-50 cursor-not-allowed">
-                <div className="w-4 h-4 border-2 border-neutral-600" />
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Single line</span>
-                  <span className="block text-[10px] text-neutral-500 mt-0.5">Coming soon</span>
+              {/* Single line */}
+              <button
+                type="button"
+                onClick={() => setViewMode('single-line')}
+                className={`border-2 p-3 flex items-center gap-3 text-left transition-colors ${
+                  viewMode === 'single-line'
+                    ? 'border-white bg-white/5'
+                    : 'border-neutral-700 hover:border-neutral-500'
+                }`}
+              >
+                <div className="w-4 h-4 border-2 border-white flex items-center justify-center flex-shrink-0">
+                  {viewMode === 'single-line' && <div className="w-2 h-2 bg-white" />}
                 </div>
-              </div>
+                <span className="text-xs font-bold uppercase tracking-wider text-neutral-200">Single line</span>
+              </button>
             </div>
 
             <div className="flex justify-end gap-3 mt-6">

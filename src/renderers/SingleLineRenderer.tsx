@@ -83,6 +83,10 @@ export default function SingleLineRenderer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sectionContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const elementCacheRef = useRef<ElementCache>(new Map());
+  const extractionDoneRef = useRef(false);
+  const [visibleSections, setVisibleSections] = useState<Set<number>>(new Set([0, 1]));
+  const visibleSectionsRef = useRef<Set<number>>(new Set([0, 1]));
+  const cameraXRef = useRef(0);
 
   // Event cache from Zustand store (useShallow prevents re-renders on unrelated state changes)
   const { events, svgPagesRef, setEvents: setEventsInStore } = useEventStore(
@@ -255,6 +259,9 @@ export default function SingleLineRenderer({
   useEffect(() => {
     if (sections.length === 0 || !scoreRef.current) return;
 
+    // Reset extraction state — all sections mount for extraction
+    extractionDoneRef.current = false;
+
     // dangerouslySetInnerHTML updates the DOM synchronously during React's
     // commit phase, but this useEffect fires AFTER the commit. However,
     // the browser may not have fully laid out the new SVG yet.
@@ -273,6 +280,7 @@ export default function SingleLineRenderer({
       reorderNoteheadsAboveStems(scoreRef.current);
       resetNoteheadAnimations(scoreRef.current);
       elementCacheRef.current = buildElementCache(scoreRef.current);
+      prevActiveRangeRef.current = null;
 
       // Cache validity check: skip extraction if sections reference unchanged
       if (svgPagesRef === sections) return;
@@ -286,13 +294,33 @@ export default function SingleLineRenderer({
         // Compute horizontal positions for camera
         const eventsWithX = computeSectionPositions(cachedEvents, containers, sectionOffsets);
         setEventsInStore(eventsWithX, sections);
+
+        // Extraction complete — activate virtualization (skip in render mode to keep all sections mounted)
+        if (!isRenderMode) {
+          extractionDoneRef.current = true;
+          const initialVisible = getVisibleSectionRange();
+          visibleSectionsRef.current = initialVisible;
+          setVisibleSections(initialVisible);
+        }
       }
     });
 
     // Camera starts at left
-    currentXRef.current = 0;
-    applyCamera(0);
+    if (!isPlaying) {
+      currentXRef.current = 0;
+      applyCamera(0);
+    }
   }, [sections, svgPagesRef, toolkit, sectionOffsets, setEventsInStore, containerWidth]);
+
+  // Rebuild element cache when visible sections change (sections mount/unmount)
+  useEffect(() => {
+    if (!extractionDoneRef.current || !scoreRef.current) return;
+    requestAnimationFrame(() => {
+      if (scoreRef.current) {
+        elementCacheRef.current = buildElementCache(scoreRef.current);
+      }
+    });
+  }, [visibleSections]);
 
   /* ---------------- score color and styling ---------------- */
 
@@ -344,6 +372,47 @@ export default function SingleLineRenderer({
     ${hideLabels ? '.preview-score .label, .preview-score .labelAbbr { display: none !important; }' : ''}
   `, [scoreColor, hideLabels]);
 
+  /* ---------------- section virtualization helpers ---------------- */
+
+  function setsEqual(a: Set<number>, b: Set<number>): boolean {
+    if (a.size !== b.size) return false;
+    for (const v of a) if (!b.has(v)) return false;
+    return true;
+  }
+
+  function getVisibleSectionRange(): Set<number> {
+    const sectionCount = sections.length;
+    if (sectionCount === 0) return new Set([0]);
+    // Short scores: mount everything, no virtualization
+    if (sectionCount <= 3) {
+      return new Set(Array.from({ length: sectionCount }, (_, i) => i));
+    }
+
+    const viewportWidth = scoreRegion?.width ?? containerWidth;
+    const viewLeft = cameraXRef.current;
+    const viewRight = viewLeft + viewportWidth;
+
+    const visible = new Set<number>();
+    for (let i = 0; i < sectionCount; i++) {
+      const sectionLeft = sectionOffsets[i];
+      const sectionRight = sectionLeft + (sectionWidths[i] || 0);
+      if (sectionRight > viewLeft && sectionLeft < viewRight) {
+        visible.add(i);
+      }
+    }
+
+    // Add ±1 section buffer on each side
+    const indices = [...visible];
+    if (indices.length > 0) {
+      const minIdx = Math.min(...indices);
+      const maxIdx = Math.max(...indices);
+      if (minIdx > 0) visible.add(minIdx - 1);
+      if (maxIdx < sectionCount - 1) visible.add(maxIdx + 1);
+    }
+
+    return visible;
+  }
+
   /* ---------------- camera (horizontal) ---------------- */
 
   function applyCamera(targetX: number) {
@@ -358,8 +427,19 @@ export default function SingleLineRenderer({
     cameraX = Math.max(0, cameraX);
     cameraX = Math.min(cameraX, Math.max(0, scoreWidth - viewportWidth));
 
+    cameraXRef.current = cameraX;
+
     if (cameraRef.current) {
       cameraRef.current.style.transform = `translateX(${-cameraX}px)`;
+    }
+
+    // Update visible sections (only after extraction is done)
+    if (extractionDoneRef.current && sections.length > 0) {
+      const newVisible = getVisibleSectionRange();
+      if (!setsEqual(visibleSectionsRef.current, newVisible)) {
+        visibleSectionsRef.current = newVisible;
+        setVisibleSections(newVisible);
+      }
     }
   }
 
@@ -914,21 +994,42 @@ export default function SingleLineRenderer({
                         fontSize: 0,
                       }}
                     >
-                      {sections.map((svg, i) => (
-                        <div
-                          key={i}
-                          ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                          className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
-                          style={{
-                            flexShrink: 0,
-                            width: sectionWidths[i],
-                            height: maxHeight,
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                          }}
-                          dangerouslySetInnerHTML={{ __html: svg }}
-                        />
-                      ))}
+                      {sections.map((svg, i) => {
+                        // Before extraction is done, mount all sections for DOM measurement.
+                        // After extraction, only mount visible sections (virtualization).
+                        const isMounted = !extractionDoneRef.current || visibleSections.has(i);
+
+                        if (!isMounted) {
+                          // Placeholder: maintain layout width, clear ref
+                          sectionContainerRefs.current[i] = null;
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                flexShrink: 0,
+                                width: sectionWidths[i],
+                                height: maxHeight,
+                              }}
+                            />
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={i}
+                            ref={(el) => { sectionContainerRefs.current[i] = el; }}
+                            className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
+                            style={{
+                              flexShrink: 0,
+                              width: sectionWidths[i],
+                              height: maxHeight,
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                            }}
+                            dangerouslySetInnerHTML={{ __html: svg }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

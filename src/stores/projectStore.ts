@@ -4,6 +4,7 @@ import type { BorderStyle } from '../borders';
 import type { ScoreRegion } from '../types/score';
 
 export interface ProjectSettings {
+  viewMode: 'page' | 'single-line';
   scoreColor: string;
   scoreScale: number;
   musicFont: string;
@@ -26,6 +27,7 @@ export interface ProjectSettings {
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
+  viewMode: 'page',
   scoreColor: '#000000',
   scoreScale: 1.0,
   musicFont: 'Bravura',

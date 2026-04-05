@@ -46,15 +46,14 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // Trigger animation on mount
     const timer = setTimeout(() => setIsVisible(true), 10);
     return () => clearTimeout(timer);
   }, []);
 
-  const bgColor = {
-    error: "bg-red-600",
-    success: "bg-green-600",
-    info: "bg-blue-600",
+  const accentColor = {
+    error: "#ef4444",
+    success: "#fff",
+    info: "#999",
   }[toast.type];
 
   const Icon = {
@@ -66,15 +65,31 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
   return (
     <div
       className={`
-        ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg
         flex items-center gap-3 min-w-[280px] max-w-[400px]
         transition-all duration-300 ease-out
         ${isVisible ? "translate-x-0 opacity-100" : "translate-x-full opacity-0"}
       `}
+      style={{
+        background: "black",
+        border: "1px solid #555",
+        borderLeft: `2px solid ${accentColor}`,
+        padding: "0.625rem 0.75rem",
+      }}
       role="alert"
     >
-      <Icon className="w-5 h-5 flex-shrink-0" />
-      <p className="flex-1 text-sm font-medium">{toast.message}</p>
+      <Icon className="w-4 h-4 flex-shrink-0" style={{ color: accentColor }} />
+      <p
+        style={{
+          flex: 1,
+          fontSize: "0.75rem",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          color: "white",
+        }}
+      >
+        {toast.message}
+      </p>
       {toast.action && (
         <button
           onClick={(e) => {
@@ -82,17 +97,40 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
             toast.action!.onClick();
             onDismiss(toast.id);
           }}
-          className="flex-shrink-0 px-2 py-0.5 text-sm font-semibold underline underline-offset-2 hover:no-underline transition-all"
+          style={{
+            flexShrink: 0,
+            fontSize: "0.6875rem",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            color: "white",
+            border: "1px solid white",
+            background: "transparent",
+            padding: "0.25rem 0.5rem",
+            cursor: "pointer",
+            transition: "background-color 150ms, color 150ms",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "white";
+            e.currentTarget.style.color = "black";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "white";
+          }}
         >
           {toast.action.label}
         </button>
       )}
       <button
         onClick={() => onDismiss(toast.id)}
-        className="flex-shrink-0 p-1 hover:bg-white/20 rounded transition-colors"
+        className="flex-shrink-0 transition-colors"
+        style={{ padding: "0.25rem", color: "#777" }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "#777"; }}
         aria-label="Dismiss"
       >
-        <CloseIcon className="w-4 h-4" />
+        <CloseIcon className="w-3.5 h-3.5" />
       </button>
     </div>
   );

@@ -68,6 +68,8 @@ export async function POST(request: Request) {
   log('formData parsed');
 
   const name = formData.get('name');
+  const viewModeRaw = formData.get('viewMode');
+  const viewMode = viewModeRaw === 'single-line' ? 'single-line' : 'page';
   const scoreFile = formData.get('score') as File | null;
   const audioFile = formData.get('audio') as File | null;
 
@@ -155,7 +157,7 @@ export async function POST(request: Request) {
     .doc(projectId)
     .set({
       name: name.trim(),
-      viewMode: 'page',
+      viewMode,
       scoreUrl,
       scoreFileName: scoreFile.name,
       audioUrl,

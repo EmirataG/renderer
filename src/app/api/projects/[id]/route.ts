@@ -73,7 +73,7 @@ export async function DELETE(
 }
 
 const ALLOWED_SETTINGS = [
-  'scoreColor', 'scoreScale', 'musicFont', 'scoreBorder', 'hideLabels',
+  'viewMode', 'scoreColor', 'scoreScale', 'musicFont', 'scoreBorder', 'hideLabels',
   'scoreRegion', 'activeNoteheadColor', 'activeNoteheadScale',
   'activeNoteheadEntryMs', 'activeNoteheadHoldMs', 'activeNoteheadExitMs',
   'activeNoteheadUseNoteDuration',
