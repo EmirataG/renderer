@@ -24,7 +24,9 @@ export interface Project {
   activeNoteheadHoldMs?: number;
   activeNoteheadExitMs?: number;
   activeNoteheadUseNoteDuration?: boolean;
-  colorFullNote?: boolean;
+  colorAccidentals?: boolean;
+  colorDots?: boolean;
+  colorArticulations?: boolean;
   fps?: number;
   scoreShadowDistance?: number;
   hideUnplayedNotes?: boolean;

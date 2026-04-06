@@ -12,6 +12,7 @@
  */
 
 import { createToolkit } from '../verovioService';
+import { buildColorExtrasSelector } from '../noteAnimation';
 import {
   createAnimationState,
   setTimestamp as applyAnimation,
@@ -46,7 +47,9 @@ export interface ExportSettings {
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
   activeNoteheadUseNoteDuration: boolean;
-  colorFullNote: boolean;
+  colorAccidentals: boolean;
+  colorDots: boolean;
+  colorArticulations: boolean;
   hideLabels: boolean;
   audioDuration?: number;
   viewMode?: 'page' | 'single-line';
@@ -932,7 +935,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     activeNoteheadHoldMs: settings.activeNoteheadHoldMs ?? 200,
     activeNoteheadExitMs: settings.activeNoteheadExitMs ?? 200,
     activeNoteheadUseNoteDuration: settings.activeNoteheadUseNoteDuration ?? false,
-    colorFullNote: settings.colorFullNote ?? false,
+    colorExtrasSelector: buildColorExtrasSelector(settings),
     scoreRegionHeight: settings.scoreRegion?.height ?? null,
     containerHeight,
     totalHeight,

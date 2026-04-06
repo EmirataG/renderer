@@ -4,7 +4,23 @@ export interface NoteheadAnimationOptions {
   holdMs?: number;
   exitMs?: number;
   color?: string;
-  colorFullNote?: boolean;
+  colorExtrasSelector?: string;
+}
+
+/**
+ * Build a CSS selector for extra note elements to color based on individual flags.
+ * Returns empty string if no extras should be colored.
+ */
+export function buildColorExtrasSelector(opts: {
+  colorAccidentals?: boolean;
+  colorDots?: boolean;
+  colorArticulations?: boolean;
+}): string {
+  const parts: string[] = [];
+  if (opts.colorAccidentals) parts.push('g.accid');
+  if (opts.colorDots) parts.push('g.dots');
+  if (opts.colorArticulations) parts.push('g.artic');
+  return parts.join(', ');
 }
 
 /** Cached DOM element references for O(1) lookup by SVG id. */
@@ -37,8 +53,8 @@ function cachedLookup(
   return root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
 }
 
-// Selectors for note sub-elements beyond the notehead (stems, accidentals, etc.)
-const FULL_NOTE_SELECTORS = "g.stem, g.accid, g.flag, g.dots, g.artic";
+// Default selectors for resetting all possible note sub-elements
+const ALL_EXTRAS_SELECTORS = "g.stem, g.accid, g.flag, g.dots, g.artic";
 
 function applyColorToElement(el: SVGGraphicsElement, color: string, transitionMs: number, easing: string) {
   el.style.transition = `fill ${transitionMs}ms ${easing}, stroke ${transitionMs}ms ${easing}`;
@@ -64,7 +80,7 @@ export function animateNoteheads(
     holdMs = 0,
     exitMs = 120,
     color,
-    colorFullNote = false,
+    colorExtrasSelector = '',
   }: NoteheadAnimationOptions = {},
   cache?: ElementCache,
 ) {
@@ -123,13 +139,13 @@ export function animateNoteheads(
       });
     });
 
-    /* ---------------- full note coloring (stem, accidentals, etc.) ---------------- */
-    // Search from the original element (chord or note) for stems, accidentals, etc.
-    if (color && colorFullNote) {
-      const extras = element.querySelectorAll<SVGGraphicsElement>(FULL_NOTE_SELECTORS);
+    /* ---------------- extra element coloring (accidentals, dots, ornaments, etc.) ---------------- */
+    // Search from the original element (chord or note) for selected extras.
+    if (color && colorExtrasSelector) {
+      const extras = element.querySelectorAll<SVGGraphicsElement>(colorExtrasSelector);
       extras.forEach((group) => {
-        // Color all renderable children (path, use, polygon, etc.)
-        const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line");
+        // Color all renderable children (path, use, polygon, ellipse, etc.)
+        const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse");
         children.forEach((child) => applyColorToElement(child, color, entryMs, "ease-out"));
         // Also color the group itself (for elements with direct fill)
         applyColorToElement(group as SVGGraphicsElement, color, entryMs, "ease-out");
@@ -138,7 +154,7 @@ export function animateNoteheads(
       const totalDelay = entryMs + holdMs;
       window.setTimeout(() => {
         extras.forEach((group) => {
-          const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line");
+          const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse");
           children.forEach((child) => clearColorFromElement(child, exitMs, "ease-in"));
           clearColorFromElement(group as SVGGraphicsElement, exitMs, "ease-in");
         });
@@ -250,16 +266,14 @@ export function resetNoteheadAnimations(root: HTMLElement | null) {
     );
   });
 
-  // Also reset full-note coloring on stems, accidentals, etc.
-  const extras = root.querySelectorAll<SVGGraphicsElement>(
-    "g.stem, g.accid, g.flag, g.dots, g.artic"
-  );
+  // Also reset coloring on extra elements (accidentals, dots, ornaments, etc.)
+  const extras = root.querySelectorAll<SVGGraphicsElement>(ALL_EXTRAS_SELECTORS);
   extras.forEach((group) => {
     group.style.removeProperty("fill");
     group.style.removeProperty("stroke");
     group.style.removeProperty("color");
     group.style.transition = "";
-    group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line").forEach((child) => {
+    group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse").forEach((child) => {
       child.style.removeProperty("fill");
       child.style.removeProperty("stroke");
       child.style.removeProperty("color");
@@ -276,7 +290,7 @@ export function resetNoteheadAnimations(root: HTMLElement | null) {
 export function resetEventNoteheads(
   root: HTMLElement,
   svgIds: string[],
-  colorFullNote: boolean,
+  colorExtrasSelector: string,
   cache?: ElementCache,
 ): void {
   for (const id of svgIds) {
@@ -296,10 +310,10 @@ export function resetEventNoteheads(
       });
     });
 
-    // Reset full-note coloring (stems, accidentals, etc.)
-    if (colorFullNote) {
+    // Reset extra element coloring (accidentals, dots, ornaments, etc.)
+    if (colorExtrasSelector) {
       const extras = stavenote.querySelectorAll<SVGGraphicsElement>(
-        FULL_NOTE_SELECTORS
+        colorExtrasSelector
       );
       extras.forEach((group) => {
         group.style.removeProperty("fill");
@@ -307,7 +321,7 @@ export function resetEventNoteheads(
         group.style.removeProperty("color");
         group.style.transition = "";
 
-        group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line").forEach((child) => {
+        group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse").forEach((child) => {
           child.style.removeProperty("fill");
           child.style.removeProperty("stroke");
           child.style.removeProperty("color");

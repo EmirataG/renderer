@@ -44,7 +44,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const activeNoteheadHoldMs = useProjectStore((s) => s.activeNoteheadHoldMs);
   const activeNoteheadExitMs = useProjectStore((s) => s.activeNoteheadExitMs);
   const activeNoteheadUseNoteDuration = useProjectStore((s) => s.activeNoteheadUseNoteDuration);
-  const colorFullNote = useProjectStore((s) => s.colorFullNote);
+  const colorAccidentals = useProjectStore((s) => s.colorAccidentals);
+  const colorDots = useProjectStore((s) => s.colorDots);
+  const colorArticulations = useProjectStore((s) => s.colorArticulations);
   const setSetting = useProjectStore((s) => s.setSetting);
   const projectName = useProjectStore((s) => s.projectName);
   const setProjectName = useProjectStore((s) => s.setProjectName);
@@ -151,8 +153,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           activeNoteheadUseNoteDuration:
             project.activeNoteheadUseNoteDuration ??
             DEFAULT_SETTINGS.activeNoteheadUseNoteDuration,
-          colorFullNote:
-            project.colorFullNote ?? DEFAULT_SETTINGS.colorFullNote,
+          colorAccidentals:
+            project.colorAccidentals ?? project.colorFullNote ?? DEFAULT_SETTINGS.colorAccidentals,
+          colorDots:
+            project.colorDots ?? project.colorFullNote ?? DEFAULT_SETTINGS.colorDots,
+          colorArticulations:
+            project.colorArticulations ?? project.colorFullNote ?? DEFAULT_SETTINGS.colorArticulations,
           fps: project.fps ?? DEFAULT_SETTINGS.fps,
           scoreShadowDistance:
             project.scoreShadowDistance ?? DEFAULT_SETTINGS.scoreShadowDistance,
@@ -400,7 +406,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         activeNoteheadHoldMs,
         activeNoteheadExitMs,
         activeNoteheadUseNoteDuration,
-        colorFullNote,
+        colorAccidentals,
+        colorDots,
+        colorArticulations,
         hideLabels,
         audioDuration: audioRef.current?.duration,
         viewMode,
@@ -805,20 +813,27 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                         </div>
                       </div>
 
-                      <div className="pt-1">
-                        <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
-                          <input
-                            type="checkbox"
-                            checked={colorFullNote}
-                            onChange={(e) =>
-                              setSetting("colorFullNote", e.target.checked)
-                            }
-                            className="grunge-checkbox"
-                          />
-                          <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
-                            Color Stems & Accidentals
-                          </span>
-                        </label>
+                      <div className="pt-1 space-y-1.5">
+                        <span className="block text-xs font-medium text-neutral-400">Also color</span>
+                        {([
+                          ['colorAccidentals', 'Accidentals', colorAccidentals],
+                          ['colorDots', 'Dots', colorDots],
+                          ['colorArticulations', 'Articulations', colorArticulations],
+                        ] as const).map(([key, label, value]) => (
+                          <label key={key} className="flex items-center gap-2.5 text-xs cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={value}
+                              onChange={(e) =>
+                                setSetting(key, e.target.checked)
+                              }
+                              className="grunge-checkbox"
+                            />
+                            <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
+                              {label}
+                            </span>
+                          </label>
+                        ))}
                       </div>
                     </>
                   )}
@@ -1078,7 +1093,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                 activeNoteheadExitMs
                               }
                               activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
-                              colorFullNote={colorFullNote}
+                              colorAccidentals={colorAccidentals}
+                              colorDots={colorDots}
+                              colorArticulations={colorArticulations}
                               hideLabels={hideLabels}
                               transportPortalEl={transportEl}
                             />
@@ -1111,7 +1128,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                 activeNoteheadExitMs
                               }
                               activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
-                              colorFullNote={colorFullNote}
+                              colorAccidentals={colorAccidentals}
+                              colorDots={colorDots}
+                              colorArticulations={colorArticulations}
                               hideLabels={hideLabels}
                               transportPortalEl={transportEl}
                             />

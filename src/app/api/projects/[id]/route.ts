@@ -77,7 +77,8 @@ const ALLOWED_SETTINGS = [
   'scoreRegion', 'activeNoteheadColor', 'activeNoteheadScale',
   'activeNoteheadEntryMs', 'activeNoteheadHoldMs', 'activeNoteheadExitMs',
   'activeNoteheadUseNoteDuration',
-  'colorFullNote', 'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal',
+  'colorAccidentals', 'colorDots', 'colorArticulations',
+  'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal',
 ];
 
 export async function PATCH(

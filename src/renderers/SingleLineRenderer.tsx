@@ -18,6 +18,7 @@ import {
   resetEventNoteheads,
   reorderNoteheadsAboveStems,
   buildElementCache,
+  buildColorExtrasSelector,
   type ElementCache,
 } from "../lib/noteAnimation";
 
@@ -53,7 +54,9 @@ interface Props {
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
   activeNoteheadUseNoteDuration?: boolean;
-  colorFullNote?: boolean;
+  colorAccidentals?: boolean;
+  colorDots?: boolean;
+  colorArticulations?: boolean;
   // hide instrument labels (Verovio .label elements)
   hideLabels?: boolean;
   // portal target for transport bar (play/pause/reset) — renders there instead of inline
@@ -78,10 +81,16 @@ export default function SingleLineRenderer({
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
   activeNoteheadUseNoteDuration = false,
-  colorFullNote = false,
+  colorAccidentals = false,
+  colorDots = false,
+  colorArticulations = false,
   hideLabels = false,
   transportPortalEl,
 }: Props) {
+  const colorExtrasSelector = useMemo(() => buildColorExtrasSelector({
+    colorAccidentals, colorDots, colorArticulations,
+  }), [colorAccidentals, colorDots, colorArticulations]);
+
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -536,7 +545,7 @@ export default function SingleLineRenderer({
             entryMs: activeNoteheadAnimationEntryMs,
             exitMs: activeNoteheadAnimationExitMs,
             color: activeNoteheadColor,
-            colorFullNote,
+            colorExtrasSelector,
           };
 
           if (activeNoteheadUseNoteDuration && evt.tiedStartIds?.length) {
@@ -815,7 +824,7 @@ export default function SingleLineRenderer({
         for (let i = prev.start; i <= resetEnd; i++) {
           const evt = evts[i];
           if (evt.svgIds?.length) {
-            resetEventNoteheads(scoreRef.current, getEventIds(evt), colorFullNote, elementCacheRef.current);
+            resetEventNoteheads(scoreRef.current, getEventIds(evt), colorExtrasSelector, elementCacheRef.current);
           }
         }
       }
@@ -831,7 +840,7 @@ export default function SingleLineRenderer({
         const eventMaxHold = getEventMaxHoldSeconds(event);
         if (timeSinceEvent >= eventMaxHold + exitSeconds) {
           // All animations complete — reset and skip
-          resetEventNoteheads(scoreRef.current!, getEventIds(event), colorFullNote, elementCacheRef.current);
+          resetEventNoteheads(scoreRef.current!, getEventIds(event), colorExtrasSelector, elementCacheRef.current);
           continue;
         }
 
@@ -859,7 +868,7 @@ export default function SingleLineRenderer({
             scale = activeNoteheadScale + (1 - activeNoteheadScale) * easedProgress;
             color = interpolateColor(activeNoteheadColor, scoreColor, easedProgress);
           } else {
-            resetEventNoteheads(scoreRef.current!, [id], colorFullNote, elementCacheRef.current);
+            resetEventNoteheads(scoreRef.current!, [id], colorExtrasSelector, elementCacheRef.current);
             continue;
           }
 
@@ -882,15 +891,15 @@ export default function SingleLineRenderer({
             }
           });
 
-          if (color && colorFullNote) {
+          if (color && colorExtrasSelector) {
             const extras = stavenote.querySelectorAll<SVGGraphicsElement>(
-              "g.stem, g.accid, g.flag, g.dots, g.artic"
+              colorExtrasSelector
             );
             extras.forEach((group) => {
               group.style.fill = color!;
               group.style.stroke = color!;
               group.style.color = color!;
-              group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line").forEach((child) => {
+              group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse").forEach((child) => {
                 child.style.fill = color!;
                 child.style.stroke = color!;
                 child.style.color = color!;
@@ -915,7 +924,7 @@ export default function SingleLineRenderer({
       activeNoteheadAnimationHoldMs,
       activeNoteheadAnimationExitMs,
       activeNoteheadUseNoteDuration,
-      colorFullNote,
+      colorExtrasSelector,
       scoreColor,
       interpolateColor,
     ],

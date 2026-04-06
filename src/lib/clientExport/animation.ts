@@ -101,7 +101,7 @@ export interface AnimationConfig {
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
   activeNoteheadUseNoteDuration: boolean;
-  colorFullNote: boolean;
+  colorExtrasSelector: string;
   scoreRegionHeight: number | null;
   containerHeight: number;
   totalHeight: number;
@@ -125,7 +125,7 @@ export interface AnimationEvent {
 // Reset noteheads
 // ---------------------------------------------------------------------------
 
-const FULL_NOTE_SELECTORS = 'g.stem, g.accid, g.flag, g.dots, g.artic';
+const ALL_EXTRAS_SELECTORS = 'g.stem, g.accid, g.flag, g.dots, g.artic, g.mordent, g.trill, g.turn';
 
 /**
  * Reset notehead colors and transforms using SVG ATTRIBUTES (not CSS).
@@ -135,7 +135,7 @@ const FULL_NOTE_SELECTORS = 'g.stem, g.accid, g.flag, g.dots, g.artic';
  * rendering or in Safari.
  */
 function resetEventNoteheads(
-  root: HTMLElement, svgIds: string[], colorFullNote: boolean, scoreColor: string,
+  root: HTMLElement, svgIds: string[], colorExtrasSelector: string, scoreColor: string,
 ): void {
   for (const id of svgIds) {
     const stavenote = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
@@ -147,11 +147,11 @@ function resetEventNoteheads(
         shape.setAttribute('stroke', scoreColor);
       });
     });
-    if (colorFullNote) {
-      stavenote.querySelectorAll<SVGGraphicsElement>(FULL_NOTE_SELECTORS).forEach((group) => {
+    if (colorExtrasSelector) {
+      stavenote.querySelectorAll<SVGGraphicsElement>(colorExtrasSelector || ALL_EXTRAS_SELECTORS).forEach((group) => {
         group.removeAttribute('fill');
         group.removeAttribute('stroke');
-        group.querySelectorAll<SVGGraphicsElement>('path, use, polygon, line').forEach((child) => {
+        group.querySelectorAll<SVGGraphicsElement>('path, use, polygon, line, ellipse').forEach((child) => {
           child.removeAttribute('fill');
           child.removeAttribute('stroke');
         });
@@ -301,7 +301,7 @@ export function setTimestamp(
     const resetEnd = Math.min(prev.end, firstActiveIndex - 1);
     for (let i = prev.start; i <= resetEnd; i++) {
       if (events[i].svgIds?.length) {
-        resetEventNoteheads(scoreEl, getEventIds(events[i]), config.colorFullNote, config.scoreColor);
+        resetEventNoteheads(scoreEl, getEventIds(events[i]), config.colorExtrasSelector, config.scoreColor);
       }
     }
   }
@@ -313,7 +313,7 @@ export function setTimestamp(
 
     const eventMaxHold = getEventMaxHoldSeconds(event);
     if (timeSinceEvent >= eventMaxHold + exitSeconds) {
-      resetEventNoteheads(scoreEl, getEventIds(event), config.colorFullNote, config.scoreColor);
+      resetEventNoteheads(scoreEl, getEventIds(event), config.colorExtrasSelector, config.scoreColor);
       continue;
     }
 
@@ -340,7 +340,7 @@ export function setTimestamp(
         color = interpolateColor(config.activeNoteheadColor, config.scoreColor, easedProgress);
       } else {
         // This note's animation is done — reset it
-        resetEventNoteheads(scoreEl, [id], config.colorFullNote, config.scoreColor);
+        resetEventNoteheads(scoreEl, [id], config.colorExtrasSelector, config.scoreColor);
         continue;
       }
 
@@ -365,11 +365,11 @@ export function setTimestamp(
         }
       });
 
-      if (color && config.colorFullNote) {
-        stavenote.querySelectorAll<SVGGraphicsElement>(FULL_NOTE_SELECTORS).forEach((group) => {
+      if (color && config.colorExtrasSelector) {
+        stavenote.querySelectorAll<SVGGraphicsElement>(config.colorExtrasSelector).forEach((group) => {
           group.setAttribute('fill', color!);
           group.setAttribute('stroke', color!);
-          group.querySelectorAll<SVGGraphicsElement>('path, use, polygon, line').forEach((child) => {
+          group.querySelectorAll<SVGGraphicsElement>('path, use, polygon, line, ellipse').forEach((child) => {
             child.setAttribute('fill', color!);
             child.setAttribute('stroke', color!);
           });
