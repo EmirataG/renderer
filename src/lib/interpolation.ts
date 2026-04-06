@@ -7,8 +7,11 @@ export interface InterpolatableEvent {
   beatOnset: number;
   beatDuration: number;
   svgIds: string[];
+  positionSvgId?: string;
   tiedContinuationIds?: string[];
+  tiedStartIds?: string[];
   noteDurationBeats?: number;
+  tiedNoteDurationBeats?: number;
 }
 
 export interface InterpolatedEvent extends InterpolatableEvent {

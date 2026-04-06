@@ -6,11 +6,14 @@ export interface MusicalEvent {
   beatOnset: number;
   beatDuration: number;
   svgIds: string[];
+  positionSvgId?: string; // First SVG ID for position lookup (includes tied continuations)
   x: number; // Local x within segment
   globalX?: number; // Global x across entire score (for segmented rendering)
   segmentId?: string; // Which segment owns this event (for segmented rendering)
   tiedContinuationIds?: string[]; // SVG IDs of tied continuation notes (for coloring entire tie chain)
-  noteDurationBeats?: number; // Actual sounding duration in whole-note fractions (including ties)
+  tiedStartIds?: string[]; // SVG IDs from svgIds that start tie chains (for split hold durations)
+  noteDurationBeats?: number; // Sounding duration of untied notes (whole-note fractions)
+  tiedNoteDurationBeats?: number; // Sounding duration of tied chain (whole-note fractions, only when mixed)
 }
 
 // Extended event interface with Y position for vertical camera scrolling
@@ -126,31 +129,52 @@ function buildTieInfo(toolkit: VerovioToolkit): {
  * Populate tiedContinuationIds and noteDurationBeats on events
  * using tie chain info and per-note durations from MEI.
  */
-function populateTieFields<T extends { svgIds: string[]; tiedContinuationIds?: string[]; noteDurationBeats?: number }>(
+function populateTieFields<T extends {
+  svgIds: string[];
+  tiedContinuationIds?: string[];
+  tiedStartIds?: string[];
+  noteDurationBeats?: number;
+  tiedNoteDurationBeats?: number;
+}>(
   events: T[],
   chainMap: Map<string, TieChainInfo>,
   noteDurations: Map<string, number>,
 ): void {
   for (const event of events) {
     const allTiedIds: string[] = [];
-    let maxDuration = 0;
+    const tiedStarts: string[] = [];
+    let maxUntiedDuration = 0;
+    let maxTiedDuration = 0;
+
     for (const id of event.svgIds) {
       const chain = chainMap.get(id);
       if (chain) {
+        tiedStarts.push(id);
         allTiedIds.push(...chain.continuationIds);
-        maxDuration = Math.max(maxDuration, chain.totalDurationBeats);
+        maxTiedDuration = Math.max(maxTiedDuration, chain.totalDurationBeats);
       } else {
         const dur = noteDurations.get(id);
         if (dur !== undefined) {
-          maxDuration = Math.max(maxDuration, dur);
+          maxUntiedDuration = Math.max(maxUntiedDuration, dur);
         }
       }
     }
+
     if (allTiedIds.length > 0) {
       event.tiedContinuationIds = allTiedIds;
     }
-    if (maxDuration > 0) {
-      event.noteDurationBeats = maxDuration;
+
+    if (maxUntiedDuration > 0 && maxTiedDuration > 0) {
+      // Mixed event: untied and tied notes with separate durations
+      event.noteDurationBeats = maxUntiedDuration;
+      event.tiedNoteDurationBeats = maxTiedDuration;
+      event.tiedStartIds = tiedStarts;
+    } else if (maxTiedDuration > 0) {
+      // All notes are tied — use chain duration for the whole event
+      event.noteDurationBeats = maxTiedDuration;
+    } else if (maxUntiedDuration > 0) {
+      // No ties — use untied duration
+      event.noteDurationBeats = maxUntiedDuration;
     }
   }
 }
@@ -164,20 +188,30 @@ export function getEventsFromVerovio(
   // Build tie info from MEI (continuation IDs, tie chains, note durations)
   const tieInfo = buildTieInfo(toolkit);
 
-  // Get the full timemap from Verovio (rests excluded by default)
-  const timemap = toolkit.renderToTimemap();
+  // Get the full timemap from Verovio (rests excluded by default).
+  // renderToTimemap() can throw a WASM "memory access out of bounds"
+  // if called while Verovio is mid-layout — return empty so callers
+  // retry on the next render cycle.
+  let timemap: ReturnType<typeof toolkit.renderToTimemap>;
+  try {
+    timemap = toolkit.renderToTimemap();
+  } catch {
+    return [];
+  }
 
   // Filter to note onset entries only (entries with `on` array)
   const onsetEntries = timemap.filter(
     (entry) => entry.on && entry.on.length > 0
   );
 
-  // Build MusicalEvent array from onset entries, excluding tied continuations
+  // Build MusicalEvent array from onset entries, excluding tied continuations.
+  // positionSvgId keeps the first note ID (even if tied) for position lookup.
   const events: MusicalEventWithY[] = onsetEntries.map((entry, index) => ({
     id: `evt-${index}`,
     beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
     beatDuration: 0, // Calculated below
     svgIds: entry.on!.filter((id) => !tieInfo.continuationIds.has(id)),
+    positionSvgId: entry.on![0],
     x: 0, // Not used for vertical camera scrolling
     y: 0, // Calculated below from DOM
   }));
@@ -197,10 +231,11 @@ export function getEventsFromVerovio(
     // Page-aware Y computation: use Verovio API to find which page each
     // event lives on, then compute global Y as pageOffset + localY.
     for (const event of events) {
-      if (event.svgIds.length === 0) continue;
+      const posId = event.positionSvgId || event.svgIds[0];
+      if (!posId) continue;
 
       // Use Verovio API to find which page this event is on (1-based)
-      const pageNum = toolkit.getPageWithElement(event.svgIds[0]);
+      const pageNum = toolkit.getPageWithElement(posId);
       if (pageNum === 0) continue; // Element not found
 
       const pageIndex = pageNum - 1;
@@ -208,7 +243,7 @@ export function getEventsFromVerovio(
       if (!container) continue;
 
       const containerRect = container.getBoundingClientRect();
-      const noteEl = container.querySelector(`#${CSS.escape(event.svgIds[0])}`);
+      const noteEl = container.querySelector(`#${CSS.escape(posId)}`);
       if (!noteEl) continue;
 
       const systemEl = noteEl.closest('g.system');
@@ -239,9 +274,10 @@ export function getEventsFromVerovio(
     // and assign that system's center Y. All events in the same system get
     // the exact same Y — camera stays perfectly still within a system.
     for (const event of events) {
-      if (event.svgIds.length > 0) {
+      const posId = event.positionSvgId || event.svgIds[0];
+      if (posId) {
         const noteEl = svgContainer.querySelector(
-          `#${CSS.escape(event.svgIds[0])}`
+          `#${CSS.escape(posId)}`
         );
         if (noteEl) {
           const systemEl = noteEl.closest('g.system');
@@ -280,8 +316,11 @@ export interface TimemapEvent {
   beatOnset: number;
   beatDuration: number;
   svgIds: string[];
+  positionSvgId?: string; // First SVG ID for position lookup (includes tied continuations)
   tiedContinuationIds?: string[]; // SVG IDs of tied continuation notes (for coloring entire tie chain)
-  noteDurationBeats?: number; // Actual sounding duration in whole-note fractions (including ties)
+  tiedStartIds?: string[]; // SVG IDs from svgIds that start tie chains (for split hold durations)
+  noteDurationBeats?: number; // Sounding duration of untied notes (whole-note fractions)
+  tiedNoteDurationBeats?: number; // Sounding duration of tied chain (whole-note fractions, only when mixed)
 }
 
 /**
@@ -301,20 +340,31 @@ export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
   // Build tie info from MEI (continuation IDs, tie chains, note durations)
   const tieInfo = buildTieInfo(toolkit);
 
-  // Get the full timemap from Verovio (rests excluded by default)
-  const timemap = toolkit.renderToTimemap();
+  // Get the full timemap from Verovio (rests excluded by default).
+  // renderToTimemap() can throw a WASM "memory access out of bounds"
+  // if called while Verovio is mid-layout — return empty so callers
+  // retry on the next render cycle.
+  let timemap: ReturnType<typeof toolkit.renderToTimemap>;
+  try {
+    timemap = toolkit.renderToTimemap();
+  } catch {
+    return [];
+  }
 
   // Filter to note onset entries only (entries with `on` array)
   const onsetEntries = timemap.filter(
     (entry) => entry.on && entry.on.length > 0
   );
 
-  // Build TimemapEvent array from onset entries, excluding tied continuations
+  // Build TimemapEvent array from onset entries, excluding tied continuations.
+  // positionSvgId keeps the first note ID (even if tied) for position lookup —
+  // events where ALL notes are continuations still need a DOM position for scrolling.
   const events: TimemapEvent[] = onsetEntries.map((entry, index) => ({
     id: `evt-${index}`,
     beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
     beatDuration: 0, // Calculated below
     svgIds: entry.on!.filter((id) => !tieInfo.continuationIds.has(id)),
+    positionSvgId: entry.on![0],
   }));
 
   // Calculate beatDuration for each event
@@ -365,10 +415,11 @@ export function computeEventPositions(
     : 1;
 
   for (const event of cachedEvents) {
-    if (event.svgIds.length === 0) continue;
+    const posId = event.positionSvgId || event.svgIds[0];
+    if (!posId) continue;
 
     // Use Verovio API to find which page this event is on (1-based)
-    const pageNum = toolkit.getPageWithElement(event.svgIds[0]);
+    const pageNum = toolkit.getPageWithElement(posId);
     if (pageNum === 0) continue; // Element not found
 
     const pageIndex = pageNum - 1;
@@ -378,7 +429,7 @@ export function computeEventPositions(
     if (!container) continue;
 
     const containerRect = container.getBoundingClientRect();
-    const noteEl = container.querySelector(`#${CSS.escape(event.svgIds[0])}`);
+    const noteEl = container.querySelector(`#${CSS.escape(posId)}`);
     if (!noteEl) continue;
 
     // Find parent g.system element for consistent Y positioning
@@ -427,7 +478,8 @@ export function computeSectionPositions(
   const result = events.map(event => ({ ...event }));
 
   for (const event of result) {
-    if (event.svgIds.length === 0) continue;
+    const posId = event.positionSvgId || event.svgIds[0];
+    if (!posId) continue;
 
     // Find which section contains this element by searching each container
     let sectionIndex = -1;
@@ -438,7 +490,7 @@ export function computeSectionPositions(
       if (!container) continue;
 
       const noteEl = container.querySelector(
-        `#${CSS.escape(event.svgIds[0])}`
+        `#${CSS.escape(posId)}`
       );
       if (noteEl) {
         sectionIndex = i;

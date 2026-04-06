@@ -147,21 +147,35 @@ export function useSingleLineVerovio(
           return;
         }
 
-        // Section rendering loop
-        const renderedSections: string[] = [];
+        // Strategy: render the entire score as ONE SVG to avoid visual
+        // stitching artifacts at section boundaries. Only fall back to
+        // the measure-range sectioning if the score overflows to multiple
+        // pages (exceeds Verovio's 100,000 px pageWidth limit).
+        let renderedSections: string[];
 
-        for (let start = 1; start <= totalMeasures; start += measuresPerSection) {
-          const end = Math.min(start + measuresPerSection - 1, totalMeasures);
-          toolkit.select({ measureRange: `${start}-${end}` });
+        let fullSvg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
+        const fullDims = extractSectionDimensions(fullSvg);
+        const pageCount = toolkit.getPageCount();
+
+        if (pageCount <= 1 && fullDims.width > 0) {
+          // Score fits in one SVG — use it directly (no stitching seams)
+          renderedSections = [fullSvg];
+        } else {
+          // Score overflows Verovio's max page width — fall back to
+          // rendering in measure-range sections and stitching them.
+          renderedSections = [];
+          for (let start = 1; start <= totalMeasures; start += measuresPerSection) {
+            const end = Math.min(start + measuresPerSection - 1, totalMeasures);
+            toolkit.select({ measureRange: `${start}-${end}` });
+            toolkit.redoLayout();
+            let svg = toolkit.renderToSVG(1);
+            svg = reorderNoteheadsInSvgString(svg);
+            renderedSections.push(svg);
+          }
+          // Clear selection for future operations
+          toolkit.select({});
           toolkit.redoLayout();
-          let svg = toolkit.renderToSVG(1); // Always page 1 after select
-          svg = reorderNoteheadsInSvgString(svg);
-          renderedSections.push(svg);
         }
-
-        // Clear selection for future operations
-        toolkit.select({});
-        toolkit.redoLayout();
 
         // Compute widths, heights, and offsets
         const dimensions = renderedSections.map(extractSectionDimensions);

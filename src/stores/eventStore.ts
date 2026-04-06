@@ -5,6 +5,7 @@ export interface CachedEvent {
   beatOnset: number;     // Quarter-note-based timing (RealValue)
   beatDuration: number;  // Duration until next event
   svgIds: string[];      // Verovio note xml:id values
+  positionSvgId?: string; // First SVG ID for position lookup (includes tied continuations)
   pageIndex: number;     // 0-based page index
   globalY: number;       // Y position in global coordinate space
 
@@ -15,7 +16,9 @@ export interface CachedEvent {
 
   // Tie chain fields for "use note duration" mode
   tiedContinuationIds?: string[]; // SVG IDs of tied continuation notes
-  noteDurationBeats?: number;     // Actual sounding duration in whole-note fractions
+  tiedStartIds?: string[];        // SVG IDs from svgIds that start tie chains
+  noteDurationBeats?: number;     // Sounding duration of untied notes
+  tiedNoteDurationBeats?: number; // Sounding duration of tied chain (when mixed)
 }
 
 interface EventStore {

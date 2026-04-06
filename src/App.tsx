@@ -196,9 +196,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     };
   }, [projectId]);
 
-  // Invalidate event store when viewMode changes (positions are axis-specific)
+  // Invalidate event store when viewMode changes (positions are axis-specific).
+  // Skip the initial mount — only invalidate on actual user-driven changes.
+  const prevViewModeRef = useRef(viewMode);
   useEffect(() => {
-    useEventStore.getState().invalidate();
+    if (prevViewModeRef.current !== viewMode) {
+      prevViewModeRef.current = viewMode;
+      useEventStore.getState().invalidate();
+    }
   }, [viewMode]);
 
   // View toggle state
@@ -236,6 +241,20 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     }, 300);
     return () => clearTimeout(timer);
   }, [scoreScale]);
+
+  // Flush debounced values immediately when project finishes loading.
+  // Without this, the renderer first renders with DEFAULT scale/region (captured
+  // by useState at App mount), then 300ms later re-renders with the loaded values.
+  const projectLoadedRef = useRef(false);
+  useEffect(() => {
+    if (isLoadingProject) {
+      projectLoadedRef.current = false;
+    } else if (projectId && !projectLoadedRef.current) {
+      projectLoadedRef.current = true;
+      setDebouncedScoreScale(scoreScale);
+      setDebouncedScoreRegion(scoreRegion);
+    }
+  }, [isLoadingProject, projectId, scoreScale, scoreRegion]);
 
   // Debounce scoreRegion only during active editing to avoid Verovio re-render
   // on every drag tick. Outside editing (initial load, settings change), propagate

@@ -137,7 +137,7 @@ export default memo(function RegularRenderer({
   // Interpolated events with computed timestamps (when syncAnchors provided)
   // Includes `y` for camera positioning (mapped from globalY)
   const [interpolatedEvents, setInterpolatedEvents] = useState<
-    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean; y: number; holdSeconds?: number })[]
+    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean; y: number; holdSeconds?: number; tiedHoldSeconds?: number })[]
   >([]);
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -180,6 +180,7 @@ export default memo(function RegularRenderer({
     }
 
     const audio = new Audio(audioUrl);
+    audio.preload = "auto";
     audioRef.current = audio;
 
     const handleLoadedMetadata = () => {
@@ -213,13 +214,23 @@ export default memo(function RegularRenderer({
         ...evt,
         y: yMap.get(evt.id) ?? 0,
         holdSeconds: undefined as number | undefined,
+        tiedHoldSeconds: undefined as number | undefined,
       }));
 
       // Precompute holdSeconds for "use note duration" mode
       if (activeNoteheadUseNoteDuration) {
         for (let i = 0; i < merged.length; i++) {
-          if (merged[i].noteDurationBeats && merged[i].noteDurationBeats! > 0) {
+          const m = merged[i];
+          if (m.noteDurationBeats && m.noteDurationBeats > 0) {
             merged[i].holdSeconds = computeNoteDurationSeconds(i, merged);
+          }
+          // Separate hold for tied chains in mixed events
+          if (m.tiedNoteDurationBeats && m.tiedNoteDurationBeats > 0) {
+            // Temporarily swap noteDurationBeats to compute tied hold
+            const origDur = m.noteDurationBeats;
+            merged[i].noteDurationBeats = m.tiedNoteDurationBeats;
+            merged[i].tiedHoldSeconds = computeNoteDurationSeconds(i, merged);
+            merged[i].noteDurationBeats = origDur;
           }
         }
       }
@@ -474,22 +485,38 @@ export default memo(function RegularRenderer({
       for (let i = startIdx; i <= index; i++) {
         const evt = interpolatedEvents[i];
         if (evt?.svgIds?.length) {
-          // "Use note duration" mode: per-event hold + animate tied continuation IDs
-          const holdMs = activeNoteheadUseNoteDuration && evt.holdSeconds !== undefined
-            ? evt.holdSeconds * 1000
-            : activeNoteheadAnimationHoldMs;
-          const idsToAnimate = activeNoteheadUseNoteDuration && evt.tiedContinuationIds?.length
-            ? [...evt.svgIds, ...evt.tiedContinuationIds]
-            : evt.svgIds;
-
-          animateNoteheads(scoreRef.current, idsToAnimate, {
+          const baseOpts = {
             scale: activeNoteheadScale,
             entryMs: activeNoteheadAnimationEntryMs,
-            holdMs,
             exitMs: activeNoteheadAnimationExitMs,
             color: activeNoteheadColor,
             colorFullNote,
-          }, elementCacheRef.current);
+          };
+
+          if (activeNoteheadUseNoteDuration && evt.tiedStartIds?.length) {
+            // Mixed event: untied notes get their own hold, tied chain gets chain hold
+            const untiedIds = evt.svgIds.filter(id => !evt.tiedStartIds!.includes(id));
+            const tiedIds = [...evt.tiedStartIds, ...(evt.tiedContinuationIds || [])];
+            const untiedHoldMs = evt.holdSeconds !== undefined ? evt.holdSeconds * 1000 : activeNoteheadAnimationHoldMs;
+            const tiedHoldMs = evt.tiedHoldSeconds !== undefined ? evt.tiedHoldSeconds * 1000 : activeNoteheadAnimationHoldMs;
+
+            if (untiedIds.length) {
+              animateNoteheads(scoreRef.current, untiedIds, { ...baseOpts, holdMs: untiedHoldMs }, elementCacheRef.current);
+            }
+            if (tiedIds.length) {
+              animateNoteheads(scoreRef.current, tiedIds, { ...baseOpts, holdMs: tiedHoldMs }, elementCacheRef.current);
+            }
+          } else {
+            // Simple case: all notes same hold
+            const holdMs = activeNoteheadUseNoteDuration && evt.holdSeconds !== undefined
+              ? evt.holdSeconds * 1000
+              : activeNoteheadAnimationHoldMs;
+            const idsToAnimate = activeNoteheadUseNoteDuration && evt.tiedContinuationIds?.length
+              ? [...evt.svgIds, ...evt.tiedContinuationIds]
+              : evt.svgIds;
+
+            animateNoteheads(scoreRef.current, idsToAnimate, { ...baseOpts, holdMs }, elementCacheRef.current);
+          }
         }
       }
     }
@@ -696,9 +723,13 @@ export default memo(function RegularRenderer({
 
       if (!scoreRef.current) return;
 
-      // Helper: get per-event hold seconds (note duration mode or global)
+      // Helper: get per-event hold seconds for untied notes
       const getEventHoldSeconds = (evt: typeof events[number] & { holdSeconds?: number }) =>
         useNoteDur && evt.holdSeconds !== undefined ? evt.holdSeconds : globalHoldSeconds;
+
+      // Helper: get max hold seconds across both untied and tied groups (for active window)
+      const getEventMaxHoldSeconds = (evt: typeof events[number] & { holdSeconds?: number; tiedHoldSeconds?: number }) =>
+        Math.max(getEventHoldSeconds(evt), useNoteDur && evt.tiedHoldSeconds !== undefined ? evt.tiedHoldSeconds : 0);
 
       // Helper: get all SVG IDs to animate (include tied continuation IDs in note duration mode)
       const getEventIds = (evt: typeof events[number]) =>
@@ -706,13 +737,22 @@ export default memo(function RegularRenderer({
           ? [...evt.svgIds, ...evt.tiedContinuationIds]
           : evt.svgIds;
 
+      // Helper: get per-note hold seconds (tied chain notes use tiedHoldSeconds)
+      const getNoteHoldSeconds = (evt: typeof events[number] & { holdSeconds?: number; tiedHoldSeconds?: number }, id: string) => {
+        if (!useNoteDur) return globalHoldSeconds;
+        if (evt.tiedStartIds?.includes(id) || evt.tiedContinuationIds?.includes(id)) {
+          return evt.tiedHoldSeconds ?? getEventHoldSeconds(evt);
+        }
+        return getEventHoldSeconds(evt);
+      };
+
       // Find firstActiveIndex: scan backwards from currentIndex to find the
       // earliest event still within the animation window
       let firstActiveIndex = currentIndex;
       while (firstActiveIndex > 0) {
         const prevEvent = events[firstActiveIndex - 1];
         const timeSincePrev = seconds - prevEvent.computedTimestamp;
-        const prevAnimDuration = getEventHoldSeconds(prevEvent) + exitSeconds;
+        const prevAnimDuration = getEventMaxHoldSeconds(prevEvent) + exitSeconds;
         if (timeSincePrev >= prevAnimDuration || !prevEvent.svgIds?.length) {
           break;
         }
@@ -745,30 +785,15 @@ export default memo(function RegularRenderer({
 
         if (timeSinceEvent < 0 || !event.svgIds?.length) continue;
 
-        const eventHoldSeconds = getEventHoldSeconds(event);
-        const eventAnimDuration = eventHoldSeconds + exitSeconds;
-
-        let scale: number;
-        let color: string | undefined;
-
-        if (timeSinceEvent < eventHoldSeconds) {
-          // Hold period: full scale and color
-          scale = activeNoteheadScale;
-          color = activeNoteheadColor;
-        } else if (timeSinceEvent < eventAnimDuration) {
-          // Exit period: interpolate scale and color using ease-in curve
-          const exitProgress = (timeSinceEvent - eventHoldSeconds) / exitSeconds;
-          const easedProgress = Math.pow(exitProgress, 1.675);
-          scale = activeNoteheadScale + (1 - activeNoteheadScale) * easedProgress;
-          color = interpolateColor(activeNoteheadColor, scoreColor, easedProgress);
-        } else {
-          // Animation complete -- this event shouldn't be in the window but
-          // guard defensively. Reset it and continue.
+        const eventMaxHold = getEventMaxHoldSeconds(event);
+        if (timeSinceEvent >= eventMaxHold + exitSeconds) {
+          // All animations complete — reset and skip
           resetEventNoteheads(scoreRef.current!, getEventIds(event), colorFullNote, elementCacheRef.current);
           continue;
         }
 
         // Apply animation directly to SVG elements (no CSS transitions)
+        // Each note uses its own holdSeconds (untied vs tied chain)
         const idsToAnimate = getEventIds(event);
         for (const id of idsToAnimate) {
           const cached = elementCacheRef.current.get(id);
@@ -776,6 +801,26 @@ export default memo(function RegularRenderer({
             `#${CSS.escape(id)}`,
           );
           if (!stavenote) continue;
+
+          // Per-note hold: untied notes use their duration, tied chain notes use chain duration
+          const noteHold = getNoteHoldSeconds(event, id);
+          const noteAnimDur = noteHold + exitSeconds;
+          let scale: number;
+          let color: string | undefined;
+
+          if (timeSinceEvent < noteHold) {
+            scale = activeNoteheadScale;
+            color = activeNoteheadColor;
+          } else if (timeSinceEvent < noteAnimDur) {
+            const exitProgress = (timeSinceEvent - noteHold) / exitSeconds;
+            const easedProgress = Math.pow(exitProgress, 1.675);
+            scale = activeNoteheadScale + (1 - activeNoteheadScale) * easedProgress;
+            color = interpolateColor(activeNoteheadColor, scoreColor, easedProgress);
+          } else {
+            // This note's animation is done — reset it
+            resetEventNoteheads(scoreRef.current!, [id], colorFullNote, elementCacheRef.current);
+            continue;
+          }
 
           const noteheads = stavenote.querySelectorAll<SVGGElement>("g.notehead");
           noteheads.forEach((nh) => {

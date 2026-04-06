@@ -38,23 +38,30 @@ export async function GET(
   const contentType = metadata.contentType || 'audio/mpeg';
   const fileSize = Number(metadata.size);
 
-  const [contents] = await file.download();
-
-  // Handle range requests for audio seeking
+  // Handle range requests for audio seeking/streaming.
+  // Stream directly from Cloud Storage instead of downloading the
+  // entire file into memory — this enables instant playback start.
   const rangeHeader = request.headers.get('range');
   if (rangeHeader) {
     const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
     if (match) {
       const start = parseInt(match[1], 10);
-      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
-      const slice = contents.slice(start, end + 1);
+      const end = match[2] ? parseInt(match[2], 10) : Math.min(start + 1024 * 1024 - 1, fileSize - 1);
+      const stream = file.createReadStream({ start, end });
+      const webStream = new ReadableStream({
+        start(controller) {
+          stream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
+          stream.on('end', () => controller.close());
+          stream.on('error', (err: Error) => controller.error(err));
+        },
+      });
 
-      return new Response(new Uint8Array(slice), {
+      return new Response(webStream, {
         status: 206,
         headers: {
           'Content-Type': contentType,
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-          'Content-Length': String(slice.length),
+          'Content-Length': String(end - start + 1),
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'private, max-age=3600',
         },
@@ -62,7 +69,17 @@ export async function GET(
     }
   }
 
-  return new Response(new Uint8Array(contents), {
+  // Full file request — stream instead of buffering in memory
+  const stream = file.createReadStream();
+  const webStream = new ReadableStream({
+    start(controller) {
+      stream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
+      stream.on('end', () => controller.close());
+      stream.on('error', (err: Error) => controller.error(err));
+    },
+  });
+
+  return new Response(webStream, {
     headers: {
       'Content-Type': contentType,
       'Content-Length': String(fileSize),
