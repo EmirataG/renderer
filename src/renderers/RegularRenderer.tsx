@@ -457,6 +457,14 @@ export default memo(function RegularRenderer({
   function animateSync() {
     if (!audioRef.current) return;
 
+    // Wait for audio to actually start playing before driving animation.
+    // audio.play() is async — until playback begins, currentTime is 0 which
+    // would color the first note prematurely.
+    if (audioRef.current.paused || audioRef.current.readyState < 2) {
+      animationFrameRef.current = requestAnimationFrame(animateSync);
+      return;
+    }
+
     const frameInterval = 1000 / fps;
     const now = performance.now();
 

@@ -49,6 +49,7 @@ export interface ExportSettings {
   colorFullNote: boolean;
   hideLabels: boolean;
   audioDuration?: number;
+  viewMode?: 'page' | 'single-line';
 }
 
 // ---------------------------------------------------------------------------
@@ -61,9 +62,20 @@ const EDITOR_WIDTH = 980;
 // SVG helpers (ported from export-service/src/standalone/render.ts)
 // ---------------------------------------------------------------------------
 
+const WIDTH_REGEX = /width="(\d+(?:\.\d+)?)px"/;
 const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)px"/;
 const VIEWBOX_HEIGHT_REGEX = /viewBox="0 0 [\d.]+ ([\d.]+)"/;
+const VIEWBOX_WH_REGEX = /viewBox="0 0 ([\d.]+) ([\d.]+)"/;
 const VIEWBOX_REGEX = /viewBox="([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"/;
+
+function extractSectionDims(svgString: string): { width: number; height: number } {
+  const wMatch = svgString.match(WIDTH_REGEX);
+  const hMatch = svgString.match(HEIGHT_REGEX);
+  if (wMatch && hMatch) return { width: parseFloat(wMatch[1]), height: parseFloat(hMatch[1]) };
+  const vbMatch = svgString.match(VIEWBOX_WH_REGEX);
+  if (vbMatch) return { width: parseFloat(vbMatch[1]), height: parseFloat(vbMatch[2]) };
+  return { width: 0, height: 0 };
+}
 
 function extractPageHeight(svgString: string): number {
   const match = svgString.match(HEIGHT_REGEX);
@@ -127,8 +139,11 @@ interface TimemapEvent {
   beatOnset: number;
   beatDuration: number;
   svgIds: string[];
+  positionSvgId?: string;
   tiedContinuationIds?: string[];
+  tiedStartIds?: string[];
   noteDurationBeats?: number;
+  tiedNoteDurationBeats?: number;
 }
 
 interface TieChainInfo {
@@ -217,6 +232,7 @@ function extractTimemapEvents(toolkit: any): TimemapEvent[] {
       beatOnset: entry.qstamp / 4,
       beatDuration: 0,
       svgIds: (entry.on as string[]).filter((id) => !tieInfo.continuationIds.has(id)),
+      positionSvgId: (entry.on as string[])[0],
     }),
   );
   for (let i = 0; i < events.length - 1; i++) {
@@ -226,22 +242,33 @@ function extractTimemapEvents(toolkit: any): TimemapEvent[] {
     events[events.length - 1].beatDuration = 1;
   }
 
-  // Populate tie chain info
+  // Populate tie chain info (matching populateTieFields in getEvents.ts)
   for (const event of events) {
     const allTiedIds: string[] = [];
-    let maxDuration = 0;
+    const tiedStarts: string[] = [];
+    let maxUntiedDuration = 0;
+    let maxTiedDuration = 0;
     for (const id of event.svgIds) {
       const chain = tieInfo.chainMap.get(id);
       if (chain) {
+        tiedStarts.push(id);
         allTiedIds.push(...chain.continuationIds);
-        maxDuration = Math.max(maxDuration, chain.totalDurationBeats);
+        maxTiedDuration = Math.max(maxTiedDuration, chain.totalDurationBeats);
       } else {
         const dur = tieInfo.noteDurations.get(id);
-        if (dur !== undefined) maxDuration = Math.max(maxDuration, dur);
+        if (dur !== undefined) maxUntiedDuration = Math.max(maxUntiedDuration, dur);
       }
     }
     if (allTiedIds.length > 0) event.tiedContinuationIds = allTiedIds;
-    if (maxDuration > 0) event.noteDurationBeats = maxDuration;
+    if (maxUntiedDuration > 0 && maxTiedDuration > 0) {
+      event.noteDurationBeats = maxUntiedDuration;
+      event.tiedNoteDurationBeats = maxTiedDuration;
+      event.tiedStartIds = tiedStarts;
+    } else if (maxTiedDuration > 0) {
+      event.noteDurationBeats = maxTiedDuration;
+    } else if (maxUntiedDuration > 0) {
+      event.noteDurationBeats = maxUntiedDuration;
+    }
   }
 
   return events;
@@ -575,46 +602,87 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // ── 2. Initialize Verovio ─────────────────────────────────────────
   const toolkit = await createToolkit();
+  const isSingleLine = settings.viewMode === 'single-line';
 
   const verovioScale = Math.round(40 * (settings.scoreScale ?? 1));
-  toolkit.setOptions({
-    font: settings.musicFont || 'Bravura',
-    fontLoadAll: true,
-    pageWidth: (regionWidth * 100) / verovioScale,
-    pageHeight: 2970,
-    scale: verovioScale,
-    adjustPageHeight: true,
-    pageMarginTop: 0,
-    pageMarginBottom: 0,
-    svgViewBox: true,
-    svgRemoveXlink: true,
-    breaks: 'auto',
-    header: 'none',
-    footer: 'none',
-  });
+  if (isSingleLine) {
+    toolkit.setOptions({
+      font: settings.musicFont || 'Bravura',
+      fontLoadAll: true,
+      breaks: 'none',
+      pageWidth: 100000,
+      pageHeight: 100,
+      adjustPageHeight: true,
+      scale: verovioScale,
+      pageMarginTop: 0,
+      pageMarginBottom: 0,
+      pageMarginLeft: 0,
+      pageMarginRight: 0,
+      svgViewBox: true,
+      svgRemoveXlink: true,
+      header: 'none',
+      footer: 'none',
+    });
+  } else {
+    toolkit.setOptions({
+      font: settings.musicFont || 'Bravura',
+      fontLoadAll: true,
+      pageWidth: (regionWidth * 100) / verovioScale,
+      pageHeight: 2970,
+      scale: verovioScale,
+      adjustPageHeight: true,
+      pageMarginTop: 0,
+      pageMarginBottom: 0,
+      svgViewBox: true,
+      svgRemoveXlink: true,
+      breaks: 'auto',
+      header: 'none',
+      footer: 'none',
+    });
+  }
 
   const loaded = toolkit.loadData(musicXml);
   if (!loaded) throw new Error('Failed to load MusicXML data');
   toolkit.renderToMIDI();
 
-  // ── 3. Render SVG pages ───────────────────────────────────────────
-  const pageCount = toolkit.getPageCount();
+  // ── 3. Render SVG ────────────────────────────────────────────────
   const svgPages: string[] = [];
-  for (let i = 1; i <= pageCount; i++) {
-    let svg = toolkit.renderToSVG(i);
-    if (i > 1) svg = trimPageTopMargin(svg);
-    svg = reorderNoteheadsInSvgString(svg);
-    svgPages.push(svg);
-  }
-
-  const pageHeights = svgPages.map(extractPageHeight);
+  let totalHeight = 0;
+  let totalWidth = 0;
+  const pageHeights: number[] = [];
   const pageOffsets: number[] = [];
-  let cumulative = 0;
-  for (const h of pageHeights) {
-    pageOffsets.push(cumulative);
-    cumulative += h;
+  const sectionWidths: number[] = [];
+  const sectionOffsets: number[] = [];
+
+  if (isSingleLine) {
+    // Single-line: render as one SVG (same as useSingleLineVerovio)
+    let svg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
+    svgPages.push(svg);
+    const dims = extractSectionDims(svg);
+    sectionWidths.push(dims.width);
+    sectionOffsets.push(0);
+    totalWidth = dims.width;
+    totalHeight = dims.height;
+    pageHeights.push(dims.height);
+    pageOffsets.push(0);
+  } else {
+    // Page mode: render multi-page
+    const pageCount = toolkit.getPageCount();
+    for (let i = 1; i <= pageCount; i++) {
+      let svg = toolkit.renderToSVG(i);
+      if (i > 1) svg = trimPageTopMargin(svg);
+      svg = reorderNoteheadsInSvgString(svg);
+      svgPages.push(svg);
+    }
+    let cumulative = 0;
+    for (const svg of svgPages) {
+      const h = extractPageHeight(svg);
+      pageHeights.push(h);
+      pageOffsets.push(cumulative);
+      cumulative += h;
+    }
+    totalHeight = cumulative;
   }
-  const totalHeight = cumulative;
 
   // ── 4. Build hidden DOM ───────────────────────────────────────────
   // Use Shadow DOM to isolate SVG element IDs from the preview.
@@ -686,30 +754,47 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   regionEl.style.width = `${regionWidth}px`;
   regionEl.style.height = `${regionHeight}px`;
   regionEl.style.overflow = 'hidden';
+  if (isSingleLine) {
+    regionEl.style.display = 'flex';
+    regionEl.style.alignItems = 'center';
+  }
   rotationWrapperEl.appendChild(regionEl);
 
   // Camera div
   const cameraEl = document.createElement('div');
   cameraEl.style.display = 'flex';
-  cameraEl.style.width = '100%';
+  cameraEl.style.flexDirection = isSingleLine ? 'row' : 'column';
   cameraEl.style.transition = 'none';
+  if (!isSingleLine) cameraEl.style.width = '100%';
   regionEl.appendChild(cameraEl);
 
   // Score div
   const scoreEl = document.createElement('div');
   scoreEl.className = 'client-export-score';
-  scoreEl.style.width = `${regionWidth}px`;
   scoreEl.style.lineHeight = '0';
   scoreEl.style.fontSize = '0';
+  if (isSingleLine) {
+    scoreEl.style.display = 'flex';
+    scoreEl.style.flexDirection = 'row';
+  } else {
+    scoreEl.style.width = `${regionWidth}px`;
+  }
   cameraEl.appendChild(scoreEl);
 
-  // Mount SVG pages
+  // Mount SVG pages/sections
   const pageContainers: HTMLElement[] = [];
-  for (const svg of svgPages) {
+  for (let idx = 0; idx < svgPages.length; idx++) {
     const pageDiv = document.createElement('div');
     pageDiv.className = 'client-export-score';
-    pageDiv.style.width = `${regionWidth}px`;
-    pageDiv.innerHTML = svg;
+    if (isSingleLine) {
+      pageDiv.style.flexShrink = '0';
+      pageDiv.style.width = `${sectionWidths[idx]}px`;
+      pageDiv.style.display = 'flex';
+      pageDiv.style.alignItems = 'flex-start';
+    } else {
+      pageDiv.style.width = `${regionWidth}px`;
+    }
+    pageDiv.innerHTML = svgPages[idx];
     scoreEl.appendChild(pageDiv);
     pageContainers.push(pageDiv);
   }
@@ -746,43 +831,85 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const positions = computeEventPositions(timemapEvents, toolkit, pageContainers, pageOffsets);
   const yMap = new Map(positions.map((p) => [p.id, p.globalY]));
 
+  // For single-line mode, compute X positions
+  let xMap = new Map<string, number>();
+  if (isSingleLine) {
+    // Detect CSS transform scale on ancestor elements (scaleEl).
+    // getBoundingClientRect() returns viewport pixels that include CSS transforms,
+    // but sectionOffsets are in pre-transform SVG viewBox units. We need positions
+    // in the same pre-transform space so the camera translateX is correct.
+    const firstPC = pageContainers[0];
+    const domScale = firstPC && firstPC.clientWidth > 0
+      ? firstPC.getBoundingClientRect().width / firstPC.clientWidth
+      : 1;
+
+    for (const tmEvt of timemapEvents) {
+      const posId = tmEvt.positionSvgId || tmEvt.svgIds[0];
+      if (!posId) continue;
+      for (let ci = 0; ci < pageContainers.length; ci++) {
+        const noteEl = pageContainers[ci].querySelector(`#${CSS.escape(posId)}`);
+        if (noteEl) {
+          const containerRect = pageContainers[ci].getBoundingClientRect();
+          const noteRect = noteEl.getBoundingClientRect();
+          // Divide by domScale to convert from viewport pixels to pre-transform units
+          const localX = (noteRect.left - containerRect.left + noteRect.width / 2) / domScale;
+          xMap.set(tmEvt.id, sectionOffsets[ci] + localX);
+          break;
+        }
+      }
+    }
+    // Enforce monotonically non-decreasing X
+    let prevX = 0;
+    for (const tmEvt of timemapEvents) {
+      const x = xMap.get(tmEvt.id) ?? prevX;
+      if (x < prevX) xMap.set(tmEvt.id, prevX);
+      else prevX = x;
+    }
+  }
+
   const events: AnimationEvent[] = interpolated.map((evt) => ({
     computedTimestamp: evt.computedTimestamp,
     y: yMap.get(evt.id) ?? 0,
+    x: xMap.get(evt.id) ?? 0,
     svgIds: evt.svgIds,
     tiedContinuationIds: evt.tiedContinuationIds,
+    tiedStartIds: evt.tiedStartIds,
   }));
 
   // Precompute holdSeconds for "use note duration" mode
   if (settings.activeNoteheadUseNoteDuration) {
+    // Helper: compute hold in seconds for a given beat duration
+    const computeHold = (evtIndex: number, durationBeats: number): number => {
+      const tmEvt = interpolated[evtIndex];
+      const endBeat = tmEvt.beatOnset + durationBeats;
+      for (let j = evtIndex + 1; j < interpolated.length; j++) {
+        if (interpolated[j].beatOnset >= endBeat) {
+          const prev = interpolated[j - 1];
+          const next = interpolated[j];
+          const range = next.beatOnset - prev.beatOnset;
+          if (range > 0) {
+            const t = (endBeat - prev.beatOnset) / range;
+            return (prev.computedTimestamp + t * (next.computedTimestamp - prev.computedTimestamp)) - tmEvt.computedTimestamp;
+          }
+          return next.computedTimestamp - tmEvt.computedTimestamp;
+        }
+      }
+      if (interpolated.length >= 2) {
+        const last = interpolated[interpolated.length - 1];
+        const prev = interpolated[interpolated.length - 2];
+        const range = last.beatOnset - prev.beatOnset;
+        if (range > 0) return durationBeats * ((last.computedTimestamp - prev.computedTimestamp) / range);
+      }
+      return 0;
+    };
+
     for (let i = 0; i < events.length; i++) {
       const tmEvt = interpolated[i];
       if (tmEvt.noteDurationBeats && tmEvt.noteDurationBeats > 0) {
-        const endBeat = tmEvt.beatOnset + tmEvt.noteDurationBeats;
-        let holdSec = 0;
-        for (let j = i + 1; j < interpolated.length; j++) {
-          if (interpolated[j].beatOnset >= endBeat) {
-            const prev = interpolated[j - 1];
-            const next = interpolated[j];
-            const range = next.beatOnset - prev.beatOnset;
-            if (range > 0) {
-              const t = (endBeat - prev.beatOnset) / range;
-              holdSec = (prev.computedTimestamp + t * (next.computedTimestamp - prev.computedTimestamp)) - tmEvt.computedTimestamp;
-            } else {
-              holdSec = next.computedTimestamp - tmEvt.computedTimestamp;
-            }
-            break;
-          }
-        }
-        if (holdSec <= 0 && interpolated.length >= 2) {
-          const last = interpolated[interpolated.length - 1];
-          const prev = interpolated[interpolated.length - 2];
-          const range = last.beatOnset - prev.beatOnset;
-          if (range > 0) {
-            holdSec = tmEvt.noteDurationBeats * ((last.computedTimestamp - prev.computedTimestamp) / range);
-          }
-        }
-        events[i].holdSeconds = holdSec;
+        events[i].holdSeconds = computeHold(i, tmEvt.noteDurationBeats);
+      }
+      if (tmEvt.tiedNoteDurationBeats && tmEvt.tiedNoteDurationBeats > 0) {
+        events[i].tiedHoldSeconds = computeHold(i, tmEvt.tiedNoteDurationBeats);
       }
     }
   }
@@ -790,9 +917,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // Build event→page index for dirty tracking during frame loop.
   // Maps each event index to the page (0-based) containing its first note.
   const eventPageIndex: number[] = interpolated.map((evt) => {
-    const svgId = evt.svgIds[0];
-    if (!svgId) return -1;
-    const pageNum = toolkit.getPageWithElement(svgId);
+    const posId = evt.positionSvgId || evt.svgIds[0];
+    if (!posId) return -1;
+    const pageNum = toolkit.getPageWithElement(posId);
     return pageNum > 0 ? pageNum - 1 : -1;
   });
 
@@ -809,6 +936,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     scoreRegionHeight: settings.scoreRegion?.height ?? null,
     containerHeight,
     totalHeight,
+    totalWidth,
+    regionWidth,
+    viewMode: settings.viewMode ?? 'page',
   };
 
   // ── 7. Setup canvas + encoder ─────────────────────────────────────
@@ -855,7 +985,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // only pages with active notehead animations are re-rasterized.
   const pageCache: (CanvasImageSource | null)[] = [];
   for (let p = 0; p < pageContainers.length; p++) {
-    pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
+    const w = isSingleLine ? sectionWidths[p] : regionWidth;
+    pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, w, scaleFactor);
   }
 
   // Start audio decoding in parallel with video frame rendering.
@@ -913,21 +1044,40 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     ctx.rect(0, 0, regionWidth, regionHeight);
     ctx.clip();
 
-    // Draw each page at its offset, shifted by camera.
+    // Draw each page/section at its offset, shifted by camera.
     // Only re-rasterize pages with active notehead animations; reuse cache otherwise.
-    const cameraY = animState.cameraY;
-    for (let p = 0; p < pageContainers.length; p++) {
-      const pageY = pageOffsets[p] - cameraY;
-      const pageH = pageHeights[p];
+    if (isSingleLine) {
+      const cameraX = animState.cameraX;
+      for (let p = 0; p < pageContainers.length; p++) {
+        const sectionX = sectionOffsets[p] - cameraX;
+        const sectionW = sectionWidths[p];
+        const sectionH = pageHeights[p];
 
-      // Skip pages entirely outside the viewport
-      if (pageY + pageH < 0 || pageY > regionHeight) continue;
+        if (sectionX + sectionW < 0 || sectionX > regionWidth) continue;
 
-      if (dirtyPages.has(p)) {
-        pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
+        if (dirtyPages.has(p)) {
+          pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, sectionW, scaleFactor);
+        }
+        if (pageCache[p]) {
+          // Vertically center the section within the region
+          const yOff = (regionHeight - sectionH) / 2;
+          ctx.drawImage(pageCache[p]!, sectionX, yOff, sectionW, sectionH);
+        }
       }
-      if (pageCache[p]) {
-        ctx.drawImage(pageCache[p]!, 0, pageY, regionWidth, pageH);
+    } else {
+      const cameraY = animState.cameraY;
+      for (let p = 0; p < pageContainers.length; p++) {
+        const pageY = pageOffsets[p] - cameraY;
+        const pageH = pageHeights[p];
+
+        if (pageY + pageH < 0 || pageY > regionHeight) continue;
+
+        if (dirtyPages.has(p)) {
+          pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
+        }
+        if (pageCache[p]) {
+          ctx.drawImage(pageCache[p]!, 0, pageY, regionWidth, pageH);
+        }
       }
     }
 

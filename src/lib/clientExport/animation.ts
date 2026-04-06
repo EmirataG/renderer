@@ -72,6 +72,8 @@ export interface AnimationState {
   eventIndex: number;
   currentY: number;
   cameraY: number;
+  currentX: number;
+  cameraX: number;
   transitionFrom: number;
   transitionTarget: number;
   transitionStart: number;
@@ -83,6 +85,8 @@ export function createAnimationState(): AnimationState {
     eventIndex: -1,
     currentY: 0,
     cameraY: 0,
+    currentX: 0,
+    cameraX: 0,
     transitionFrom: 0,
     transitionTarget: 0,
     transitionStart: -Infinity,
@@ -101,14 +105,20 @@ export interface AnimationConfig {
   scoreRegionHeight: number | null;
   containerHeight: number;
   totalHeight: number;
+  totalWidth?: number;
+  regionWidth?: number;
+  viewMode?: 'page' | 'single-line';
 }
 
 export interface AnimationEvent {
   computedTimestamp: number;
   y: number;
+  x?: number;
   svgIds: string[];
   tiedContinuationIds?: string[];
+  tiedStartIds?: string[];
   holdSeconds?: number;
+  tiedHoldSeconds?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +144,7 @@ function resetEventNoteheads(
       nh.removeAttribute('transform');
       nh.querySelectorAll<SVGGraphicsElement>('use').forEach((shape) => {
         shape.setAttribute('fill', scoreColor);
-        shape.removeAttribute('stroke');
+        shape.setAttribute('stroke', scoreColor);
       });
     });
     if (colorFullNote) {
@@ -181,35 +191,69 @@ export function setTimestamp(
   if (currentIndex < 0) return;
 
   const currentEvent = events[currentIndex];
-  const scoreHeight = config.totalHeight || scoreEl.scrollHeight;
-  const viewportHeight = config.scoreRegionHeight ?? config.containerHeight;
+  const isSingleLine = config.viewMode === 'single-line';
 
-  let newTargetCameraY = currentEvent.y - viewportHeight / 2;
-  newTargetCameraY = Math.max(0, newTargetCameraY);
-  newTargetCameraY = Math.min(newTargetCameraY, Math.max(0, scoreHeight - viewportHeight));
+  if (isSingleLine) {
+    // Horizontal camera for single-line mode
+    const scoreWidth = config.totalWidth || scoreEl.scrollWidth;
+    const viewportWidth = config.regionWidth ?? config.scoreRegionHeight ?? config.containerHeight;
 
-  if (Math.abs(newTargetCameraY - state.transitionTarget) > 0.5) {
-    if (state.eventIndex === -1) {
-      state.transitionFrom = newTargetCameraY;
+    // Interpolate X between current and next event for smooth scrolling
+    const currentX = currentEvent.x ?? 0;
+    const nextEvent = events[currentIndex + 1];
+    let targetX: number;
+    if (nextEvent) {
+      const dur = nextEvent.computedTimestamp - currentEvent.computedTimestamp;
+      if (dur > 0) {
+        const progress = Math.max(0, Math.min(1, (seconds - currentEvent.computedTimestamp) / dur));
+        targetX = currentX + ((nextEvent.x ?? 0) - currentX) * progress;
+      } else {
+        targetX = currentX;
+      }
     } else {
-      state.transitionFrom = state.cameraY;
+      targetX = currentX;
     }
-    state.transitionTarget = newTargetCameraY;
-    state.transitionStart = seconds;
-  }
 
-  const TRANSITION_SEC = 0.2;
-  const elapsed = seconds - state.transitionStart;
-  let visualCameraY: number;
-  if (elapsed >= 0 && elapsed < TRANSITION_SEC) {
-    const t = elapsed / TRANSITION_SEC;
-    visualCameraY = state.transitionFrom + (state.transitionTarget - state.transitionFrom) * cssEaseOut(t);
+    let cameraX = targetX - viewportWidth / 2;
+    cameraX = Math.max(0, cameraX);
+    cameraX = Math.min(cameraX, Math.max(0, scoreWidth - viewportWidth));
+
+    state.cameraX = cameraX;
+    state.currentX = targetX;
+    cameraEl.style.transform = `translateX(${-cameraX}px)`;
   } else {
-    visualCameraY = state.transitionTarget;
+    // Vertical camera for page mode
+    const scoreHeight = config.totalHeight || scoreEl.scrollHeight;
+    const viewportHeight = config.scoreRegionHeight ?? config.containerHeight;
+
+    let newTargetCameraY = currentEvent.y - viewportHeight / 2;
+    newTargetCameraY = Math.max(0, newTargetCameraY);
+    newTargetCameraY = Math.min(newTargetCameraY, Math.max(0, scoreHeight - viewportHeight));
+
+    if (Math.abs(newTargetCameraY - state.transitionTarget) > 0.5) {
+      if (state.eventIndex === -1) {
+        state.transitionFrom = newTargetCameraY;
+      } else {
+        state.transitionFrom = state.cameraY;
+      }
+      state.transitionTarget = newTargetCameraY;
+      state.transitionStart = seconds;
+    }
+
+    const TRANSITION_SEC = 0.2;
+    const elapsed = seconds - state.transitionStart;
+    let visualCameraY: number;
+    if (elapsed >= 0 && elapsed < TRANSITION_SEC) {
+      const t = elapsed / TRANSITION_SEC;
+      visualCameraY = state.transitionFrom + (state.transitionTarget - state.transitionFrom) * cssEaseOut(t);
+    } else {
+      visualCameraY = state.transitionTarget;
+    }
+
+    state.cameraY = visualCameraY;
+    cameraEl.style.transform = `translateY(${-visualCameraY}px)`;
   }
 
-  state.cameraY = visualCameraY;
-  cameraEl.style.transform = `translateY(${-visualCameraY}px)`;
   state.eventIndex = currentIndex;
   state.currentY = currentEvent.y;
 
@@ -218,9 +262,13 @@ export function setTimestamp(
   const exitSeconds = config.activeNoteheadExitMs / 1000;
   const useNoteDur = config.activeNoteheadUseNoteDuration;
 
-  // Helper: get per-event hold seconds (note duration mode or global)
+  // Helper: get per-event hold seconds for untied notes
   const getEventHoldSeconds = (evt: AnimationEvent) =>
     useNoteDur && evt.holdSeconds !== undefined ? evt.holdSeconds : globalHoldSeconds;
+
+  // Helper: get max hold seconds across both untied and tied groups (for active window)
+  const getEventMaxHoldSeconds = (evt: AnimationEvent) =>
+    Math.max(getEventHoldSeconds(evt), useNoteDur && evt.tiedHoldSeconds !== undefined ? evt.tiedHoldSeconds : 0);
 
   // Helper: get all SVG IDs to animate (include tied continuation IDs in note duration mode)
   const getEventIds = (evt: AnimationEvent) =>
@@ -228,10 +276,19 @@ export function setTimestamp(
       ? [...evt.svgIds, ...evt.tiedContinuationIds]
       : evt.svgIds;
 
+  // Helper: get per-note hold seconds (tied chain notes use tiedHoldSeconds)
+  const getNoteHoldSeconds = (evt: AnimationEvent, id: string) => {
+    if (!useNoteDur) return globalHoldSeconds;
+    if (evt.tiedStartIds?.includes(id) || evt.tiedContinuationIds?.includes(id)) {
+      return evt.tiedHoldSeconds ?? getEventHoldSeconds(evt);
+    }
+    return getEventHoldSeconds(evt);
+  };
+
   let firstActiveIndex = currentIndex;
   while (firstActiveIndex > 0) {
     const prevEvent = events[firstActiveIndex - 1];
-    const prevAnimDuration = getEventHoldSeconds(prevEvent) + exitSeconds;
+    const prevAnimDuration = getEventMaxHoldSeconds(prevEvent) + exitSeconds;
     if (seconds - prevEvent.computedTimestamp >= prevAnimDuration || !prevEvent.svgIds?.length) break;
     firstActiveIndex--;
   }
@@ -254,32 +311,38 @@ export function setTimestamp(
     const timeSinceEvent = seconds - event.computedTimestamp;
     if (timeSinceEvent < 0 || !event.svgIds?.length) continue;
 
-    const eventHoldSeconds = getEventHoldSeconds(event);
-    const eventAnimDuration = eventHoldSeconds + exitSeconds;
-
-    let scale: number;
-    let color: string | undefined;
-
-    if (timeSinceEvent < eventHoldSeconds) {
-      scale = config.activeNoteheadScale;
-      color = config.activeNoteheadColor;
-    } else if (timeSinceEvent < eventAnimDuration) {
-      const exitProgress = (timeSinceEvent - eventHoldSeconds) / exitSeconds;
-      const easedProgress = Math.pow(exitProgress, 1.675);
-      scale = config.activeNoteheadScale + (1 - config.activeNoteheadScale) * easedProgress;
-      color = interpolateColor(config.activeNoteheadColor, config.scoreColor, easedProgress);
-    } else {
+    const eventMaxHold = getEventMaxHoldSeconds(event);
+    if (timeSinceEvent >= eventMaxHold + exitSeconds) {
       resetEventNoteheads(scoreEl, getEventIds(event), config.colorFullNote, config.scoreColor);
       continue;
     }
 
     // Apply animation using SVG ATTRIBUTES (not CSS style properties).
-    // CSS style.fill on <use> elements doesn't work in SVG-as-image
-    // rendering or in Safari. SVG attributes work everywhere.
+    // Each note uses its own holdSeconds (untied vs tied chain).
     const idsToAnimate = getEventIds(event);
     for (const id of idsToAnimate) {
       const stavenote = scoreEl.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
       if (!stavenote) continue;
+
+      // Per-note hold: untied notes use their duration, tied chain notes use chain duration
+      const noteHold = getNoteHoldSeconds(event, id);
+      const noteAnimDur = noteHold + exitSeconds;
+      let scale: number;
+      let color: string | undefined;
+
+      if (timeSinceEvent < noteHold) {
+        scale = config.activeNoteheadScale;
+        color = config.activeNoteheadColor;
+      } else if (timeSinceEvent < noteAnimDur) {
+        const exitProgress = (timeSinceEvent - noteHold) / exitSeconds;
+        const easedProgress = Math.pow(exitProgress, 1.675);
+        scale = config.activeNoteheadScale + (1 - config.activeNoteheadScale) * easedProgress;
+        color = interpolateColor(config.activeNoteheadColor, config.scoreColor, easedProgress);
+      } else {
+        // This note's animation is done — reset it
+        resetEventNoteheads(scoreEl, [id], config.colorFullNote, config.scoreColor);
+        continue;
+      }
 
       stavenote.querySelectorAll<SVGGElement>('g.notehead').forEach((nh) => {
         // Scale via SVG transform attribute (with manual center-point)

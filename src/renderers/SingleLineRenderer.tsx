@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useSingleLineVerovio } from "../hooks/useSingleLineVerovio";
 import { extractTimemapEvents, computeEventPositions, computeSectionPositions } from "../lib/getEvents";
@@ -55,6 +56,8 @@ interface Props {
   colorFullNote?: boolean;
   // hide instrument labels (Verovio .label elements)
   hideLabels?: boolean;
+  // portal target for transport bar (play/pause/reset) — renders there instead of inline
+  transportPortalEl?: HTMLDivElement | null;
 }
 
 export default function SingleLineRenderer({
@@ -77,6 +80,7 @@ export default function SingleLineRenderer({
   activeNoteheadUseNoteDuration = false,
   colorFullNote = false,
   hideLabels = false,
+  transportPortalEl,
 }: Props) {
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
@@ -483,6 +487,14 @@ export default function SingleLineRenderer({
   // Sync-based animation: driven by audio currentTime
   function animateSync() {
     if (!audioRef.current) return;
+
+    // Wait for audio to actually start playing before driving animation.
+    // audio.play() is async — until playback begins, currentTime is 0 which
+    // would color the first note prematurely.
+    if (audioRef.current.paused || audioRef.current.readyState < 2) {
+      animationFrameRef.current = requestAnimationFrame(animateSync);
+      return;
+    }
 
     const frameInterval = 1000 / fps;
     const now = performance.now();
@@ -1120,8 +1132,8 @@ export default function SingleLineRenderer({
         </div>
       </div>
 
-      {/* Transport bar - hidden in render mode */}
-      {!isRenderMode && (
+      {/* Transport bar (hidden in render mode) */}
+      {!isRenderMode && !transportPortalEl && (
         <div className="mt-3 px-3 py-2">
           <div className="flex items-center justify-center gap-2">
             <button
@@ -1149,6 +1161,37 @@ export default function SingleLineRenderer({
             <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
           )}
         </div>
+      )}
+      {/* Transport bar portaled to external container */}
+      {!isRenderMode && transportPortalEl && createPortal(
+        <>
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={play}
+              disabled={!canPlay || isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Play
+            </button>
+            <button
+              onClick={stop}
+              disabled={!isPlaying}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Pause
+            </button>
+            <button
+              onClick={reset}
+              className="grunge-btn grunge-btn-sm flex-1"
+            >
+              Reset
+            </button>
+          </div>
+          {transportMessage && (
+            <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
+          )}
+        </>,
+        transportPortalEl,
       )}
     </div>
   );

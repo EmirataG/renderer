@@ -403,6 +403,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         colorFullNote,
         hideLabels,
         audioDuration: audioRef.current?.duration,
+        viewMode,
       };
 
       // If audio was loaded from Storage (no local File), fetch it as a Blob
@@ -1079,6 +1080,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
                               colorFullNote={colorFullNote}
                               hideLabels={hideLabels}
+                              transportPortalEl={transportEl}
                             />
                           ) : (
                             <RegularRenderer
