@@ -1,6 +1,6 @@
 /**
  * Minimal interface for events that can be interpolated.
- * Both MusicalEvent and CachedEvent satisfy this interface.
+ * Both TimemapEvent and CachedEvent satisfy this interface.
  */
 export interface InterpolatableEvent {
   id: string;

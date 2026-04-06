@@ -542,8 +542,8 @@ export default memo(function RegularRenderer({
       }
     }
 
-    // Camera Y: events in the same system share identical Y values
-    // (grouped in getEventsFromVerovio), so this only changes at system boundaries
+    // Camera Y: events in the same system share identical Y values,
+    // so this only changes at system boundaries
     currentYRef.current = event.y;
 
     applyCamera(currentYRef.current);
@@ -666,6 +666,23 @@ export default memo(function RegularRenderer({
     [],
   );
 
+  // Precompute max animation duration once (not per frame) for the backward
+  // scan in setTimestamp. Only changes when events or animation params change.
+  const maxAnimSec = useMemo(() => {
+    const globalHold = activeNoteheadAnimationHoldMs / 1000;
+    const exit = activeNoteheadAnimationExitMs / 1000;
+    let max = globalHold + exit;
+    if (activeNoteheadUseNoteDuration) {
+      for (const evt of interpolatedEvents) {
+        const hold = (evt as any).holdSeconds ?? globalHold;
+        const tiedHold = (evt as any).tiedHoldSeconds ?? 0;
+        const evtMax = Math.max(hold, tiedHold) + exit;
+        if (evtMax > max) max = evtMax;
+      }
+    }
+    return max;
+  }, [interpolatedEvents, activeNoteheadAnimationHoldMs, activeNoteheadAnimationExitMs, activeNoteheadUseNoteDuration]);
+
   // Expose setTimestamp for frame-by-frame rendering
   const setTimestamp = useCallback(
     (seconds: number) => {
@@ -673,13 +690,10 @@ export default memo(function RegularRenderer({
 
       // Capture array reference to ensure consistent usage throughout
       const events = interpolatedEvents;
-      const totalEvents = events.length;
-
-      if (totalEvents === 0) return;
 
       // Binary search for current event at timestamp for camera positioning
       let low = 0;
-      let high = totalEvents - 1;
+      let high = events.length - 1;
       let currentIndex = -1;
 
       while (low <= high) {
@@ -766,18 +780,6 @@ export default memo(function RegularRenderer({
         }
         return getEventHoldSeconds(evt);
       };
-
-      // Precompute max animation duration so the backward scan doesn't break
-      // early on a short event while a longer tied chain behind it is still active.
-      let maxAnimSec = globalHoldSeconds + exitSeconds;
-      if (useNoteDur) {
-        for (const evt of events) {
-          const hold = (evt as any).holdSeconds ?? globalHoldSeconds;
-          const tiedHold = (evt as any).tiedHoldSeconds ?? 0;
-          const evtMax = Math.max(hold, tiedHold) + exitSeconds;
-          if (evtMax > maxAnimSec) maxAnimSec = evtMax;
-        }
-      }
 
       // Find firstActiveIndex: scan backwards from currentIndex to find the
       // earliest event still within the animation window
@@ -905,6 +907,7 @@ export default memo(function RegularRenderer({
       colorExtrasSelector,
       scoreColor,
       interpolateColor,
+      maxAnimSec,
     ],
   );
 

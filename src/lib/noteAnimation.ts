@@ -90,18 +90,10 @@ export function animateNoteheads(
     const element = cachedLookup(root, id, cache);
     if (!element) return;
 
-    // Determine the animation target(s):
-    // - If element is a g.chord, animate all g.note children
-    // - If element is a g.note, animate it directly
-    // - Otherwise, search for noteheads within (legacy behavior)
-    let targets: SVGGElement[];
-    if (element.classList.contains('chord')) {
-      targets = Array.from(element.querySelectorAll<SVGGElement>('g.note'));
-    } else if (element.classList.contains('note')) {
-      targets = [element];
-    } else {
-      targets = [element];
-    }
+    // If element is a g.chord, animate all g.note children; otherwise animate it directly
+    const targets: SVGGElement[] = element.classList.contains('chord')
+      ? Array.from(element.querySelectorAll<SVGGElement>('g.note'))
+      : [element];
 
     // Animate each target (note within chord or single note)
     targets.forEach((target) => {

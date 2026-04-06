@@ -1,41 +1,10 @@
 import type { VerovioToolkit } from "verovio/esm";
 import type { CachedEvent } from "../stores/eventStore";
 
-export interface MusicalEvent {
-  id: string;
-  beatOnset: number;
-  beatDuration: number;
-  svgIds: string[];
-  positionSvgId?: string; // First SVG ID for position lookup (includes tied continuations)
-  x: number; // Local x within segment
-  globalX?: number; // Global x across entire score (for segmented rendering)
-  segmentId?: string; // Which segment owns this event (for segmented rendering)
-  tiedContinuationIds?: string[]; // SVG IDs of tied continuation notes (for coloring entire tie chain)
-  tiedStartIds?: string[]; // SVG IDs from svgIds that start tie chains (for split hold durations)
-  noteDurationBeats?: number; // Sounding duration of untied notes (whole-note fractions)
-  tiedNoteDurationBeats?: number; // Sounding duration of tied chain (whole-note fractions, only when mixed)
-}
-
-// Extended event interface with Y position for vertical camera scrolling
-export interface MusicalEventWithY extends MusicalEvent {
-  y: number;
-}
-
-/**
- * Extract musical events from Verovio's timemap API and DOM positions.
- *
- * Prerequisites:
- * - toolkit.renderToSVG() must have been called (SVG in DOM)
- * - toolkit.renderToMIDI() must have been called (populates timing data)
- *
- * @param toolkit - Verovio toolkit instance with loaded and rendered score
- * @param svgContainer - DOM element containing the rendered Verovio SVG
- * @returns Array of musical events with Y positions for camera scrolling
- */
 /**
  * Tie chain info for a note that starts a tie chain.
  */
-export interface TieChainInfo {
+interface TieChainInfo {
   continuationIds: string[]; // All tied continuation note IDs in the chain
   totalDurationBeats: number; // Total sounding duration in whole-note fractions
 }
@@ -177,131 +146,6 @@ function populateTieFields<T extends {
       event.noteDurationBeats = maxUntiedDuration;
     }
   }
-}
-
-export function getEventsFromVerovio(
-  toolkit: VerovioToolkit,
-  svgContainer: HTMLElement,
-  pageContainers?: HTMLElement[],
-  pageOffsets?: number[]
-): MusicalEventWithY[] {
-  // Build tie info from MEI (continuation IDs, tie chains, note durations)
-  const tieInfo = buildTieInfo(toolkit);
-
-  // Get the full timemap from Verovio (rests excluded by default).
-  // renderToTimemap() can throw a WASM "memory access out of bounds"
-  // if called while Verovio is mid-layout — return empty so callers
-  // retry on the next render cycle.
-  let timemap: ReturnType<typeof toolkit.renderToTimemap>;
-  try {
-    timemap = toolkit.renderToTimemap();
-  } catch {
-    return [];
-  }
-
-  // Filter to note onset entries only (entries with `on` array)
-  const onsetEntries = timemap.filter(
-    (entry) => entry.on && entry.on.length > 0
-  );
-
-  // Build MusicalEvent array from onset entries, excluding tied continuations.
-  // positionSvgId keeps the first note ID (even if tied) for position lookup.
-  const events: MusicalEventWithY[] = onsetEntries.map((entry, index) => ({
-    id: `evt-${index}`,
-    beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
-    beatDuration: 0, // Calculated below
-    svgIds: entry.on!.filter((id) => !tieInfo.continuationIds.has(id)),
-    positionSvgId: entry.on![0],
-    x: 0, // Not used for vertical camera scrolling
-    y: 0, // Calculated below from DOM
-  }));
-
-  // Calculate beatDuration for each event
-  for (let i = 0; i < events.length - 1; i++) {
-    events[i].beatDuration = events[i + 1].beatOnset - events[i].beatOnset;
-  }
-  if (events.length > 0) {
-    events[events.length - 1].beatDuration = 1; // Last event convention
-  }
-
-  // Populate tie chain info for "use note duration" mode
-  populateTieFields(events, tieInfo.chainMap, tieInfo.noteDurations);
-
-  if (pageContainers && pageOffsets && pageContainers.length > 0) {
-    // Page-aware Y computation: use Verovio API to find which page each
-    // event lives on, then compute global Y as pageOffset + localY.
-    for (const event of events) {
-      const posId = event.positionSvgId || event.svgIds[0];
-      if (!posId) continue;
-
-      // Use Verovio API to find which page this event is on (1-based)
-      const pageNum = toolkit.getPageWithElement(posId);
-      if (pageNum === 0) continue; // Element not found
-
-      const pageIndex = pageNum - 1;
-      const container = pageContainers[pageIndex];
-      if (!container) continue;
-
-      const containerRect = container.getBoundingClientRect();
-      const noteEl = container.querySelector(`#${CSS.escape(posId)}`);
-      if (!noteEl) continue;
-
-      const systemEl = noteEl.closest('g.system');
-      if (systemEl) {
-        const sysRect = systemEl.getBoundingClientRect();
-        const localY = sysRect.top - containerRect.top + sysRect.height / 2;
-        event.y = pageOffsets[pageIndex] + localY;
-      } else {
-        const noteRect = noteEl.getBoundingClientRect();
-        const localY = noteRect.top - containerRect.top + noteRect.height / 2;
-        event.y = pageOffsets[pageIndex] + localY;
-      }
-    }
-  } else {
-    // Single-container Y computation (backward-compatible path for SyncEditor)
-    // Build a map from g.system element to its center Y position.
-    // Verovio wraps each staff system in a <g class="system"> — use that
-    // directly instead of guessing with threshold heuristics.
-    const containerRect = svgContainer.getBoundingClientRect();
-    const systemEls = svgContainer.querySelectorAll('g.system');
-    const systemCenterYMap = new Map<Element, number>();
-    for (const sysEl of systemEls) {
-      const sysRect = sysEl.getBoundingClientRect();
-      systemCenterYMap.set(sysEl, sysRect.top - containerRect.top + sysRect.height / 2);
-    }
-
-    // For each event, walk up from the note element to its parent g.system
-    // and assign that system's center Y. All events in the same system get
-    // the exact same Y — camera stays perfectly still within a system.
-    for (const event of events) {
-      const posId = event.positionSvgId || event.svgIds[0];
-      if (posId) {
-        const noteEl = svgContainer.querySelector(
-          `#${CSS.escape(posId)}`
-        );
-        if (noteEl) {
-          const systemEl = noteEl.closest('g.system');
-          if (systemEl && systemCenterYMap.has(systemEl)) {
-            event.y = systemCenterYMap.get(systemEl)!;
-          } else {
-            // Fallback: use note's own position
-            const noteRect = noteEl.getBoundingClientRect();
-            event.y = noteRect.top - containerRect.top + noteRect.height / 2;
-          }
-        }
-      }
-    }
-  }
-
-  // Enforce monotonically non-decreasing Y. The camera should only scroll
-  // down during playback — never jump backwards to an earlier system.
-  for (let i = 1; i < events.length; i++) {
-    if (events[i].y < events[i - 1].y) {
-      events[i].y = events[i - 1].y;
-    }
-  }
-
-  return events;
 }
 
 // ============================================================================

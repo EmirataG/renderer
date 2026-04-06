@@ -128,8 +128,6 @@ export interface AnimationEvent {
 // Reset noteheads
 // ---------------------------------------------------------------------------
 
-const ALL_EXTRAS_SELECTORS = 'g.stem, g.accid, g.flag, g.dots, g.artic, g.mordent, g.trill, g.turn';
-
 /**
  * Reset notehead colors and transforms using SVG ATTRIBUTES (not CSS).
  *
@@ -151,7 +149,7 @@ function resetEventNoteheads(
       });
     });
     if (colorExtrasSelector) {
-      stavenote.querySelectorAll<SVGGraphicsElement>(colorExtrasSelector || ALL_EXTRAS_SELECTORS).forEach((group) => {
+      stavenote.querySelectorAll<SVGGraphicsElement>(colorExtrasSelector).forEach((group) => {
         group.removeAttribute('fill');
         group.removeAttribute('stroke');
         group.querySelectorAll<SVGGraphicsElement>('path, use, polygon, line, ellipse').forEach((child) => {

@@ -720,6 +720,23 @@ export default function SingleLineRenderer({
     [],
   );
 
+  // Precompute max animation duration once (not per frame) for the backward
+  // scan in setTimestamp. Only changes when events or animation params change.
+  const maxAnimSec = useMemo(() => {
+    const globalHold = activeNoteheadAnimationHoldMs / 1000;
+    const exit = activeNoteheadAnimationExitMs / 1000;
+    let max = globalHold + exit;
+    if (activeNoteheadUseNoteDuration) {
+      for (const evt of interpolatedEvents) {
+        const hold = (evt as any).holdSeconds ?? globalHold;
+        const tiedHold = (evt as any).tiedHoldSeconds ?? 0;
+        const evtMax = Math.max(hold, tiedHold) + exit;
+        if (evtMax > max) max = evtMax;
+      }
+    }
+    return max;
+  }, [interpolatedEvents, activeNoteheadAnimationHoldMs, activeNoteheadAnimationExitMs, activeNoteheadUseNoteDuration]);
+
   // Expose setTimestamp for frame-by-frame rendering
   const setTimestamp = useCallback(
     (seconds: number) => {
@@ -729,13 +746,12 @@ export default function SingleLineRenderer({
 
       // Capture array reference to ensure consistent usage throughout
       const evts = interpolatedEvents;
-      const totalEvents = evts.length;
 
-      if (totalEvents === 0) return;
+      if (evts.length === 0) return;
 
       // Binary search for current event at timestamp for camera positioning
       let low = 0;
-      let high = totalEvents - 1;
+      let high = evts.length - 1;
       let currentIndex = -1;
 
       while (low <= high) {
@@ -803,18 +819,6 @@ export default function SingleLineRenderer({
         }
         return getEventHoldSeconds(evt);
       };
-
-      // Precompute max animation duration so the backward scan doesn't break
-      // early on a short event while a longer tied chain behind it is still active.
-      let maxAnimSec = globalHoldSeconds + exitSeconds;
-      if (useNoteDur) {
-        for (const evt of evts) {
-          const hold = (evt as any).holdSeconds ?? globalHoldSeconds;
-          const tiedHold = (evt as any).tiedHoldSeconds ?? 0;
-          const evtMax = Math.max(hold, tiedHold) + exitSeconds;
-          if (evtMax > maxAnimSec) maxAnimSec = evtMax;
-        }
-      }
 
       // Find firstActiveIndex: scan backwards from currentIndex to find the
       // earliest event still within the animation window
@@ -942,6 +946,7 @@ export default function SingleLineRenderer({
       colorExtrasSelector,
       scoreColor,
       interpolateColor,
+      maxAnimSec,
     ],
   );
 
