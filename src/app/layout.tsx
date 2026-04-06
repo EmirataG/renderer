@@ -3,6 +3,9 @@ import '../index.css';
 
 export const metadata: Metadata = {
   title: 'Manuscript Renderer',
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 export default function RootLayout({

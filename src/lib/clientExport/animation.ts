@@ -108,6 +108,9 @@ export interface AnimationConfig {
   totalWidth?: number;
   regionWidth?: number;
   viewMode?: 'page' | 'single-line';
+  /** Precomputed max(holdSeconds + exitSeconds) across all events.
+   *  Used to bound the backward scan so long tied chains aren't cut short. */
+  maxAnimDuration?: number;
 }
 
 export interface AnimationEvent {
@@ -276,24 +279,24 @@ export function setTimestamp(
       ? [...evt.svgIds, ...evt.tiedContinuationIds]
       : evt.svgIds;
 
-  // Helper: get per-note hold seconds (tied chain notes use tiedHoldSeconds)
-  const getNoteHoldSeconds = (evt: AnimationEvent, id: string) => {
-    if (!useNoteDur) return globalHoldSeconds;
-    if (evt.tiedStartIds?.includes(id) || evt.tiedContinuationIds?.includes(id)) {
-      return evt.tiedHoldSeconds ?? getEventHoldSeconds(evt);
-    }
-    return getEventHoldSeconds(evt);
-  };
+  // Use precomputed max animation duration for the backward scan bound.
+  // With variable hold durations (tied chains), a short event between the
+  // current position and a long tied chain can finish first. Breaking at
+  // the short event would skip the still-active chain. Using the global
+  // max ensures we scan far enough back to catch all active events.
+  const maxAnimSec = config.maxAnimDuration ?? (globalHoldSeconds + exitSeconds);
 
   let firstActiveIndex = currentIndex;
   while (firstActiveIndex > 0) {
     const prevEvent = events[firstActiveIndex - 1];
-    const prevAnimDuration = getEventMaxHoldSeconds(prevEvent) + exitSeconds;
-    if (seconds - prevEvent.computedTimestamp >= prevAnimDuration || !prevEvent.svgIds?.length) break;
+    if (!prevEvent.svgIds?.length) {
+      // Empty event (all notes are tied continuations) — skip over it,
+      // don't break. An earlier event may still have an active tied chain.
+      firstActiveIndex--;
+      continue;
+    }
+    if (seconds - prevEvent.computedTimestamp >= maxAnimSec) break;
     firstActiveIndex--;
-  }
-  while (firstActiveIndex < currentIndex && !events[firstActiveIndex].svgIds?.length) {
-    firstActiveIndex++;
   }
 
   const prev = state.prevActiveRange;
@@ -317,15 +320,27 @@ export function setTimestamp(
       continue;
     }
 
-    // Apply animation using SVG ATTRIBUTES (not CSS style properties).
-    // Each note uses its own holdSeconds (untied vs tied chain).
+    // Determine which note groups to animate and their hold durations.
+    // For "mixed" events (tiedStartIds present): untied and tied notes have different holds.
+    // For all other events: one hold for all notes (matching preview's animateNoteheads behavior).
+    const isMixed = useNoteDur && event.tiedStartIds?.length;
     const idsToAnimate = getEventIds(event);
+
     for (const id of idsToAnimate) {
       const stavenote = scoreEl.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
       if (!stavenote) continue;
 
-      // Per-note hold: untied notes use their duration, tied chain notes use chain duration
-      const noteHold = getNoteHoldSeconds(event, id);
+      // Compute this note's hold: only split for mixed events
+      let noteHold: number;
+      if (isMixed) {
+        const isTied = event.tiedStartIds!.includes(id) || event.tiedContinuationIds?.includes(id);
+        noteHold = isTied
+          ? (event.tiedHoldSeconds ?? getEventHoldSeconds(event))
+          : getEventHoldSeconds(event);
+      } else {
+        // All notes in the event share the same hold (matches preview behavior)
+        noteHold = getEventHoldSeconds(event);
+      }
       const noteAnimDur = noteHold + exitSeconds;
       let scale: number;
       let color: string | undefined;

@@ -13,6 +13,8 @@
 
 import { createToolkit } from '../verovioService';
 import { buildColorExtrasSelector } from '../noteAnimation';
+import { computeNoteDurationSeconds } from '../interpolation';
+import { extractTimemapEvents as sharedExtractTimemapEvents } from '../getEvents';
 import {
   createAnimationState,
   setTimestamp as applyAnimation,
@@ -829,7 +831,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // Force layout so getBoundingClientRect works
   void hostEl.offsetHeight;
 
-  const timemapEvents = extractTimemapEvents(toolkit);
+  // Use the shared extractTimemapEvents from getEvents.ts to ensure
+  // tie chain parsing and note duration computation are identical to the preview.
+  const timemapEvents = sharedExtractTimemapEvents(toolkit);
   const interpolated = interpolateTimestamps(timemapEvents, syncAnchors);
   const positions = computeEventPositions(timemapEvents, toolkit, pageContainers, pageOffsets);
   const yMap = new Map(positions.map((p) => [p.id, p.globalY]));
@@ -879,40 +883,27 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     tiedStartIds: evt.tiedStartIds,
   }));
 
-  // Precompute holdSeconds for "use note duration" mode
+  // Precompute holdSeconds for "use note duration" mode.
+  // Uses the exact same computeNoteDurationSeconds function as the preview
+  // renderers to ensure identical hold durations.
   if (settings.activeNoteheadUseNoteDuration) {
-    // Helper: compute hold in seconds for a given beat duration
-    const computeHold = (evtIndex: number, durationBeats: number): number => {
-      const tmEvt = interpolated[evtIndex];
-      const endBeat = tmEvt.beatOnset + durationBeats;
-      for (let j = evtIndex + 1; j < interpolated.length; j++) {
-        if (interpolated[j].beatOnset >= endBeat) {
-          const prev = interpolated[j - 1];
-          const next = interpolated[j];
-          const range = next.beatOnset - prev.beatOnset;
-          if (range > 0) {
-            const t = (endBeat - prev.beatOnset) / range;
-            return (prev.computedTimestamp + t * (next.computedTimestamp - prev.computedTimestamp)) - tmEvt.computedTimestamp;
-          }
-          return next.computedTimestamp - tmEvt.computedTimestamp;
-        }
-      }
-      if (interpolated.length >= 2) {
-        const last = interpolated[interpolated.length - 1];
-        const prev = interpolated[interpolated.length - 2];
-        const range = last.beatOnset - prev.beatOnset;
-        if (range > 0) return durationBeats * ((last.computedTimestamp - prev.computedTimestamp) / range);
-      }
-      return 0;
-    };
-
     for (let i = 0; i < events.length; i++) {
-      const tmEvt = interpolated[i];
-      if (tmEvt.noteDurationBeats && tmEvt.noteDurationBeats > 0) {
-        events[i].holdSeconds = computeHold(i, tmEvt.noteDurationBeats);
+      const m = interpolated[i];
+      if (m.noteDurationBeats && m.noteDurationBeats > 0) {
+        events[i].holdSeconds = computeNoteDurationSeconds(i, interpolated);
       }
-      if (tmEvt.tiedNoteDurationBeats && tmEvt.tiedNoteDurationBeats > 0) {
-        events[i].tiedHoldSeconds = computeHold(i, tmEvt.tiedNoteDurationBeats);
+      // Separate hold for tied chains in mixed events
+      if (m.tiedNoteDurationBeats && m.tiedNoteDurationBeats > 0) {
+        // Temporarily swap noteDurationBeats to compute tied hold
+        // (same pattern as RegularRenderer/SingleLineRenderer)
+        const origDur = m.noteDurationBeats;
+        (interpolated[i] as any).noteDurationBeats = m.tiedNoteDurationBeats;
+        events[i].tiedHoldSeconds = computeNoteDurationSeconds(i, interpolated);
+        (interpolated[i] as any).noteDurationBeats = origDur;
+      }
+      // For "all-tied" events, ensure tiedHoldSeconds matches holdSeconds
+      if (events[i].tiedContinuationIds?.length && events[i].tiedHoldSeconds === undefined && events[i].holdSeconds !== undefined) {
+        events[i].tiedHoldSeconds = events[i].holdSeconds;
       }
     }
   }
@@ -928,13 +919,30 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // ── 6. Setup animation ────────────────────────────────────────────
   const animState: AnimationState = createAnimationState();
+  const globalHoldSec = (settings.activeNoteheadHoldMs ?? 200) / 1000;
+  const exitSec = (settings.activeNoteheadExitMs ?? 200) / 1000;
+  const useNoteDur = settings.activeNoteheadUseNoteDuration ?? false;
+
+  // Precompute maximum animation duration across all events so the backward
+  // scan in setTimestamp doesn't break early on a short event while a longer
+  // tied chain behind it is still active.
+  let maxAnimDuration = globalHoldSec + exitSec;
+  if (useNoteDur) {
+    for (const evt of events) {
+      const hold = evt.holdSeconds ?? globalHoldSec;
+      const tiedHold = evt.tiedHoldSeconds ?? 0;
+      const evtMax = Math.max(hold, tiedHold) + exitSec;
+      if (evtMax > maxAnimDuration) maxAnimDuration = evtMax;
+    }
+  }
+
   const animConfig: AnimationConfig = {
     scoreColor: settings.scoreColor,
     activeNoteheadColor: settings.activeNoteheadColor ?? settings.scoreColor,
     activeNoteheadScale: settings.activeNoteheadScale ?? 1,
     activeNoteheadHoldMs: settings.activeNoteheadHoldMs ?? 200,
     activeNoteheadExitMs: settings.activeNoteheadExitMs ?? 200,
-    activeNoteheadUseNoteDuration: settings.activeNoteheadUseNoteDuration ?? false,
+    activeNoteheadUseNoteDuration: useNoteDur,
     colorExtrasSelector: buildColorExtrasSelector(settings),
     scoreRegionHeight: settings.scoreRegion?.height ?? null,
     containerHeight,
@@ -942,6 +950,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     totalWidth,
     regionWidth,
     viewMode: settings.viewMode ?? 'page',
+    maxAnimDuration,
   };
 
   // ── 7. Setup canvas + encoder ─────────────────────────────────────

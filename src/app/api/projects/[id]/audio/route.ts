@@ -48,12 +48,14 @@ export async function GET(
       const start = parseInt(match[1], 10);
       const end = match[2] ? parseInt(match[2], 10) : Math.min(start + 1024 * 1024 - 1, fileSize - 1);
       const stream = file.createReadStream({ start, end });
+      let closed = false;
       const webStream = new ReadableStream({
         start(controller) {
-          stream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
-          stream.on('end', () => controller.close());
-          stream.on('error', (err: Error) => controller.error(err));
+          stream.on('data', (chunk: Buffer) => { if (!closed) controller.enqueue(new Uint8Array(chunk)); });
+          stream.on('end', () => { if (!closed) { closed = true; controller.close(); } });
+          stream.on('error', (err: Error) => { if (!closed) { closed = true; controller.error(err); } });
         },
+        cancel() { closed = true; stream.destroy(); },
       });
 
       return new Response(webStream, {
@@ -71,12 +73,14 @@ export async function GET(
 
   // Full file request — stream instead of buffering in memory
   const stream = file.createReadStream();
+  let closed = false;
   const webStream = new ReadableStream({
     start(controller) {
-      stream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)));
-      stream.on('end', () => controller.close());
-      stream.on('error', (err: Error) => controller.error(err));
+      stream.on('data', (chunk: Buffer) => { if (!closed) controller.enqueue(new Uint8Array(chunk)); });
+      stream.on('end', () => { if (!closed) { closed = true; controller.close(); } });
+      stream.on('error', (err: Error) => { if (!closed) { closed = true; controller.error(err); } });
     },
+    cancel() { closed = true; stream.destroy(); },
   });
 
   return new Response(webStream, {

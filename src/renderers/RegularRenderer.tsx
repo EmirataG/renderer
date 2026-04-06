@@ -241,6 +241,10 @@ export default memo(function RegularRenderer({
             merged[i].tiedHoldSeconds = computeNoteDurationSeconds(i, merged);
             merged[i].noteDurationBeats = origDur;
           }
+          // For "all-tied" events, ensure tiedHoldSeconds matches holdSeconds
+          if (merged[i].tiedContinuationIds?.length && merged[i].tiedHoldSeconds === undefined && merged[i].holdSeconds !== undefined) {
+            merged[i].tiedHoldSeconds = merged[i].holdSeconds;
+          }
         }
       }
 
@@ -763,21 +767,31 @@ export default memo(function RegularRenderer({
         return getEventHoldSeconds(evt);
       };
 
+      // Precompute max animation duration so the backward scan doesn't break
+      // early on a short event while a longer tied chain behind it is still active.
+      let maxAnimSec = globalHoldSeconds + exitSeconds;
+      if (useNoteDur) {
+        for (const evt of events) {
+          const hold = (evt as any).holdSeconds ?? globalHoldSeconds;
+          const tiedHold = (evt as any).tiedHoldSeconds ?? 0;
+          const evtMax = Math.max(hold, tiedHold) + exitSeconds;
+          if (evtMax > maxAnimSec) maxAnimSec = evtMax;
+        }
+      }
+
       // Find firstActiveIndex: scan backwards from currentIndex to find the
       // earliest event still within the animation window
       let firstActiveIndex = currentIndex;
       while (firstActiveIndex > 0) {
         const prevEvent = events[firstActiveIndex - 1];
-        const timeSincePrev = seconds - prevEvent.computedTimestamp;
-        const prevAnimDuration = getEventMaxHoldSeconds(prevEvent) + exitSeconds;
-        if (timeSincePrev >= prevAnimDuration || !prevEvent.svgIds?.length) {
-          break;
+        if (!prevEvent.svgIds?.length) {
+          // Empty event (all notes are tied continuations) — skip over it,
+          // don't break. An earlier event may still have an active tied chain.
+          firstActiveIndex--;
+          continue;
         }
+        if (seconds - prevEvent.computedTimestamp >= maxAnimSec) break;
         firstActiveIndex--;
-      }
-      // Also skip forward past events with no svgIds at the start
-      while (firstActiveIndex < currentIndex && !events[firstActiveIndex].svgIds?.length) {
-        firstActiveIndex++;
       }
 
       const prev = prevActiveRangeRef.current;
