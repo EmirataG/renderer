@@ -33,6 +33,7 @@ const MIME_TO_CATEGORY: Record<string, FileCategory> = {
   "application/mei+xml": "musicxml",
   "application/x-mei+xml": "musicxml",
   "application/vnd.recordare.musicxml": "musicxml",
+  "application/vnd.recordare.musicxml+xml": "musicxml",
   "image/jpeg": "image",
   "image/png": "image",
   "image/webp": "image",

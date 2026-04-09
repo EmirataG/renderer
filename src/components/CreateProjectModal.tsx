@@ -11,7 +11,7 @@ interface CreateProjectModalProps {
   onCreated: (project: Project) => void;
 }
 
-const SCORE_EXTENSIONS = ['.musicxml', '.mxl', '.mei'];
+const SCORE_EXTENSIONS = ['.xml', '.musicxml', '.mxl', '.mei'];
 const AUDIO_EXTENSIONS = ['.mp3', '.wav'];
 
 function getExtension(filename: string): string {

@@ -17,6 +17,7 @@ import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
 import { clientExport, type ExportSettings } from "./lib/clientExport";
 import { auth } from "./lib/firebase-client";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { validateMxl, isMxlFile } from "./lib/musicxmlValidation";
 
 interface AppProps {
   projectId?: string;
@@ -92,17 +93,30 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         const { project } = await res.json();
         if (cancelled) return;
 
-        // Load score XML via server proxy (avoids CORS with Storage URLs)
+        // Load score via server proxy (avoids CORS with Storage URLs)
         if (project.scoreUrl) {
           const scoreRes = await fetch(`/api/projects/${projectId}/score`);
           if (cancelled) return;
           if (scoreRes.ok) {
-            const xml = await scoreRes.text();
-            setMusicXMLFile({
-              xml,
-              name: project.scoreFileName || "score.xml",
-              measureCount: 0, // Verovio will calculate on render
-            });
+            const fileName: string = project.scoreFileName || "score.xml";
+            let xml: string;
+
+            if (isMxlFile(fileName) || scoreRes.headers.get('Content-Type')?.includes('recordare')) {
+              // MXL (compressed MusicXML) — decompress via Verovio
+              const buffer = await scoreRes.arrayBuffer();
+              const result = await validateMxl(buffer);
+              xml = result.valid && result.xml ? result.xml : '';
+            } else {
+              xml = await scoreRes.text();
+            }
+
+            if (xml) {
+              setMusicXMLFile({
+                xml,
+                name: fileName,
+                measureCount: 0, // Verovio will calculate on render
+              });
+            }
           }
         }
 
@@ -503,29 +517,21 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   return (
     <ToastProvider>
       <main className="h-screen flex flex-col bg-black text-neutral-100">
-        {/* Top header bar — spans full width over inspector + content */}
-        <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-2.5 flex items-center gap-4">
+        {/* Top header bar */}
+        <div className="flex-shrink-0 bg-black border-b border-neutral-800/60 px-3 py-2 flex items-center gap-3">
           {onNavigateDashboard && (
             <button
               onClick={onNavigateDashboard}
-              className="flex items-center gap-1.5 text-neutral-500 hover:text-neutral-100 transition-colors mr-2 cursor-pointer"
+              className="flex items-center gap-1.5 text-neutral-600 hover:text-neutral-300 transition-colors cursor-pointer"
+              title="Dashboard"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
           )}
-          <div className="w-px h-5 bg-neutral-800" />
+          <img src="/logo.png" alt="Manuscript" className="h-5 w-5 opacity-70" />
+          <div className="w-px h-4 bg-neutral-800" />
           <input
             type="text"
             value={projectName}
@@ -534,40 +540,33 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             spellCheck={false}
-            className="text-sm font-semibold bg-transparent border-none outline-none text-neutral-200 placeholder-neutral-600 focus:text-white min-w-0 max-w-[200px]"
-            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            className="text-xs font-medium bg-transparent border-none outline-none text-neutral-400 placeholder-neutral-700 focus:text-neutral-200 min-w-0 max-w-[200px] transition-colors"
             placeholder="Untitled Project"
           />
-          <div className="w-px h-5 bg-neutral-800" />
           {musicXMLFile && (
-            <div className="flex gap-0">
-              <button
-                onClick={() => setCurrentView("renderer")}
-                className={
-                  currentView === "renderer"
-                    ? "grunge-tab-active"
-                    : "grunge-tab"
-                }
-              >
-                Preview
-              </button>
-              <button
-                onClick={() => setCurrentView("sync")}
-                className={
-                  currentView === "sync" ? "grunge-tab-active" : "grunge-tab"
-                }
-              >
-                Sync Editor
-              </button>
-            </div>
+            <>
+              <div className="w-px h-4 bg-neutral-800" />
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setCurrentView("renderer")}
+                  className={currentView === "renderer" ? "grunge-tab-active" : "grunge-tab"}
+                >
+                  Preview
+                </button>
+                <button
+                  onClick={() => setCurrentView("sync")}
+                  className={currentView === "sync" ? "grunge-tab-active" : "grunge-tab"}
+                >
+                  Sync Editor
+                </button>
+              </div>
+            </>
           )}
           <div className="flex-1" />
           {currentView === "renderer" && musicXMLFile && (
             <button
               onClick={() => setZoomEnabled((prev) => !prev)}
-              className={
-                zoomEnabled ? "grunge-tab-active" : "grunge-tab"
-              }
+              className={zoomEnabled ? "grunge-tab-active" : "grunge-tab"}
             >
               {zoomEnabled ? "Disable Zoom" : "Enable Zoom"}
             </button>
@@ -577,14 +576,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
         <div className="flex-1 flex min-h-0">
           <aside
-            className="w-80 shrink-0 bg-black border-r border-neutral-800 flex flex-col overflow-hidden"
+            className="w-72 shrink-0 bg-[#080808] border-r border-neutral-800/50 flex flex-col overflow-hidden"
             style={{ display: currentView === "sync" ? "none" : undefined }}
           >
-            <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-4 space-y-1">
+            <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-3 py-3 space-y-0">
               {/* UPLOAD SECTION */}
-              <section className="mb-5">
+              <section className="pb-3 mb-3 border-b border-neutral-800/40">
                 <h2 className="grunge-section-title">{projectId ? "Background Image" : "Project Files"}</h2>
-                <div className="p-3">
+                <div className="pt-2">
                   <UploadDropZone
                     projectId={projectId}
                     onMusicXMLUpload={handleMusicXMLUpload}
@@ -601,14 +600,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               )}
 
               {/* PLAYBACK SECTION */}
-              <section className="mb-5">
+              <section className="pb-3 mb-3 border-b border-neutral-800/40">
                 <h2 className="grunge-section-title">Playback</h2>
-                <div className="p-3 space-y-4">
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-medium">
-                      <span className="text-neutral-300">Frame Rate (FPS)</span>
-                      <span className="text-white font-mono tabular-nums">
-                        {fps}
+                <div className="pt-2.5 space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="flex justify-between text-[11px]">
+                      <span className="text-neutral-500">Frame Rate</span>
+                      <span className="text-neutral-300 tabular-nums">
+                        {fps} fps
                       </span>
                     </label>
                     <input
@@ -627,11 +626,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               </section>
 
               {/* SCORE APPEARANCE SECTION */}
-              <section className="mb-5">
+              <section className="pb-3 mb-3 border-b border-neutral-800/40">
                 <h2 className="grunge-section-title">Score Appearance</h2>
-                <div className="p-3 space-y-4">
-                  <div className="space-y-2">
-                    <label className="block text-xs text-neutral-300 font-medium">
+                <div className="pt-2.5 space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] text-neutral-500">
                       Layout
                     </label>
                     <select
@@ -649,8 +648,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-xs text-neutral-300 font-medium">
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] text-neutral-500">
                       Color
                     </label>
                     <div className="flex gap-2 items-center">
@@ -662,16 +661,16 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                         }
                         className="grunge-color-picker"
                       />
-                      <span className="text-xs text-neutral-400 font-mono">
+                      <span className="text-[11px] text-neutral-600">
                         {scoreColor}
                       </span>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-medium">
-                      <span className="text-neutral-300">Size</span>
-                      <span className="text-white font-mono">
+                  <div className="space-y-1.5">
+                    <label className="flex justify-between text-[11px]">
+                      <span className="text-neutral-500">Size</span>
+                      <span className="text-neutral-300 tabular-nums">
                         {Math.round(scoreScale * 100)}%
                       </span>
                     </label>
@@ -688,8 +687,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-xs text-neutral-300 font-medium">
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] text-neutral-500">
                       Music Font
                     </label>
                     <select
@@ -705,21 +704,19 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     </select>
                   </div>
 
-                  <div className="pt-1 pb-2">
-                    <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={hideLabels}
-                        onChange={(e) =>
-                          setSetting("hideLabels", e.target.checked)
-                        }
-                        className="grunge-checkbox"
-                      />
-                      <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
-                        Hide Instrument Labels
-                      </span>
-                    </label>
-                  </div>
+                  <label className="flex items-center gap-2 text-[11px] cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={hideLabels}
+                      onChange={(e) =>
+                        setSetting("hideLabels", e.target.checked)
+                      }
+                      className="grunge-checkbox"
+                    />
+                    <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
+                      Hide Instrument Labels
+                    </span>
+                  </label>
 
                   {/* Border Picker */}
                   <BorderPicker
@@ -729,7 +726,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                   />
 
                   {/* Score Region Editor Button */}
-                  <div className="pt-2 border-t border-neutral-700">
+                  <div className="pt-2.5 mt-1 border-t border-neutral-800/40">
                     {isEditingRegion ? (
                       <div className="flex gap-2">
                         <button
@@ -770,32 +767,30 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               </section>
 
               {/* NOTE ANIMATION SECTION */}
-              <section className="mb-5">
+              <section className="pb-3 mb-3">
                 <h2 className="grunge-section-title">Note Animation</h2>
-                <div className="p-3 space-y-4">
-                  <div className="pt-1 pb-2">
-                    <label className="flex items-center gap-2.5 text-xs cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={activeNoteheadColor !== null}
-                        onChange={(e) =>
-                          setSetting(
-                            "activeNoteheadColor",
-                            e.target.checked ? scoreColor : null,
-                          )
-                        }
-                        className="grunge-checkbox"
-                      />
-                      <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
-                        Highlight Active Notes
-                      </span>
-                    </label>
-                  </div>
+                <div className="pt-2.5 space-y-3">
+                  <label className="flex items-center gap-2 text-[11px] cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={activeNoteheadColor !== null}
+                      onChange={(e) =>
+                        setSetting(
+                          "activeNoteheadColor",
+                          e.target.checked ? scoreColor : null,
+                        )
+                      }
+                      className="grunge-checkbox"
+                    />
+                    <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
+                      Highlight Active Notes
+                    </span>
+                  </label>
 
                   {activeNoteheadColor !== null && (
                     <>
-                      <div className="space-y-2">
-                        <label className="block text-xs text-neutral-300 font-medium">
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] text-neutral-500">
                           Highlight Color
                         </label>
                         <div className="flex gap-2 items-center">
@@ -807,20 +802,20 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                             }
                             className="grunge-color-picker"
                           />
-                          <span className="text-xs text-neutral-400 font-mono">
+                          <span className="text-[11px] text-neutral-600">
                             {activeNoteheadColor}
                           </span>
                         </div>
                       </div>
 
-                      <div className="pt-1 space-y-1.5">
-                        <span className="block text-xs font-medium text-neutral-400">Also color</span>
+                      <div className="space-y-1.5">
+                        <span className="block text-[11px] text-neutral-500">Also color</span>
                         {([
                           ['colorAccidentals', 'Accidentals', colorAccidentals],
                           ['colorDots', 'Dots', colorDots],
                           ['colorArticulations', 'Articulations', colorArticulations],
                         ] as const).map(([key, label, value]) => (
-                          <label key={key} className="flex items-center gap-2.5 text-xs cursor-pointer group">
+                          <label key={key} className="flex items-center gap-2 text-[11px] cursor-pointer group">
                             <input
                               type="checkbox"
                               checked={value}
@@ -829,7 +824,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               }
                               className="grunge-checkbox"
                             />
-                            <span className="font-medium text-neutral-300 group-hover:text-neutral-100 transition-colors">
+                            <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
                               {label}
                             </span>
                           </label>
@@ -838,10 +833,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     </>
                   )}
 
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-medium">
-                      <span className="text-neutral-300">Scale</span>
-                      <span className="text-white font-mono tabular-nums">
+                  <div className="space-y-1.5">
+                    <label className="flex justify-between text-[11px]">
+                      <span className="text-neutral-500">Scale</span>
+                      <span className="text-neutral-300 tabular-nums">
                         {activeNoteheadScale.toFixed(2)}x
                       </span>
                     </label>
@@ -861,10 +856,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-medium">
-                      <span className="text-neutral-300">Entry Duration</span>
-                      <span className="text-white font-mono tabular-nums">
+                  <div className="space-y-1.5">
+                    <label className="flex justify-between text-[11px]">
+                      <span className="text-neutral-500">Entry</span>
+                      <span className="text-neutral-300 tabular-nums">
                         {activeNoteheadEntryMs}ms
                       </span>
                     </label>
@@ -884,14 +879,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-medium">
-                      <span className="text-neutral-300">Hold Duration</span>
-                      <span className="text-white font-mono tabular-nums">
-                        {activeNoteheadUseNoteDuration ? 'note duration' : `${activeNoteheadHoldMs}ms`}
+                  <div className="space-y-1.5">
+                    <label className="flex justify-between text-[11px]">
+                      <span className="text-neutral-500">Hold</span>
+                      <span className="text-neutral-300 tabular-nums">
+                        {activeNoteheadUseNoteDuration ? 'auto' : `${activeNoteheadHoldMs}ms`}
                       </span>
                     </label>
-                    <label className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none">
+                    <label className="flex items-center gap-2 text-[11px] text-neutral-500 cursor-pointer select-none group">
                       <input
                         type="checkbox"
                         checked={activeNoteheadUseNoteDuration}
@@ -901,9 +896,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                             e.target.checked,
                           )
                         }
-                        className="accent-white"
+                        className="grunge-checkbox"
                       />
-                      Use note duration
+                      <span className="group-hover:text-neutral-300 transition-colors">Use note duration</span>
                     </label>
                     {!activeNoteheadUseNoteDuration && (
                       <input
@@ -923,10 +918,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="flex justify-between text-xs font-medium">
-                      <span className="text-neutral-300">Exit Duration</span>
-                      <span className="text-white font-mono tabular-nums">
+                  <div className="space-y-1.5">
+                    <label className="flex justify-between text-[11px]">
+                      <span className="text-neutral-500">Exit</span>
+                      <span className="text-neutral-300 tabular-nums">
                         {activeNoteheadExitMs}ms
                       </span>
                     </label>
@@ -949,24 +944,24 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               </section>
             </div>
 
-            {/* EXPORT BAR - always visible at bottom of sidebar */}
-            <div className="flex-shrink-0 border-t border-neutral-800 px-4 py-3 space-y-3">
+            {/* EXPORT BAR */}
+            <div className="flex-shrink-0 border-t border-neutral-800/50 px-3 py-3 space-y-2 bg-[#060606]">
               {exportState.status === "idle" && (
                 <>
                   <button
                     onClick={handleExport}
                     disabled={!musicXMLFile || !audioFile || anchors.size === 0}
-                    className="grunge-btn w-full"
+                    className="grunge-btn-export w-full"
                   >
                     Export Video
                   </button>
                   {(!musicXMLFile || !audioFile || anchors.size === 0) && (
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-[10px] text-neutral-600 text-center">
                       {!musicXMLFile
-                        ? "Upload a score first"
+                        ? "Upload a score to export"
                         : !audioFile
-                          ? "Upload audio first"
-                          : "Add sync anchors first"}
+                          ? "Upload audio to export"
+                          : "Add sync anchors to export"}
                     </p>
                   )}
                 </>
@@ -975,55 +970,53 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               {(exportState.status === "uploading" ||
                 exportState.status === "rendering" ||
                 exportState.status === "encoding") && (
-                <p
-                  className="text-neutral-500 text-center"
-                  style={{
-                    fontSize: "0.6875rem",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Exporting&hellip; {Math.round(exportState.percent)}%
-                </p>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[10px] uppercase tracking-wider font-semibold">
+                    <span className="text-neutral-500">Exporting</span>
+                    <span className="text-neutral-400 tabular-nums">{Math.round(exportState.percent)}%</span>
+                  </div>
+                  <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-white rounded-full transition-all duration-300" style={{ width: `${exportState.percent}%` }} />
+                  </div>
+                </div>
               )}
 
               {exportState.status === "complete" && (
-                <>
-                  <p className="text-xs text-green-400">Export complete</p>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-green-500 uppercase tracking-wider font-semibold text-center">Export complete</p>
                   <button
                     onClick={handleDownload}
-                    className="grunge-btn w-full"
+                    className="grunge-btn-export w-full"
                   >
                     Download MP4
                   </button>
                   <button
                     onClick={resetExport}
-                    className="grunge-btn grunge-btn-sm w-full text-neutral-400"
+                    className="grunge-btn grunge-btn-sm w-full"
                   >
                     New Export
                   </button>
-                </>
+                </div>
               )}
 
               {exportState.status === "error" && (
-                <>
-                  <p className="text-xs text-red-400">
+                <div className="space-y-2">
+                  <p className="text-[10px] text-red-400/80 text-center">
                     {exportState.error || "Export failed"}
                   </p>
                   <button onClick={resetExport} className="grunge-btn w-full">
                     Try Again
                   </button>
-                </>
+                </div>
               )}
 
               {exportState.status === "cancelled" && (
-                <>
-                  <p className="text-xs text-neutral-400">Export cancelled</p>
+                <div className="space-y-2">
+                  <p className="text-[10px] text-neutral-500 text-center">Export cancelled</p>
                   <button onClick={resetExport} className="grunge-btn w-full">
                     New Export
                   </button>
-                </>
+                </div>
               )}
             </div>
           </aside>
@@ -1166,7 +1159,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                   {/* Transport bar portal target - always visible at bottom of preview */}
                   <div
                     ref={setTransportEl}
-                    className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-3"
+                    className="flex-shrink-0 bg-black border-t border-neutral-800/50 px-3 py-2.5"
                   />
                 </div>
                 {/* Sync Editor view - only mounted when active to save ~100-200MB */}
@@ -1193,12 +1186,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       <circle cx="18" cy="16" r="3" />
                     </svg>
                   </div>
-                  <h2 className="text-lg font-medium text-neutral-300 mb-2">
+                  <h2 className="text-sm font-medium text-neutral-400 mb-1.5">
                     No Score Loaded
                   </h2>
-                  <p className="text-sm text-neutral-500 max-w-xs">
-                    Upload a MusicXML file using the drop zone in the sidebar to
-                    begin visualizing your score.
+                  <p className="text-xs text-neutral-600 max-w-xs leading-relaxed">
+                    Upload a MusicXML file to begin.
                   </p>
                 </div>
               </div>
@@ -1222,37 +1214,24 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           />
           {/* Modal */}
           <div
-            className="relative z-10 w-full max-w-md mx-4"
+            className="relative z-10 w-full max-w-md mx-4 rounded"
             style={{
-              background: "black",
-              border: "1px solid #555",
+              background: "#0a0a0a",
+              border: "1px solid #2a2a2a",
               padding: "2rem",
             }}
           >
-            <h3
-              className="text-sm font-bold text-white mb-6 uppercase tracking-wider text-center"
-              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-            >
+            <h3 className="text-xs font-semibold text-neutral-300 mb-6 uppercase tracking-widest text-center">
               Exporting Video
             </h3>
 
             {/* Progress */}
             <div className="space-y-2 mb-6">
-              <div className="flex justify-between text-xs">
-                <span
-                  className="text-neutral-400 uppercase"
-                  style={{
-                    fontSize: "0.6875rem",
-                    fontWeight: 700,
-                    letterSpacing: "0.05em",
-                  }}
-                >
+              <div className="flex justify-between text-[11px]">
+                <span className="text-neutral-500 uppercase font-semibold tracking-wide">
                   {exportState.stage || exportState.status}
                 </span>
-                <span
-                  className="text-white font-mono tabular-nums"
-                  style={{ fontSize: "0.75rem" }}
-                >
+                <span className="text-neutral-300 tabular-nums">
                   {Math.round(exportState.percent)}%
                 </span>
               </div>
@@ -1275,39 +1254,16 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </div>
 
             {/* Fun fact */}
-            <div
-              className="mb-6"
-              style={{
-                borderLeft: "2px solid #555",
-                paddingLeft: "0.75rem",
-              }}
-            >
-              <p
-                className="text-neutral-500 mb-1"
-                style={{
-                  fontFamily: 'Georgia, "Times New Roman", serif',
-                  fontSize: "0.6875rem",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}
-              >
+            <div className="mb-6 border-l border-neutral-700 pl-3">
+              <p className="text-[10px] text-neutral-600 uppercase tracking-widest font-semibold mb-1">
                 Did you know?
               </p>
-              <p className="text-neutral-400" style={{ fontSize: "0.75rem", lineHeight: "1.5" }}>
+              <p className="text-[11px] text-neutral-500 leading-relaxed">
                 Bach loved coffee so much he wrote a comic cantata about it
                 &mdash; the &ldquo;Coffee Cantata&rdquo; (BWV 211), featuring a
                 father trying to cure his daughter&rsquo;s coffee addiction.
               </p>
-              <p
-                className="text-neutral-500 mt-2"
-                style={{
-                  fontSize: "0.6875rem",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
+              <p className="text-[10px] text-neutral-600 mt-1.5">
                 Maybe grab a cup while you wait.
               </p>
             </div>
@@ -1326,14 +1282,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       {/* Reset Score Region Confirmation Dialog */}
       {showResetConfirm && (
         <div className="fixed inset-0 flex items-center justify-center z-[70]">
-          <div className="bg-black border border-neutral-700 p-6 max-w-sm mx-4">
-            <h3
-              className="text-sm font-bold text-white mb-2 uppercase tracking-wider"
-              style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-            >
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowResetConfirm(false)} />
+          <div className="relative bg-[#0a0a0a] border border-neutral-800 rounded p-5 max-w-sm mx-4">
+            <h3 className="text-xs font-semibold text-neutral-200 mb-2 uppercase tracking-wider">
               Reset Score Region?
             </h3>
-            <p className="text-xs text-neutral-400 mb-4">
+            <p className="text-[11px] text-neutral-500 mb-4 leading-relaxed">
               This will reset the score to use the full background area.
             </p>
             <div className="flex gap-2 justify-end">

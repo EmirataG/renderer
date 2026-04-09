@@ -34,7 +34,15 @@ export async function GET(
   if (!data.scoreUrl) return new Response('Score not found', { status: 404 });
 
   const [contents] = await getBucket().file(data.scoreUrl).download();
+
+  // Use correct Content-Type so the client can distinguish MXL (ZIP) from XML
+  const isMxl = (data.scoreUrl as string).toLowerCase().endsWith('.mxl');
+  const contentType = isMxl ? 'application/vnd.recordare.musicxml' : 'application/xml';
+
   return new Response(new Uint8Array(contents), {
-    headers: { 'Content-Type': 'application/xml', 'Cache-Control': 'private, max-age=3600' },
+    headers: {
+      'Content-Type': contentType,
+      'Cache-Control': 'private, max-age=3600',
+    },
   });
 }

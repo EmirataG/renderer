@@ -61,7 +61,7 @@ body {
 }
 
 /* ============================================
-   GRUNGE / DISTRESSED THEME SYSTEM
+   UI THEME SYSTEM
    ============================================ */
 
 /* --- Custom Scrollbar --- */
@@ -71,16 +71,17 @@ body {
 }
 
 .grunge-scrollbar::-webkit-scrollbar-track {
-  background: #111;
+  background: transparent;
+  margin: 4px 0;
 }
 
 .grunge-scrollbar::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 100px;
 }
 
 .grunge-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* --- Buttons --- */
@@ -90,32 +91,33 @@ body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border: 2px solid white;
+  letter-spacing: 0.06em;
+  border: 1px solid #555;
+  border-radius: 3px;
   background: transparent;
-  color: white;
+  color: #ccc;
   cursor: pointer;
-  transition:
-    background-color 150ms,
-    color 150ms;
+  transition: all 150ms ease;
 }
 
 .grunge-btn:hover {
   background: white;
+  border-color: white;
   color: black;
 }
 
 .grunge-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
 .grunge-btn:disabled:hover {
   background: transparent;
-  color: white;
+  border-color: #555;
+  color: #ccc;
 }
 
 .grunge-btn-primary {
@@ -124,26 +126,25 @@ body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border: 2px solid white;
+  letter-spacing: 0.06em;
+  border: 1px solid white;
+  border-radius: 3px;
   background: white;
   color: black;
   cursor: pointer;
-  transition:
-    background-color 150ms,
-    color 150ms;
+  transition: all 150ms ease;
 }
 
 .grunge-btn-primary:hover {
-  background: transparent;
-  color: white;
+  background: #e0e0e0;
+  border-color: #e0e0e0;
 }
 
 .grunge-btn-primary:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
@@ -154,7 +155,44 @@ body {
 
 .grunge-btn-sm {
   padding: 0.375rem 0.75rem;
+  font-size: 0.625rem;
+}
+
+/* Export action button — always visible at bottom of sidebar */
+.grunge-btn-export {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
   font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid white;
+  border-radius: 3px;
+  background: white;
+  color: black;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.grunge-btn-export:hover {
+  background: #e0e0e0;
+  border-color: #e0e0e0;
+}
+
+.grunge-btn-export:disabled {
+  background: #1a1a1a;
+  border-color: #333;
+  color: #555;
+  cursor: not-allowed;
+}
+
+.grunge-btn-export:disabled:hover {
+  background: #1a1a1a;
+  border-color: #333;
+  color: #555;
 }
 
 /* --- Range Slider --- */
@@ -162,60 +200,76 @@ body {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 4px;
+  height: 3px;
   background: #222;
   outline: none;
-  border-radius: 0;
+  border-radius: 2px;
 }
 
 .grunge-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   background: white;
   border-radius: 50%;
   cursor: pointer;
   border: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
 }
 
 .grunge-range::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   background: white;
   border-radius: 50%;
   cursor: pointer;
   border: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
 }
 
-/* --- Checkbox --- */
+.grunge-range:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), 0 0 0 4px rgba(255, 255, 255, 0.15);
+}
+
+/* --- Toggle Switch --- */
 .grunge-checkbox {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
+  width: 28px;
   height: 16px;
-  min-width: 16px;
-  background: #111;
-  border: 2px solid #555;
+  min-width: 28px;
+  background: #222;
+  border: none;
+  border-radius: 100px;
   cursor: pointer;
   position: relative;
+  transition: background-color 180ms ease;
+}
+
+.grunge-checkbox::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  background: #666;
+  border-radius: 50%;
+  transition: all 180ms ease;
+}
+
+.grunge-checkbox:hover::after {
+  background: #888;
 }
 
 .grunge-checkbox:checked {
   background: white;
-  border-color: white;
 }
 
 .grunge-checkbox:checked::after {
-  content: "";
-  position: absolute;
-  left: 3px;
-  top: 0px;
-  width: 5px;
-  height: 9px;
-  border: solid black;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  left: 14px;
+  background: black;
 }
 
 /* --- Panel / Section --- */
@@ -224,20 +278,21 @@ body {
 }
 
 .grunge-section-title {
-  font-family: "Georgia", "Times New Roman", serif;
-  font-size: 0.6875rem;
-  font-weight: 700;
+  font-size: 0.625rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #999;
-  padding: 0 0.5rem;
-  margin-bottom: 0.75rem;
+  letter-spacing: 0.12em;
+  color: #666;
+  padding: 0 0 0.5rem 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid #1a1a1a;
 }
 
 /* --- Input --- */
 .grunge-input {
-  background: black;
-  border: 1px solid #404040;
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
   color: white;
   padding: 0.375rem 0.5rem;
   font-size: 0.75rem;
@@ -246,77 +301,87 @@ body {
 }
 
 .grunge-input:focus {
-  border-color: white;
+  border-color: #666;
 }
 
 /* --- View Toggle / Tabs --- */
 .grunge-tab {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.6875rem;
-  font-weight: 700;
+  padding: 0.3125rem 0.625rem;
+  font-size: 0.625rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border: 1px solid #555;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+  border-radius: 3px;
   background: transparent;
-  color: #777;
+  color: #666;
   cursor: pointer;
-  transition:
-    background-color 150ms,
-    color 150ms,
-    border-color 150ms;
+  transition: all 150ms ease;
 }
 
 .grunge-tab:hover {
-  color: white;
-  border-color: white;
+  color: #ccc;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .grunge-tab-active {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.6875rem;
-  font-weight: 700;
+  padding: 0.3125rem 0.625rem;
+  font-size: 0.625rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border: 1px solid white;
-  background: white;
-  color: black;
+  letter-spacing: 0.06em;
+  border: 1px solid #444;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
   cursor: pointer;
 }
 
 /* --- Color Picker --- */
 .grunge-color-picker {
-  height: 2.25rem;
-  width: 4rem;
-  background: #111;
-  border: 1px solid #555;
+  height: 2rem;
+  width: 3.5rem;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 3px;
   cursor: pointer;
   padding: 0;
 }
 
 .grunge-color-picker::-webkit-color-swatch-wrapper {
-  padding: 2px;
+  padding: 3px;
 }
 
 .grunge-color-picker::-webkit-color-swatch {
   border: none;
+  border-radius: 1px;
 }
 
 /* --- Select Dropdown --- */
 .grunge-select {
   -webkit-appearance: none;
   appearance: none;
-  background: #111;
-  border: 1px solid #555;
-  color: white;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.75rem;
+  background: #0a0a0a;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  color: #ccc;
+  padding: 0.4375rem 0.625rem;
+  font-size: 0.6875rem;
   outline: none;
   cursor: pointer;
   transition: border-color 150ms;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+  padding-right: 2rem;
+}
+
+.grunge-select:hover {
+  border-color: #444;
 }
 
 .grunge-select:focus {
-  border-color: white;
+  border-color: #666;
 }
 
 .grunge-select option {

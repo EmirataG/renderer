@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from "react";
 import { useToast } from "../hooks/useToast";
 import { validateFile } from "../lib/fileValidation";
 import type { FileCategory } from "../lib/fileValidation";
-import { validateMusicXML, isLikelyMusicXML } from "../lib/musicxmlValidation";
+import { validateMusicXML, validateMxl, isLikelyMusicXML, isMxlFile } from "../lib/musicxmlValidation";
 
 interface UploadDropZoneProps {
   projectId?: string;
@@ -49,12 +49,29 @@ export function UploadDropZone({
     async (file: File) => {
       setIsValidating(true);
       try {
+        // MXL files are ZIP archives — must be read as binary
+        if (isMxlFile(file.name)) {
+          const buffer = await file.arrayBuffer();
+          const result = await validateMxl(buffer);
+          if (!result.valid) {
+            showToast(result.error!, "error");
+            return;
+          }
+          onMusicXMLUpload(result.xml!, file.name, result.measureCount ?? 0);
+          showToast(
+            `Loaded ${file.name} (${result.measureCount} measures)`,
+            "success",
+          );
+          return;
+        }
+
+        // Plain XML / MusicXML / MEI — read as text
         const text = await file.text();
 
         // Quick pre-flight check
         if (!isLikelyMusicXML(text)) {
           showToast(
-            "File does not appear to be MusicXML. Expected score-partwise or score-timewise root element.",
+            "File does not appear to be MusicXML. Expected score-partwise, score-timewise, or mei root element.",
             "error",
           );
           return;
@@ -73,7 +90,7 @@ export function UploadDropZone({
           "success",
         );
       } catch {
-        showToast("Failed to read MusicXML file", "error");
+        showToast("Failed to read score file", "error");
       } finally {
         setIsValidating(false);
       }
@@ -218,7 +235,7 @@ export function UploadDropZone({
   // All supported file types for the input accept attribute
   const acceptedTypes = projectId
     ? ".jpg,.jpeg,.png,.webp"
-    : ".xml,.musicxml,.mp3,.wav,.ogg,.m4a,.jpg,.jpeg,.png,.webp";
+    : ".xml,.musicxml,.mxl,.mei,.mp3,.wav,.ogg,.m4a,.jpg,.jpeg,.png,.webp";
 
   return (
     <div className="space-y-3">
