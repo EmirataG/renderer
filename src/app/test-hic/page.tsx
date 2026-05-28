@@ -30,6 +30,7 @@ export default function TestHic() {
   const [drawCalls, setDrawCalls] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastDOMMatrix, setLastDOMMatrix] = useState<string>('');
+  const [sourceRect, setSourceRect] = useState<string>('');
   const [tick, setTick] = useState(0);
 
   // Feature detect
@@ -75,10 +76,14 @@ export default function TestHic() {
     const onPaint = () => {
       try {
         ctx.reset();
-        ctx.fillStyle = '#0e1116';
+        // Bright magenta fill — if drawElementImage actually paints
+        // opaque pixels, magenta disappears wherever it draws.
+        ctx.fillStyle = '#ff00ff';
         ctx.fillRect(0, 0, W, H);
         const m = drawFn(source, 0, 0, W, H) as DOMMatrix | undefined;
         if (m) setLastDOMMatrix(`a=${m.a.toFixed(2)} d=${m.d.toFixed(2)} e=${m.e.toFixed(2)} f=${m.f.toFixed(2)}`);
+        const r = source.getBoundingClientRect();
+        setSourceRect(`x=${r.x.toFixed(0)} y=${r.y.toFixed(0)} w=${r.width.toFixed(0)} h=${r.height.toFixed(0)}`);
         setDrawCalls((n) => n + 1);
         setPaintCount((n) => n + 1);
       } catch (e: unknown) {
@@ -143,6 +148,7 @@ export default function TestHic() {
         </div>
         <div>Paint events: {paintCount} &middot; drawEl calls: {drawCalls}</div>
         <div>Last DOMMatrix from drawEl: <code>{lastDOMMatrix || '—'}</code></div>
+        <div>Source rect: <code>{sourceRect || '—'}</code></div>
         {lastError && (
           <div style={{ color: '#f55', marginTop: 6 }}>
             <b>Error:</b> {lastError}
@@ -189,16 +195,19 @@ export default function TestHic() {
               position: 'relative',
             }}
           >
-            {/* The drawElementImage source. Must be a direct child of the
-                canvas. Hidden visually so we only see the canvas pixel
-                content (the children would otherwise render too — this
-                is interactive-canvas behavior). */}
+            {/* The drawElementImage source. Must be a direct child of
+                the canvas. Positioned far above the canvas's border
+                box so paint containment hides its natural rendering,
+                but the snapshot drawElementImage takes is of the
+                element's intrinsic content (position-independent). */}
             <div
               ref={sourceRef}
               style={{
+                position: 'absolute',
+                top: -100000,
+                left: 0,
                 width: W,
                 height: H,
-                opacity: 0,
                 pointerEvents: 'none',
               }}
               dangerouslySetInnerHTML={{ __html: svg }}
