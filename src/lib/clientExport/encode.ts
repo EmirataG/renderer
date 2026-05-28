@@ -54,6 +54,14 @@ export class VideoExporter {
       height: options.height,
       bitrate,
       framerate: options.fps,
+      // Explicit hardware preference — without this, Chrome falls back to
+      // a software encoder on some configurations. 'prefer-hardware' allows
+      // software if hardware is unavailable, so it's safe.
+      hardwareAcceleration: 'prefer-hardware',
+      // Prioritize throughput over latency-vs-quality balance at the same
+      // bitrate. We're encoding offline; we don't care about decode latency
+      // — we want frames to clear the encoder queue as fast as possible.
+      latencyMode: 'realtime',
     });
   }
 
