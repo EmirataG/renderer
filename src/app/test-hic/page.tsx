@@ -31,6 +31,8 @@ export default function TestHic() {
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastDOMMatrix, setLastDOMMatrix] = useState<string>('');
   const [sourceRect, setSourceRect] = useState<string>('');
+  const [offscreen, setOffscreen] = useState(false);
+  const [mirrorSrc, setMirrorSrc] = useState<string>('');
   const [tick, setTick] = useState(0);
 
   // Feature detect
@@ -73,6 +75,7 @@ export default function TestHic() {
       CanvasRenderingContext2D;
     const drawFn = (ctx[methodName] as Function).bind(ctx);
 
+    let frameCount = 0;
     const onPaint = () => {
       try {
         ctx.reset();
@@ -86,6 +89,11 @@ export default function TestHic() {
         setSourceRect(`x=${r.x.toFixed(0)} y=${r.y.toFixed(0)} w=${r.width.toFixed(0)} h=${r.height.toFixed(0)}`);
         setDrawCalls((n) => n + 1);
         setPaintCount((n) => n + 1);
+        // Mirror the canvas bitmap into an <img> every ~30 frames so we
+        // can SEE what's in the bitmap even when the canvas is offscreen.
+        if (frameCount++ % 30 === 0) {
+          setMirrorSrc(canvas.toDataURL('image/png'));
+        }
       } catch (e: unknown) {
         setLastError(e instanceof Error ? `${e.name}: ${e.message}` : String(e));
       }
@@ -156,9 +164,13 @@ export default function TestHic() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
         <button onClick={forceRedraw} style={btn}>requestPaint()</button>
         <button onClick={mutateSource} style={btn}>mutate source (cycle color)</button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input type="checkbox" checked={offscreen} onChange={(e) => setOffscreen(e.target.checked)} />
+          canvas offscreen (position:fixed; left:-99999px) — mimics export
+        </label>
       </div>
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
@@ -179,21 +191,34 @@ export default function TestHic() {
 
         {/* TEST: canvas with the same SVG as a layoutsubtree child */}
         <div>
-          <h2 style={{ fontSize: 14, marginBottom: 8 }}>2. Canvas via {methodName || 'drawElementImage'}</h2>
+          <h2 style={{ fontSize: 14, marginBottom: 8 }}>2. Canvas via {methodName || 'drawElementImage'}{offscreen ? ' (offscreen — see mirror →)' : ''}</h2>
           <canvas
             ref={canvasRef}
             width={W}
             height={H}
             // @ts-expect-error layoutsubtree is not in lib.dom yet
             layoutsubtree=""
-            style={{
-              background: '#0e1116',
-              border: '1px solid #333',
-              width: W,
-              height: H,
-              display: 'block',
-              position: 'relative',
-            }}
+            style={
+              offscreen
+                ? {
+                    background: '#0e1116',
+                    border: '1px solid #333',
+                    width: W,
+                    height: H,
+                    display: 'block',
+                    position: 'fixed',
+                    left: -99999,
+                    top: 0,
+                  }
+                : {
+                    background: '#0e1116',
+                    border: '1px solid #333',
+                    width: W,
+                    height: H,
+                    display: 'block',
+                    position: 'relative',
+                  }
+            }
           >
             {/* The drawElementImage source. Must be a direct child of
                 the canvas. Positioned far above the canvas's border
@@ -203,9 +228,6 @@ export default function TestHic() {
             <div
               ref={sourceRef}
               style={{
-                position: 'absolute',
-                top: -100000,
-                left: 0,
                 width: W,
                 height: H,
                 pointerEvents: 'none',
@@ -213,6 +235,27 @@ export default function TestHic() {
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           </canvas>
+        </div>
+
+        {/* MIRROR: <img> populated from canvas.toDataURL() every ~30
+            paints. Shows the canvas BITMAP regardless of where the
+            canvas itself is positioned — so we can see the export-
+            style offscreen canvas. */}
+        <div>
+          <h2 style={{ fontSize: 14, marginBottom: 8 }}>3. Canvas bitmap (mirror via toDataURL)</h2>
+          {mirrorSrc ? (
+            <img
+              src={mirrorSrc}
+              width={W}
+              height={H}
+              style={{ border: '1px solid #333', display: 'block' }}
+              alt="canvas bitmap mirror"
+            />
+          ) : (
+            <div style={{ width: W, height: H, border: '1px solid #333', display: 'grid', placeItems: 'center', color: '#666' }}>
+              waiting for first paint...
+            </div>
+          )}
         </div>
       </div>
     </div>
