@@ -122,12 +122,17 @@ function trimPageTopMargin(svgString: string): string {
 // ---------------------------------------------------------------------------
 
 function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
+  // Do NOT include `use` here. CSS overrides SVG presentation attributes,
+  // and animation.ts colors active noteheads by setting fill="..." on
+  // <use> elements inside g.notehead. A `use { fill: scoreColor }` rule
+  // would silently override every animated highlight. Untouched <use>
+  // elements still get scoreColor via SVG fill inheritance from the root
+  // <svg fill="..."> attribute set when each page is mounted.
   return `
     .client-export-score svg path,
     .client-export-score svg rect,
     .client-export-score svg polygon,
-    .client-export-score svg ellipse,
-    .client-export-score svg use {
+    .client-export-score svg ellipse {
       fill: ${scoreColor};
     }
     .client-export-score svg text {
@@ -367,8 +372,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // snapshot working.)
   //
   // So we put the canvas at top-left fixed, give it a z-index below
-  // the cover, and stack an opaque overlay above it to hide it from
-  // the user during export.
+  // the cover, and stack an opaque overlay above it. Both sit BELOW the
+  // export progress modal (App.tsx uses z-[100]) so the user can still
+  // see progress / hit cancel.
   const canvas = document.createElement('canvas') as LayoutsubtreeCanvas;
   canvas.width = viewportWidth;
   canvas.height = viewportHeight;
@@ -378,7 +384,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   canvas.style.left = '0';
   canvas.style.width = `${viewportWidth}px`;
   canvas.style.height = `${viewportHeight}px`;
-  canvas.style.zIndex = '2147483646'; // just below overlay
+  canvas.style.zIndex = '49';
   canvas.style.pointerEvents = 'none';
   document.body.appendChild(canvas);
 
@@ -386,7 +392,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   overlay.style.position = 'fixed';
   overlay.style.inset = '0';
   overlay.style.background = '#000';
-  overlay.style.zIndex = '2147483647';
+  overlay.style.zIndex = '50';
   overlay.style.pointerEvents = 'none';
   document.body.appendChild(overlay);
   const ctx = canvas.getContext('2d')! as DrawElementCtx;
