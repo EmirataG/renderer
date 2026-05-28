@@ -1130,10 +1130,8 @@ export default function SingleLineRenderer({
                         const isMounted = !extractionDoneRef.current || visibleSections.has(i);
 
                         if (!isMounted) {
-                          // Placeholder: maintain layout width. Ref is nulled
-                          // by the previous element's ref-detach callback —
-                          // don't clear it here, or we lose the handle we
-                          // need for the explicit innerHTML wipe.
+                          // Placeholder: maintain layout width, clear ref
+                          sectionContainerRefs.current[i] = null;
                           return (
                             <div
                               key={i}
@@ -1149,19 +1147,7 @@ export default function SingleLineRenderer({
                         return (
                           <div
                             key={i}
-                            ref={(el) => {
-                              if (el === null) {
-                                // Detaching: the same DOM node is likely about
-                                // to be reused for the placeholder above. Wipe
-                                // the SVG subtree to release nodes promptly
-                                // (defensive — React usually clears innerHTML
-                                // when dangerouslySetInnerHTML is removed, but
-                                // not guaranteed across versions / paths).
-                                const prev = sectionContainerRefs.current[i];
-                                if (prev) prev.innerHTML = '';
-                              }
-                              sectionContainerRefs.current[i] = el;
-                            }}
+                            ref={(el) => { sectionContainerRefs.current[i] = el; }}
                             className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
                             style={{
                               flexShrink: 0,

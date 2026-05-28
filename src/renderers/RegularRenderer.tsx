@@ -1079,15 +1079,13 @@ export default memo(function RegularRenderer({
                       }}
                     >
                       {svgPages.map((svg, i) => {
-                        // Before extraction is done, mount all pages for DOM measurement.
-                        // After extraction, only mount visible pages.
+                        // Before extraction is done, mount all pages for DOM measurement
+                        // After extraction, only mount visible pages
                         const isMounted = !extractionDoneRef.current || visiblePages.has(i);
 
                         if (!isMounted) {
-                          // Placeholder: maintain layout height. The ref is
-                          // nulled by the previous element's ref-detach callback
-                          // (see below) — don't clear it here, or we lose the
-                          // handle we need for the explicit innerHTML wipe.
+                          // Placeholder: maintain layout height, clear ref
+                          pageContainerRefs.current[i] = null;
                           return (
                             <div
                               key={i}
@@ -1102,19 +1100,7 @@ export default memo(function RegularRenderer({
                         return (
                           <div
                             key={i}
-                            ref={(el) => {
-                              if (el === null) {
-                                // Detaching: the same DOM node is likely about
-                                // to be reused for the placeholder above. Wipe
-                                // the SVG subtree to release nodes promptly
-                                // (defensive — React usually clears innerHTML
-                                // when dangerouslySetInnerHTML is removed, but
-                                // not guaranteed across versions / paths).
-                                const prev = pageContainerRefs.current[i];
-                                if (prev) prev.innerHTML = '';
-                              }
-                              pageContainerRefs.current[i] = el;
-                            }}
+                            ref={(el) => { pageContainerRefs.current[i] = el; }}
                             className="preview-score"
                             style={{ width: regionWidth }}
                             dangerouslySetInnerHTML={{ __html: svg }}
