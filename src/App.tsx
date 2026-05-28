@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import RegularRenderer from "./renderers/RegularRenderer";
+import RegularRendererCanvas from "./renderers/RegularRendererCanvas";
 import SingleLineRenderer from "./renderers/SingleLineRenderer";
 import { SyncEditor } from "./components/SyncEditor";
 import { ToastProvider } from "./components/Toast";
@@ -251,6 +252,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const [currentView, setCurrentView] = useState<"renderer" | "sync">(
     "renderer",
   );
+  // Experimental: render page-mode preview via <canvas layoutsubtree> +
+  // drawElementImage instead of live SVG DOM. Single-line mode falls back
+  // to the SVG renderer either way (no canvas variant yet).
+  const [useCanvasPreview, setUseCanvasPreview] = useState(false);
 
   // Audio ref for preview
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -590,12 +595,21 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           )}
           <div className="flex-1" />
           {currentView === "renderer" && musicXMLFile && (
-            <button
-              onClick={() => setZoomEnabled((prev) => !prev)}
-              className={zoomEnabled ? "grunge-tab-active" : "grunge-tab"}
-            >
-              {zoomEnabled ? "Disable Zoom" : "Enable Zoom"}
-            </button>
+            <>
+              <button
+                onClick={() => setUseCanvasPreview((prev) => !prev)}
+                className={useCanvasPreview ? "grunge-tab-active" : "grunge-tab"}
+                title="Toggle experimental HTML-in-Canvas preview (page mode only)"
+              >
+                {useCanvasPreview ? "Canvas: ON" : "Canvas: OFF"}
+              </button>
+              <button
+                onClick={() => setZoomEnabled((prev) => !prev)}
+                className={zoomEnabled ? "grunge-tab-active" : "grunge-tab"}
+              >
+                {zoomEnabled ? "Disable Zoom" : "Enable Zoom"}
+              </button>
+            </>
           )}
           {projectId && <SaveIndicator />}
         </div>
@@ -1086,6 +1100,40 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                         <div className="relative m-auto w-fit">
                           {viewMode === 'single-line' ? (
                             <SingleLineRenderer
+                              xml={musicXMLFile.xml}
+                              bgUrl={bgUrl || undefined}
+                              fps={fps}
+                              scoreColor={scoreColor}
+                              syncAnchors={
+                                anchors.size > 0 ? anchors : undefined
+                              }
+                              audioUrl={audioFile?.url}
+                              scoreRegion={debouncedScoreRegion}
+                              scoreBorder={scoreBorder}
+                              scoreScale={debouncedScoreScale}
+                              musicFont={musicFont}
+                              activeNoteheadColor={
+                                activeNoteheadColor ?? undefined
+                              }
+                              activeNoteheadScale={activeNoteheadScale}
+                              activeNoteheadAnimationEntryMs={
+                                activeNoteheadEntryMs
+                              }
+                              activeNoteheadAnimationHoldMs={
+                                activeNoteheadHoldMs
+                              }
+                              activeNoteheadAnimationExitMs={
+                                activeNoteheadExitMs
+                              }
+                              activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
+                              colorAccidentals={colorAccidentals}
+                              colorDots={colorDots}
+                              colorArticulations={colorArticulations}
+                              hideLabels={hideLabels}
+                              transportPortalEl={transportEl}
+                            />
+                          ) : useCanvasPreview ? (
+                            <RegularRendererCanvas
                               xml={musicXMLFile.xml}
                               bgUrl={bgUrl || undefined}
                               fps={fps}
