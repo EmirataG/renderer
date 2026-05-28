@@ -1,14 +1,18 @@
 /**
- * Client-side video export.
+ * Client-side video export (HTML-in-Canvas experimental branch).
  *
  * Renders the score animation entirely in the browser using:
  * - Verovio for SVG score rendering
  * - DOM animation (same engine as server-side export)
- * - SVG → Canvas rasterization per frame
+ * - drawElementImage() — the page SVGs live as direct children of a
+ *   <canvas layoutsubtree>, and the browser snapshots them into the
+ *   canvas each paint. No per-frame XMLSerializer/Blob/Image cycle.
  * - WebCodecs H.264 hardware encoding
  * - mp4-muxer for MP4 container + audio
  *
- * Zero server cost. Uses the user's own hardware encoder.
+ * REQUIRES Chrome 138+ with chrome://flags/#canvas-draw-element
+ * enabled, or an M148–M151 origin-trial token. No fallback on this
+ * branch — see clientExport()'s feature check.
  */
 
 import { createToolkit } from '../verovioService';
@@ -148,118 +152,25 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
 }
 
 // ---------------------------------------------------------------------------
-// SVG page → ImageBitmap rasterization
+// drawElementImage type augmentation (Chrome 138+, behind
+// chrome://flags/#canvas-draw-element). The TS lib.dom doesn't include
+// it yet, so we extend the context type here.
 // ---------------------------------------------------------------------------
 
-/**
- * Add inline CSS to an SVG string so it renders correctly when
- * rasterized outside the document context.
- */
-function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
-  // IMPORTANT: `path` and `use` are NOT targeted by CSS here.
-  //
-  // Music glyphs are <path> elements inside <use> shadow trees. A CSS
-  // rule `path { fill: scoreColor }` penetrates into the <use> shadow
-  // and overrides the fill that paths would inherit from their <use>
-  // parent — breaking animated highlight colors.
-  //
-  // Instead, fill is set on the root <svg> element as an attribute.
-  // All paths inherit scoreColor via SVG inheritance. Animated <use>
-  // elements have fill="highlightColor" set by the animation, which
-  // cascades to their shadow paths without CSS interference.
-  const style = `<style>
-    rect, polygon, ellipse { fill: ${scoreColor}; }
-    text { fill: ${scoreColor}; }
-    [fill="none"] { fill: none !important; }
-    g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
-  </style>`;
-  // Set fill on root SVG for inheritance to all descendant paths
-  return svgString.replace(/<svg([^>]*)>/, `<svg$1 fill="${scoreColor}">${style}`);
-}
+type DrawElementCtx = CanvasRenderingContext2D & {
+  drawElementImage: (
+    el: Element,
+    dx: number,
+    dy: number,
+    dw?: number,
+    dh?: number,
+  ) => DOMMatrix;
+};
 
-/**
- * Bake animation state into SVG attributes.
- *
- * The animation sets inline CSS (style.fill, style.transform) which the
- * browser renders directly in the preview. But for the export we serialize
- * SVG → data URL → Image, and CSS properties on SVG `use` elements don't
- * reliably cascade to their referenced content in that context.
- *
- * Fix: copy the CSS values to SVG attributes which ARE respected in
- * SVG-as-image. For notehead scale, convert CSS transform to SVG
- * transform attribute (with manual center-point computation via getBBox).
- */
-/**
- * Set scoreColor fill on use elements that don't already have a fill
- * attribute from the animation. The animation now sets fill as SVG
- * attributes directly, so we just need to fill in the default.
- */
-function setDefaultFillOnUseElements(svgEl: Element, scoreColor: string): void {
-  svgEl.querySelectorAll('use').forEach((el) => {
-    if (!el.getAttribute('fill')) {
-      el.setAttribute('fill', scoreColor);
-    }
-  });
-}
-
-/** Drawable source for canvas — either an Image or ImageBitmap. */
-type CanvasImageSource = HTMLImageElement | ImageBitmap;
-
-/**
- * Render an SVG page element to a drawable image.
- *
- * Uses Blob URL instead of data URL to avoid the expensive
- * encodeURIComponent call on large SVG strings.
- */
-async function svgPageToImage(
-  pageContainer: HTMLElement,
-  scoreColor: string,
-  width: number,
-  rasterScale: number,
-): Promise<CanvasImageSource> {
-  const svgEl = pageContainer.querySelector('svg');
-  if (!svgEl) throw new Error('No SVG element found in page container');
-
-  // Set default fill on use elements without an animated fill attribute
-  setDefaultFillOnUseElements(svgEl, scoreColor);
-
-  let svgString = new XMLSerializer().serializeToString(svgEl);
-  svgString = inlineScoreColorInSvg(svgString, scoreColor);
-
-  // Ensure xmlns
-  if (!svgString.includes('xmlns=')) {
-    svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
-  }
-
-  // Set width/height to the final output pixel dimensions so the browser
-  // rasterizes the SVG at full resolution. The viewBox (SVG coordinate
-  // space) is preserved — the vector content scales up to fill the
-  // larger pixel grid, giving crisp output at 4K.
-  const vbMatch = svgString.match(VIEWBOX_REGEX);
-  const vbW = vbMatch ? parseFloat(vbMatch[3]) : width;
-  const vbH = vbMatch ? parseFloat(vbMatch[4]) : 1000;
-  const pixelW = Math.round(vbW * rasterScale);
-  const pixelH = Math.round(vbH * rasterScale);
-  // Strip existing width/height then inject scaled dimensions
-  svgString = svgString.replace(/\s(width|height)="[^"]*"/g, '');
-  svgString = svgString.replace(
-    /<svg([^>]*)>/,
-    `<svg$1 width="${pixelW}" height="${pixelH}">`,
-  );
-
-  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  try {
-    return await new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Failed to decode SVG page'));
-      img.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
+type LayoutsubtreeCanvas = HTMLCanvasElement & {
+  requestPaint?: () => void;
+  onpaint: ((e: Event) => void) | null;
+};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -290,6 +201,14 @@ export interface ClientExportParams {
  */
 export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const { musicXml, syncAnchors, settings, audioFile, bgImageUrl, bgColor, aspectRatio, onProgress, signal } = params;
+
+  // Feature check: drawElementImage is Chrome-only and behind a flag.
+  // This branch assumes Chrome + flag enabled and does NOT keep a fallback.
+  if (typeof (CanvasRenderingContext2D.prototype as unknown as { drawElementImage?: unknown }).drawElementImage !== 'function') {
+    throw new Error(
+      'drawElementImage not available. Enable chrome://flags/#canvas-draw-element in Chrome 138+ (or use an M148–M151 origin trial).',
+    );
+  }
 
   onProgress(0, 'Preparing score...');
 
@@ -417,149 +336,72 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     totalHeight = cumulative;
   }
 
-  // ── 4. Build hidden DOM ───────────────────────────────────────────
-  // Use Shadow DOM to isolate SVG element IDs from the preview.
-  // Without this, querySelector('#note-id') fails because the preview
-  // has Verovio SVGs with the same IDs already in the document.
-  const shadowHost = document.createElement('div');
-  shadowHost.style.position = 'fixed';
-  shadowHost.style.left = '-99999px';
-  shadowHost.style.top = '0';
-  document.body.appendChild(shadowHost);
-  const shadow = shadowHost.attachShadow({ mode: 'open' });
-
-  const hostEl = document.createElement('div');
-  hostEl.style.width = `${viewportWidth}px`;
-  hostEl.style.height = `${viewportHeight}px`;
-  hostEl.style.overflow = 'hidden';
-  shadow.appendChild(hostEl);
-
-  // Score color CSS (scoped inside shadow DOM)
-  const styleEl = document.createElement('style');
-  styleEl.textContent = buildScoreColorCss(settings.scoreColor, settings.hideLabels);
-  shadow.appendChild(styleEl);
-
-  // Scale wrapper
-  const scaleEl = document.createElement('div');
-  scaleEl.style.transformOrigin = 'top left';
-  scaleEl.style.transform = `scale(${scaleFactor})`;
-  hostEl.appendChild(scaleEl);
-
-  // Main container
-  const mainEl = document.createElement('div');
-  mainEl.style.position = 'relative';
-  mainEl.style.width = `${containerWidth}px`;
-  mainEl.style.height = `${containerHeight}px`;
-  mainEl.style.overflow = 'hidden';
-  scaleEl.appendChild(mainEl);
-
-  // Background
-  const bgEl = document.createElement('div');
-  bgEl.style.width = `${containerWidth}px`;
-  bgEl.style.height = `${containerHeight}px`;
-  if (bgImageUrl) {
-    bgEl.style.backgroundImage = `url(${bgImageUrl})`;
-    bgEl.style.backgroundSize = 'cover';
-  } else if (bgColor) {
-    bgEl.style.backgroundColor = bgColor;
-  }
-  mainEl.appendChild(bgEl);
-
-  // Score region
+  // ── 4. Build canvas with layoutsubtree ────────────────────────────
+  // The output canvas is ALSO the parent of the page divs. The
+  // drawElementImage API requires the source element to be a direct
+  // child of the <canvas layoutsubtree> being drawn into, so there's
+  // no separate hidden DOM — this single element replaces the entire
+  // shadow-DOM tree (host, scale, region, camera, score wrappers) and
+  // the duplicate ImageBitmap cache.
   const regionX = settings.scoreRegion?.x ?? 0;
   const regionY = settings.scoreRegion?.y ?? 0;
   const regionRotation = settings.scoreRegion?.rotation ?? 0;
+  const borderStyle = (settings.scoreBorder ?? 'none') as BorderStyle;
 
-  const rotationWrapperEl = document.createElement('div');
-  rotationWrapperEl.style.position = 'absolute';
-  rotationWrapperEl.style.left = `${regionX}px`;
-  rotationWrapperEl.style.top = `${regionY}px`;
-  rotationWrapperEl.style.width = `${regionWidth}px`;
-  rotationWrapperEl.style.height = `${regionHeight}px`;
-  if (regionRotation !== 0) {
-    rotationWrapperEl.style.transform = `rotate(${regionRotation}deg)`;
-    rotationWrapperEl.style.transformOrigin = 'center center';
-  }
-  bgEl.appendChild(rotationWrapperEl);
+  const canvas = document.createElement('canvas') as LayoutsubtreeCanvas;
+  canvas.width = viewportWidth;
+  canvas.height = viewportHeight;
+  canvas.setAttribute('layoutsubtree', '');
+  // Park offscreen so the canvas's painted children don't visually appear.
+  canvas.style.position = 'fixed';
+  canvas.style.left = '-99999px';
+  canvas.style.top = '0';
+  canvas.style.width = `${viewportWidth}px`;
+  canvas.style.height = `${viewportHeight}px`;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d')! as DrawElementCtx;
 
-  const regionEl = document.createElement('div');
-  regionEl.style.position = 'absolute';
-  regionEl.style.left = '0';
-  regionEl.style.top = '0';
-  regionEl.style.width = `${regionWidth}px`;
-  regionEl.style.height = `${regionHeight}px`;
-  regionEl.style.overflow = 'hidden';
-  if (isSingleLine) {
-    regionEl.style.display = 'flex';
-    regionEl.style.alignItems = 'center';
-  }
-  rotationWrapperEl.appendChild(regionEl);
+  // Score-color stylesheet. Scoped by className since we're not in a
+  // shadow DOM anymore; preview SVGs in the main DOM use different
+  // classes so this doesn't bleed.
+  const styleEl = document.createElement('style');
+  styleEl.textContent = buildScoreColorCss(settings.scoreColor, settings.hideLabels);
+  document.head.appendChild(styleEl);
 
-  // Camera div
-  const cameraEl = document.createElement('div');
-  cameraEl.style.display = 'flex';
-  cameraEl.style.flexDirection = isSingleLine ? 'row' : 'column';
-  cameraEl.style.transition = 'none';
-  if (!isSingleLine) cameraEl.style.width = '100%';
-  regionEl.appendChild(cameraEl);
-
-  // Score div
-  const scoreEl = document.createElement('div');
-  scoreEl.className = 'client-export-score';
-  scoreEl.style.lineHeight = '0';
-  scoreEl.style.fontSize = '0';
-  if (isSingleLine) {
-    scoreEl.style.display = 'flex';
-    scoreEl.style.flexDirection = 'row';
-  } else {
-    scoreEl.style.width = `${regionWidth}px`;
-  }
-  cameraEl.appendChild(scoreEl);
-
-  // Mount SVG pages/sections
+  // Mount SVG pages as DIRECT CHILDREN of the canvas. Each page is
+  // absolutely positioned so multiple pages don't fight for layout;
+  // we never look at their on-screen positions (we draw via the API
+  // and apply page offsets via ctx transforms inside the frame loop).
   const pageContainers: HTMLElement[] = [];
   for (let idx = 0; idx < svgPages.length; idx++) {
     const pageDiv = document.createElement('div');
     pageDiv.className = 'client-export-score';
-    if (isSingleLine) {
-      pageDiv.style.flexShrink = '0';
-      pageDiv.style.width = `${sectionWidths[idx]}px`;
-      pageDiv.style.display = 'flex';
-      pageDiv.style.alignItems = 'flex-start';
-    } else {
-      pageDiv.style.width = `${regionWidth}px`;
-    }
+    pageDiv.style.position = 'absolute';
+    pageDiv.style.left = '0';
+    pageDiv.style.top = '0';
+    pageDiv.style.lineHeight = '0';
+    pageDiv.style.fontSize = '0';
+    pageDiv.style.width = isSingleLine ? `${sectionWidths[idx]}px` : `${regionWidth}px`;
     pageDiv.innerHTML = svgPages[idx];
-    scoreEl.appendChild(pageDiv);
+    // Set fill on SVG root so untouched <use> elements inherit scoreColor
+    // (animation.ts handles fills on touched noteheads via setAttribute).
+    const svgRoot = pageDiv.querySelector('svg');
+    if (svgRoot) svgRoot.setAttribute('fill', settings.scoreColor);
+    canvas.appendChild(pageDiv);
     pageContainers.push(pageDiv);
   }
 
-  // Borders
-  const borderStyle = (settings.scoreBorder ?? 'none') as BorderStyle;
-  if (borderStyle !== 'none') {
-    const borderHeight = getBorderHeight(borderStyle);
-    const topBorderDiv = document.createElement('div');
-    topBorderDiv.style.position = 'absolute';
-    topBorderDiv.style.top = `${-borderHeight}px`;
-    topBorderDiv.style.left = '0';
-    topBorderDiv.style.width = `${regionWidth}px`;
-    topBorderDiv.style.zIndex = '3';
-    topBorderDiv.innerHTML = generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'top');
-    rotationWrapperEl.appendChild(topBorderDiv);
-
-    const bottomBorderDiv = document.createElement('div');
-    bottomBorderDiv.style.position = 'absolute';
-    bottomBorderDiv.style.top = `${regionHeight}px`;
-    bottomBorderDiv.style.left = '0';
-    bottomBorderDiv.style.width = `${regionWidth}px`;
-    bottomBorderDiv.style.zIndex = '3';
-    bottomBorderDiv.innerHTML = generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'bottom');
-    rotationWrapperEl.appendChild(bottomBorderDiv);
-  }
+  // Phantom wrappers for animation.ts compatibility. The animation
+  // module mutates cameraEl.style.transform — harmless on a detached
+  // element — and reads camera offsets back from animState directly.
+  // scoreEl is used for querySelector to locate notes; pointing it at
+  // the canvas lets queries descend into the page subtrees.
+  const cameraEl = document.createElement('div');
+  const scoreEl = canvas as unknown as HTMLElement;
 
   // ── 5. Extract events and compute positions ───────────────────────
-  // Force layout so getBoundingClientRect works
-  void hostEl.offsetHeight;
+  // Force layout so getBoundingClientRect works on canvas descendants.
+  void canvas.offsetHeight;
 
   // Extract events and interpolate timestamps using shared modules
   // (identical to the preview renderers).
@@ -638,15 +480,6 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     }
   }
 
-  // Build event→page index for dirty tracking during frame loop.
-  // Maps each event index to the page (0-based) containing its first note.
-  const eventPageIndex: number[] = interpolated.map((evt) => {
-    const posId = evt.positionSvgId || evt.svgIds[0];
-    if (!posId) return -1;
-    const pageNum = toolkit.getPageWithElement(posId);
-    return pageNum > 0 ? pageNum - 1 : -1;
-  });
-
   // ── 6. Setup animation ────────────────────────────────────────────
   const animState: AnimationState = createAnimationState();
   const globalHoldSec = (settings.activeNoteheadHoldMs ?? 200) / 1000;
@@ -683,15 +516,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     maxAnimDuration,
   };
 
-  // ── 7. Setup canvas + encoder ─────────────────────────────────────
+  // ── 7. Setup encoder ──────────────────────────────────────────────
+  // Canvas + ctx were created in step 4 (they're both the source-parent
+  // and the encoder target).
   const audioDuration = settings.audioDuration ?? 0;
   const fps = settings.fps;
   const totalFrames = Math.ceil(audioDuration * fps);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = viewportWidth;
-  canvas.height = viewportHeight;
-  const ctx = canvas.getContext('2d')!;
 
   const exporter = new VideoExporter({
     width: viewportWidth,
@@ -723,13 +553,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     bottomBorderImg = await loadSvgImg(generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'bottom'));
   }
 
-  // Pre-rasterize all SVG pages into a cache. During the frame loop,
-  // only pages with active notehead animations are re-rasterized.
-  const pageCache: (CanvasImageSource | null)[] = [];
-  for (let p = 0; p < pageContainers.length; p++) {
-    const w = isSingleLine ? sectionWidths[p] : regionWidth;
-    pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, w, scaleFactor);
-  }
+  // No page cache — drawElementImage reads the live render tree each
+  // frame and the browser handles snapshotting automatically.
 
   // Start audio decoding in parallel with video frame rendering.
   // AudioContext.decodeAudioData runs on a separate browser thread.
@@ -744,25 +569,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // ── 8. Frame capture loop ─────────────────────────────────────────
   onProgress(0, 'Rendering frames...');
 
-  for (let frame = 0; frame < totalFrames; frame++) {
-    if (signal?.aborted) throw new Error('Export cancelled');
-
-    const seconds = frame / fps;
-
-    // Apply animation state (sets SVG attributes on noteheads + camera translateY)
-    applyAnimation(seconds, events, animState, animConfig, cameraEl, scoreEl);
-
-    // Determine which pages had noteheads modified (reset or animated)
-    // so only those pages need re-rasterization.
-    const dirtyPages = new Set<number>();
-    if (animState.prevActiveRange) {
-      for (let i = animState.prevActiveRange.start; i <= animState.prevActiveRange.end; i++) {
-        const pg = eventPageIndex[i];
-        if (pg >= 0) dirtyPages.add(pg);
-      }
-    }
-
-    // Clear canvas and draw background
+  // Compose one frame into the canvas. Must be invoked from inside the
+  // `paint` event — that's when the children's snapshot is for the
+  // current frame; outside paint, drawElementImage would draw last
+  // frame's state (per the WICG explainer).
+  function composeFrame(): void {
+    // Clear + background
     if (bgImage) {
       ctx.drawImage(bgImage, 0, 0, viewportWidth, viewportHeight);
     } else if (bgColor) {
@@ -772,9 +584,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       ctx.clearRect(0, 0, viewportWidth, viewportHeight);
     }
 
-    // Rasterize each SVG page and draw to canvas with camera offset
+    // Region transform + clip
     ctx.save();
-    // Apply the same scale + positioning as the DOM layout
     ctx.scale(scaleFactor, scaleFactor);
     ctx.translate(regionX, regionY);
     if (regionRotation !== 0) {
@@ -782,51 +593,34 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       ctx.rotate((regionRotation * Math.PI) / 180);
       ctx.translate(-regionWidth / 2, -regionHeight / 2);
     }
-
-    // Clip to score region
     ctx.beginPath();
     ctx.rect(0, 0, regionWidth, regionHeight);
     ctx.clip();
 
-    // Draw each page/section at its offset, shifted by camera.
-    // Only re-rasterize pages with active notehead animations; reuse cache otherwise.
+    // Draw pages via drawElementImage. The browser supplies the latest
+    // snapshot of each page subtree; no per-frame serialization.
     if (isSingleLine) {
       const cameraX = animState.cameraX;
       for (let p = 0; p < pageContainers.length; p++) {
         const sectionX = sectionOffsets[p] - cameraX;
         const sectionW = sectionWidths[p];
         const sectionH = pageHeights[p];
-
         if (sectionX + sectionW < 0 || sectionX > regionWidth) continue;
-
-        if (dirtyPages.has(p)) {
-          pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, sectionW, scaleFactor);
-        }
-        if (pageCache[p]) {
-          // Vertically center the section within the region
-          const yOff = (regionHeight - sectionH) / 2;
-          ctx.drawImage(pageCache[p]!, sectionX, yOff, sectionW, sectionH);
-        }
+        const yOff = (regionHeight - sectionH) / 2;
+        ctx.drawElementImage(pageContainers[p], sectionX, yOff, sectionW, sectionH);
       }
     } else {
       const cameraY = animState.cameraY;
       for (let p = 0; p < pageContainers.length; p++) {
         const pageY = pageOffsets[p] - cameraY;
         const pageH = pageHeights[p];
-
         if (pageY + pageH < 0 || pageY > regionHeight) continue;
-
-        if (dirtyPages.has(p)) {
-          pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
-        }
-        if (pageCache[p]) {
-          ctx.drawImage(pageCache[p]!, 0, pageY, regionWidth, pageH);
-        }
+        ctx.drawElementImage(pageContainers[p], 0, pageY, regionWidth, pageH);
       }
     }
-
-    // Draw borders (on top of clipped region)
     ctx.restore();
+
+    // Borders (drawn after restore, on top of the clipped region)
     ctx.save();
     ctx.scale(scaleFactor, scaleFactor);
     ctx.translate(regionX, regionY);
@@ -842,15 +636,38 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       ctx.drawImage(bottomBorderImg, 0, regionHeight, regionWidth, borderHeight);
     }
     ctx.restore();
+  }
 
-    // Encode frame (async — respects encoder backpressure)
+  for (let frame = 0; frame < totalFrames; frame++) {
+    if (signal?.aborted) throw new Error('Export cancelled');
+
+    const seconds = frame / fps;
+
+    // Mutate SVG attributes on noteheads for this frame
+    applyAnimation(seconds, events, animState, animConfig, cameraEl, scoreEl);
+
+    // Wait for the next paint event — that's when the snapshot is
+    // fresh — and compose the frame inside it. The browser pipes the
+    // mutated render tree into a snapshot once per rendering update;
+    // requestPaint() asks for one to be scheduled.
+    await new Promise<void>((resolve, reject) => {
+      const onPaint = () => {
+        try {
+          composeFrame();
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      };
+      canvas.addEventListener('paint', onPaint, { once: true });
+      canvas.requestPaint?.();
+    });
+
+    // Encode (respects encoder backpressure)
     await exporter.addFrame(canvas);
 
-    // Report progress
     if (frame % 10 === 0 || frame === totalFrames - 1) {
       onProgress(Math.round((frame / totalFrames) * 90), 'Rendering frames...');
-      // Yield to browser to prevent UI freeze
-      await new Promise((r) => setTimeout(r, 0));
     }
   }
 
@@ -867,7 +684,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // ── 11. Cleanup ───────────────────────────────────────────────────
   bgImage?.close();
-  shadowHost.remove();
+  canvas.remove();
+  styleEl.remove();
 
   onProgress(100, 'Complete');
 
