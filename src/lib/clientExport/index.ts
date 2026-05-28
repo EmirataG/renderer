@@ -202,25 +202,25 @@ function setDefaultFillOnUseElements(svgEl: Element, scoreColor: string): void {
   });
 }
 
+/** Drawable source for canvas — either an Image or ImageBitmap. */
+type CanvasImageSource = HTMLImageElement | ImageBitmap;
+
 /**
- * Render an SVG page element to a drawable ImageBitmap.
+ * Render an SVG page element to a drawable image.
  *
- * Uses createImageBitmap(blob) instead of the legacy URL.createObjectURL +
- * new Image() + onload pattern. Benefits:
- *   - One less round-trip (no object URL allocate / revoke per page per frame).
- *   - createImageBitmap returns a GPU-backed bitmap directly; new Image()
- *     decodes via the HTML img path which is async-onload and slower.
- *   - Result is deterministic — no `.complete` / `.onerror` edge cases.
- *
- * Caller contract: returned ImageBitmap must be .close()'d when no longer
- * needed (see pageCache cleanup at end of clientExport).
+ * Uses Blob URL + HTMLImageElement decode rather than createImageBitmap:
+ * createImageBitmap's Blob path is implementation-specific for SVG sources
+ * (see HTML spec note on image format support) and in practice fails to
+ * decode Verovio output in Chrome — "The source image could not be decoded"
+ * — likely because the off-document rasterizer can't resolve the internal
+ * <use> shadow trees the way the HTMLImageElement decode path can.
  */
 async function svgPageToImage(
   pageContainer: HTMLElement,
   scoreColor: string,
   width: number,
   rasterScale: number,
-): Promise<ImageBitmap> {
+): Promise<CanvasImageSource> {
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
 
@@ -252,7 +252,17 @@ async function svgPageToImage(
   );
 
   const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-  return await createImageBitmap(blob);
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to decode SVG page'));
+      img.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -701,26 +711,25 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     bgImage = await createImageBitmap(bgBlob);
   }
 
-  // Pre-render border images. Same createImageBitmap path as svgPageToImage —
-  // returns a GPU-backed bitmap, must be .close()'d at cleanup.
-  let topBorderImg: ImageBitmap | null = null;
-  let bottomBorderImg: ImageBitmap | null = null;
+  // Pre-render border images
+  let topBorderImg: HTMLImageElement | null = null;
+  let bottomBorderImg: HTMLImageElement | null = null;
   let borderHeight = 0;
   if (borderStyle !== 'none') {
     borderHeight = getBorderHeight(borderStyle);
-    const loadSvgBitmap = (svg: string) => {
-      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-      return createImageBitmap(blob);
-    };
-    topBorderImg = await loadSvgBitmap(generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'top'));
-    bottomBorderImg = await loadSvgBitmap(generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'bottom'));
+    const loadSvgImg = (svg: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+    topBorderImg = await loadSvgImg(generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'top'));
+    bottomBorderImg = await loadSvgImg(generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'bottom'));
   }
 
   // Pre-rasterize all SVG pages into a cache. During the frame loop,
-  // only pages with active notehead animations are re-rasterized; the
-  // old ImageBitmap is closed before the new one replaces it (otherwise
-  // its GPU memory lives until GC).
-  const pageCache: (ImageBitmap | null)[] = [];
+  // only pages with active notehead animations are re-rasterized.
+  const pageCache: (CanvasImageSource | null)[] = [];
   for (let p = 0; p < pageContainers.length; p++) {
     const w = isSingleLine ? sectionWidths[p] : regionWidth;
     pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, w, scaleFactor);
@@ -795,7 +804,6 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         if (sectionX + sectionW < 0 || sectionX > regionWidth) continue;
 
         if (dirtyPages.has(p)) {
-          pageCache[p]?.close();
           pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, sectionW, scaleFactor);
         }
         if (pageCache[p]) {
@@ -813,7 +821,6 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         if (pageY + pageH < 0 || pageY > regionHeight) continue;
 
         if (dirtyPages.has(p)) {
-          pageCache[p]?.close();
           pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
         }
         if (pageCache[p]) {
@@ -868,9 +875,11 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // ── 11. Cleanup ───────────────────────────────────────────────────
   bgImage?.close();
-  for (const bitmap of pageCache) bitmap?.close();
-  topBorderImg?.close();
-  bottomBorderImg?.close();
+  // Close any ImageBitmap-backed page cache entries. HTMLImageElement
+  // entries have no close() — they're GC'd with the shadowHost removal.
+  for (const cached of pageCache) {
+    if (cached && 'close' in cached) cached.close();
+  }
   shadowHost.remove();
 
   onProgress(100, 'Complete');
