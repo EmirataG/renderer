@@ -154,6 +154,12 @@ export default memo(function RegularRenderer({
   const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(propAudioDuration ?? 0);
+  // `audioRef` is a ref (mutating it doesn't re-render). canPlay depends on
+  // audioRef being populated, so we need a state-backed mirror to trigger
+  // one re-render once the audio element is created. Without this, canPlay
+  // can stay stale (= disabled Play button) between when the audio effect
+  // populates the ref and the next unrelated state change.
+  const [audioReady, setAudioReady] = useState(false);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
@@ -181,6 +187,7 @@ export default memo(function RegularRenderer({
   useEffect(() => {
     if (!audioUrl) {
       audioRef.current = null;
+      setAudioReady(false);
       if (!propAudioDuration) setAudioDuration(0);
       return;
     }
@@ -188,6 +195,7 @@ export default memo(function RegularRenderer({
     const audio = new Audio(audioUrl);
     audio.preload = "auto";
     audioRef.current = audio;
+    setAudioReady(true);
 
     const handleLoadedMetadata = () => {
       setAudioDuration(audio.duration);
@@ -199,6 +207,7 @@ export default memo(function RegularRenderer({
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.pause();
       audioRef.current = null;
+      setAudioReady(false);
     };
   }, [audioUrl]);
 
@@ -603,7 +612,7 @@ export default memo(function RegularRenderer({
   /* ---------------- controls ---------------- */
 
   // Transport gating: Play requires audio + first and last anchors
-  const hasAudio = !!audioUrl && !!audioRef.current;
+  const hasAudio = !!audioUrl && audioReady;
   const firstEventId = events.length > 0 ? events[0].id : null;
   const lastEventId = events.length > 0 ? events[events.length - 1].id : null;
   const hasFirstAnchor = !!(firstEventId && syncAnchors?.has(firstEventId));

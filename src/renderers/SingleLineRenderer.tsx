@@ -122,6 +122,10 @@ export default function SingleLineRenderer({
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
+  // `audioRef` is a ref (mutating it doesn't re-render). canPlay depends on
+  // audioRef being populated, so we need a state-backed mirror to trigger
+  // one re-render once the audio element is created.
+  const [audioReady, setAudioReady] = useState(false);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
@@ -141,6 +145,7 @@ export default function SingleLineRenderer({
   useEffect(() => {
     if (!audioUrl) {
       audioRef.current = null;
+      setAudioReady(false);
       setAudioDuration(0);
       return;
     }
@@ -148,6 +153,7 @@ export default function SingleLineRenderer({
     const audio = new Audio(audioUrl);
     audio.preload = "auto";
     audioRef.current = audio;
+    setAudioReady(true);
 
     const handleLoadedMetadata = () => {
       setAudioDuration(audio.duration);
@@ -159,6 +165,7 @@ export default function SingleLineRenderer({
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.pause();
       audioRef.current = null;
+      setAudioReady(false);
     };
   }, [audioUrl]);
 
@@ -655,7 +662,7 @@ export default function SingleLineRenderer({
   /* ---------------- controls ---------------- */
 
   // Transport gating: Play requires audio + first and last anchors
-  const hasAudio = !!audioUrl && !!audioRef.current;
+  const hasAudio = !!audioUrl && audioReady;
   const firstEventId = events.length > 0 ? events[0].id : null;
   const lastEventId = events.length > 0 ? events[events.length - 1].id : null;
   const hasFirstAnchor = !!(firstEventId && syncAnchors?.has(firstEventId));
