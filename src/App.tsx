@@ -126,6 +126,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
         // Set audio via server proxy (avoids CORS, supports range requests for seeking)
         if (project.audioUrl) {
+          // Revoke any user-uploaded blob URL from the previous project.
+          if (audioFile?.url?.startsWith('blob:')) {
+            URL.revokeObjectURL(audioFile.url);
+          }
           setAudioFile({
             url: `/api/projects/${projectId}/audio`,
             name: project.audioFileName || "audio.mp3",
@@ -135,6 +139,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
         // Set background: either a server-hosted image or a solid color
         if (project.backgroundUrl) {
+          // Revoke any user-uploaded blob URL from the previous project.
+          if (bgUrl?.startsWith('blob:')) {
+            URL.revokeObjectURL(bgUrl);
+          }
           setBgUrl(`/api/projects/${projectId}/background`);
           setBgFileName(project.backgroundFileName || null);
         } else if (project.bgColor) {
@@ -149,6 +157,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           const ctx = canvas.getContext('2d')!;
           ctx.fillStyle = project.bgColor;
           ctx.fillRect(0, 0, w, h);
+          // Revoke any user-uploaded blob URL from the previous project.
+          if (bgUrl?.startsWith('blob:')) {
+            URL.revokeObjectURL(bgUrl);
+          }
           setBgUrl(canvas.toDataURL('image/jpeg', 0.5));
           setBgFileName(null);
         }
@@ -379,8 +391,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     fileName: string,
     file?: File,
   ) => {
-    // Handle removal
-    if (!audioUrl && audioFile?.url) {
+    // Revoke the previous blob URL before replacing (also covers removal).
+    if (audioFile?.url?.startsWith('blob:') && audioFile.url !== audioUrl) {
       URL.revokeObjectURL(audioFile.url);
     }
     setAudioFile(
@@ -393,8 +405,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     fileName: string,
     file?: File,
   ) => {
-    // Handle removal
-    if (!imageUrl && bgUrl) {
+    // Revoke the previous blob URL before replacing (also covers removal).
+    // Server URLs and data: URLs don't need revocation — the cleanup is a
+    // no-op for non-blob URLs, but skipping it avoids the lookup cost.
+    if (bgUrl?.startsWith('blob:') && bgUrl !== imageUrl) {
       URL.revokeObjectURL(bgUrl);
     }
     setBgUrl(imageUrl || null);

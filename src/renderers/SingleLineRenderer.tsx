@@ -111,11 +111,7 @@ export default function SingleLineRenderer({
     }))
   );
 
-  // Interpolated events with computed timestamps (when syncAnchors provided)
-  // Includes `x` for camera positioning (mapped from globalX)
-  const [interpolatedEvents, setInterpolatedEvents] = useState<
-    (typeof events[number] & { computedTimestamp: number; isAnchor: boolean; x: number; holdSeconds?: number; tiedHoldSeconds?: number })[]
-  >([]);
+  // (interpolatedEvents is derived via useMemo below; no useState needed.)
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
 
@@ -166,51 +162,51 @@ export default function SingleLineRenderer({
     };
   }, [audioUrl]);
 
-  /* ---------------- interpolate events when syncAnchors change ---------------- */
+  /* ---------------- interpolate events when syncAnchors change ----------------
+   * Derived in-render via useMemo so we don't burn an extra render cycle
+   * on every events/syncAnchors change. The xMap is built once per memo
+   * evaluation, not per render.
+   */
 
-  useEffect(() => {
-    if (events.length === 0) {
-      setInterpolatedEvents([]);
-      return;
+  const interpolatedEvents = useMemo(() => {
+    if (events.length === 0 || !syncAnchors || syncAnchors.size === 0) {
+      return [] as (typeof events[number] & {
+        computedTimestamp: number;
+        isAnchor: boolean;
+        x: number;
+        holdSeconds?: number;
+        tiedHoldSeconds?: number;
+      })[];
     }
 
-    if (syncAnchors && syncAnchors.size > 0) {
-      // Use interpolation for sync-based timing
-      const interpolated = interpolateTimestamps(events, syncAnchors);
-      // Create a map of event id -> globalX position for fast lookup
-      const xMap = new Map(events.map((evt) => [evt.id, evt.globalX ?? 0]));
-      // Merge X positions from original events by matching event IDs
-      const merged = interpolated.map((evt) => ({
-        ...evt,
-        x: xMap.get(evt.id) ?? 0,
-        holdSeconds: undefined as number | undefined,
-        tiedHoldSeconds: undefined as number | undefined,
-      }));
+    const interpolated = interpolateTimestamps(events, syncAnchors);
+    const xMap = new Map(events.map((evt) => [evt.id, evt.globalX ?? 0]));
+    const merged = interpolated.map((evt) => ({
+      ...evt,
+      x: xMap.get(evt.id) ?? 0,
+      holdSeconds: undefined as number | undefined,
+      tiedHoldSeconds: undefined as number | undefined,
+    }));
 
-      // Precompute holdSeconds for "use note duration" mode
-      if (activeNoteheadUseNoteDuration) {
-        for (let i = 0; i < merged.length; i++) {
-          const m = merged[i];
-          if (m.noteDurationBeats && m.noteDurationBeats > 0) {
-            merged[i].holdSeconds = computeNoteDurationSeconds(i, merged);
-          }
-          if (m.tiedNoteDurationBeats && m.tiedNoteDurationBeats > 0) {
-            const origDur = m.noteDurationBeats;
-            merged[i].noteDurationBeats = m.tiedNoteDurationBeats;
-            merged[i].tiedHoldSeconds = computeNoteDurationSeconds(i, merged);
-            merged[i].noteDurationBeats = origDur;
-          }
-          // For "all-tied" events, ensure tiedHoldSeconds matches holdSeconds
-          if (merged[i].tiedContinuationIds?.length && merged[i].tiedHoldSeconds === undefined && merged[i].holdSeconds !== undefined) {
-            merged[i].tiedHoldSeconds = merged[i].holdSeconds;
-          }
+    if (activeNoteheadUseNoteDuration) {
+      for (let i = 0; i < merged.length; i++) {
+        const m = merged[i];
+        if (m.noteDurationBeats && m.noteDurationBeats > 0) {
+          merged[i].holdSeconds = computeNoteDurationSeconds(i, merged);
+        }
+        if (m.tiedNoteDurationBeats && m.tiedNoteDurationBeats > 0) {
+          const origDur = m.noteDurationBeats;
+          merged[i].noteDurationBeats = m.tiedNoteDurationBeats;
+          merged[i].tiedHoldSeconds = computeNoteDurationSeconds(i, merged);
+          merged[i].noteDurationBeats = origDur;
+        }
+        if (merged[i].tiedContinuationIds?.length && merged[i].tiedHoldSeconds === undefined && merged[i].holdSeconds !== undefined) {
+          merged[i].tiedHoldSeconds = merged[i].holdSeconds;
         }
       }
-
-      setInterpolatedEvents(merged);
-    } else {
-      setInterpolatedEvents([]);
     }
+
+    return merged;
   }, [events, syncAnchors, activeNoteheadUseNoteDuration]);
 
   /* ---------------- detect render mode ---------------- */
@@ -306,6 +302,9 @@ export default function SingleLineRenderer({
       }
       reorderNoteheadsAboveStems(scoreRef.current);
       resetNoteheadAnimations(scoreRef.current);
+      // Drop references to the previous render's SVG nodes immediately so
+      // the now-detached subtree isn't held until GC.
+      elementCacheRef.current.clear();
       elementCacheRef.current = buildElementCache(scoreRef.current);
       prevActiveRangeRef.current = null;
 
@@ -344,6 +343,7 @@ export default function SingleLineRenderer({
     if (!extractionDoneRef.current || !scoreRef.current) return;
     requestAnimationFrame(() => {
       if (scoreRef.current) {
+        elementCacheRef.current.clear();
         elementCacheRef.current = buildElementCache(scoreRef.current);
       }
     });
@@ -1123,8 +1123,10 @@ export default function SingleLineRenderer({
                         const isMounted = !extractionDoneRef.current || visibleSections.has(i);
 
                         if (!isMounted) {
-                          // Placeholder: maintain layout width, clear ref
-                          sectionContainerRefs.current[i] = null;
+                          // Placeholder: maintain layout width. Ref is nulled
+                          // by the previous element's ref-detach callback —
+                          // don't clear it here, or we lose the handle we
+                          // need for the explicit innerHTML wipe.
                           return (
                             <div
                               key={i}
@@ -1140,7 +1142,19 @@ export default function SingleLineRenderer({
                         return (
                           <div
                             key={i}
-                            ref={(el) => { sectionContainerRefs.current[i] = el; }}
+                            ref={(el) => {
+                              if (el === null) {
+                                // Detaching: the same DOM node is likely about
+                                // to be reused for the placeholder above. Wipe
+                                // the SVG subtree to release nodes promptly
+                                // (defensive — React usually clears innerHTML
+                                // when dangerouslySetInnerHTML is removed, but
+                                // not guaranteed across versions / paths).
+                                const prev = sectionContainerRefs.current[i];
+                                if (prev) prev.innerHTML = '';
+                              }
+                              sectionContainerRefs.current[i] = el;
+                            }}
                             className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
                             style={{
                               flexShrink: 0,

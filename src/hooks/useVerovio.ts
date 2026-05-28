@@ -101,7 +101,7 @@ export function useVerovio(
       try {
         const toolkit = await createToolkit();
         if (cancelled) {
-          (toolkit as any).destroy?.();
+          (toolkit as unknown as { destroy: () => void }).destroy();
           return;
         }
 
@@ -191,7 +191,7 @@ export function useVerovio(
     return () => {
       cancelled = true;
       if (toolkitRef.current) {
-        (toolkitRef.current as any).destroy?.();
+        (toolkitRef.current as unknown as { destroy: () => void }).destroy();
         toolkitRef.current = null;
       }
     };
