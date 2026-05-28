@@ -11,6 +11,7 @@ import {
   destroyAnimationController,
 } from "../lib/animationController";
 import { useEventStore } from "../stores/eventStore";
+import { PreviewScrollbar } from "../components/PreviewScrollbar";
 
 import {
   animateNoteheads,
@@ -555,6 +556,50 @@ export default memo(function RegularRenderer({
     }
 
     animationFrameRef.current = requestAnimationFrame(animateSync);
+  }
+
+  /* ---------------- scrollbar seek ---------------- */
+
+  function seekToPosition(newCameraY: number) {
+    if (interpolatedEvents.length === 0) return;
+
+    const viewportHeight = scoreRegion?.height ?? containerHeight;
+    // Convert camera position back to a target center Y
+    const targetY = newCameraY + viewportHeight / 2;
+
+    // Find closest event by Y position
+    let closestIdx = 0;
+    let closestDist = Math.abs(interpolatedEvents[0].y - targetY);
+    for (let i = 1; i < interpolatedEvents.length; i++) {
+      const dist = Math.abs(interpolatedEvents[i].y - targetY);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = i;
+      }
+    }
+
+    const event = interpolatedEvents[closestIdx];
+
+    // Seek audio
+    if (audioRef.current) {
+      audioRef.current.currentTime = event.computedTimestamp;
+    }
+
+    // Update refs
+    currentYRef.current = event.y;
+    eventIndexRef.current = closestIdx;
+
+    // Disable CSS transition for instant feedback
+    if (cameraRef.current) {
+      cameraRef.current.style.transition = 'none';
+    }
+    applyCamera(event.y);
+    // Re-enable transition after a frame
+    requestAnimationFrame(() => {
+      if (cameraRef.current && !renderMode) {
+        cameraRef.current.style.transition = 'transform 200ms ease-out';
+      }
+    });
   }
 
   /* ---------------- controls ---------------- */
@@ -1102,6 +1147,17 @@ export default memo(function RegularRenderer({
             );
           })()}
         </div>
+
+        {/* Preview scrollbar */}
+        {!renderMode && totalHeight > 0 && (
+          <PreviewScrollbar
+            orientation="vertical"
+            cameraPositionRef={cameraYRef}
+            totalSize={totalHeight}
+            viewportSize={scoreRegion?.height ?? containerHeight}
+            onSeek={seekToPosition}
+          />
+        )}
       </div>
 
       {/* Transport bar (hidden in render mode) */}

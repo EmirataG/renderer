@@ -11,6 +11,7 @@ import {
   destroyAnimationController,
 } from "../lib/animationController";
 import { useEventStore } from "../stores/eventStore";
+import { PreviewScrollbar } from "../components/PreviewScrollbar";
 
 import {
   animateNoteheads,
@@ -611,6 +612,46 @@ export default function SingleLineRenderer({
     animationFrameRef.current = requestAnimationFrame(animateSync);
   }
 
+  /* ---------------- scrollbar seek ---------------- */
+
+  function seekToPosition(newCameraX: number) {
+    if (interpolatedEvents.length === 0) return;
+
+    const viewportWidth = scoreRegion?.width ?? containerWidth;
+    const targetX = newCameraX + viewportWidth / 2;
+
+    // Find closest event by X position
+    let closestIdx = 0;
+    let closestDist = Math.abs(interpolatedEvents[0].x - targetX);
+    for (let i = 1; i < interpolatedEvents.length; i++) {
+      const dist = Math.abs(interpolatedEvents[i].x - targetX);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = i;
+      }
+    }
+
+    const event = interpolatedEvents[closestIdx];
+
+    if (audioRef.current) {
+      audioRef.current.currentTime = event.computedTimestamp;
+    }
+
+    currentXRef.current = event.x;
+    eventIndexRef.current = closestIdx;
+
+    // Disable transition for instant feedback
+    if (cameraRef.current) {
+      cameraRef.current.style.transition = 'none';
+    }
+    applyCamera(event.x);
+    requestAnimationFrame(() => {
+      if (cameraRef.current && !isRenderMode) {
+        cameraRef.current.style.transition = 'transform 200ms ease-out';
+      }
+    });
+  }
+
   /* ---------------- controls ---------------- */
 
   // Transport gating: Play requires audio + first and last anchors
@@ -1159,6 +1200,17 @@ export default function SingleLineRenderer({
             );
           })()}
         </div>
+
+        {/* Preview scrollbar */}
+        {!isRenderMode && totalWidth > 0 && (
+          <PreviewScrollbar
+            orientation="horizontal"
+            cameraPositionRef={cameraXRef}
+            totalSize={totalWidth}
+            viewportSize={scoreRegion?.width ?? containerWidth}
+            onSeek={seekToPosition}
+          />
+        )}
       </div>
 
       {/* Transport bar (hidden in render mode) */}

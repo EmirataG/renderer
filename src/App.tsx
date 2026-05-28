@@ -69,6 +69,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgFileName, setBgFileName] = useState<string | null>(null);
   const [bgFile, setBgFile] = useState<File | null>(null);
+  const [projectBgColor, setProjectBgColor] = useState<string | null>(null);
+  const [projectAspectRatio, setProjectAspectRatio] = useState<number | null>(null);
 
   // Project loading state
   const [isLoadingProject, setIsLoadingProject] = useState(false);
@@ -131,11 +133,30 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           });
         }
 
-        // Set background image via server proxy (avoids CORS for export fetch)
+        // Set background: either a server-hosted image or a solid color
         if (project.backgroundUrl) {
           setBgUrl(`/api/projects/${projectId}/background`);
           setBgFileName(project.backgroundFileName || null);
+        } else if (project.bgColor) {
+          // Generate a solid-color image at the project's aspect ratio so the
+          // preview renderers derive correct dimensions from naturalWidth/naturalHeight.
+          const ar = project.aspectRatio || 16 / 9;
+          const w = 1920;
+          const h = Math.round(w / ar);
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d')!;
+          ctx.fillStyle = project.bgColor;
+          ctx.fillRect(0, 0, w, h);
+          setBgUrl(canvas.toDataURL('image/jpeg', 0.5));
+          setBgFileName(null);
         }
+
+        // Store bgColor and aspectRatio for export (export handles these natively
+        // at full resolution instead of using the preview data URL)
+        setProjectBgColor(project.bgColor || null);
+        setProjectAspectRatio(project.aspectRatio || null);
 
         // Load settings from API response into projectStore
         const { loadSettings, setProjectId, setProjectName } =
@@ -438,13 +459,18 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         });
       }
 
-      // Client-side export: render + encode entirely in the browser
+      // Client-side export: render + encode entirely in the browser.
+      // For color backgrounds, pass bgColor + aspectRatio directly so the export
+      // renders at full 4K resolution (instead of using the preview data URL).
+      const isColorBg = projectBgColor && !bgFileName;
       const mp4Blob = await clientExport({
         musicXml: musicXMLFile.xml,
         syncAnchors: anchors,
         settings,
         audioFile: audioFileForExport!,
-        bgImageUrl: bgUrl || undefined,
+        bgImageUrl: isColorBg ? undefined : (bgUrl || undefined),
+        bgColor: isColorBg ? projectBgColor : undefined,
+        aspectRatio: projectAspectRatio || undefined,
         signal: abortController.signal,
         onProgress: (percent, stage) => {
           setExportState((prev) => ({
@@ -810,25 +836,25 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
                       <div className="space-y-1.5">
                         <span className="block text-[11px] text-neutral-500">Also color</span>
-                        {([
-                          ['colorAccidentals', 'Accidentals', colorAccidentals],
-                          ['colorDots', 'Dots', colorDots],
-                          ['colorArticulations', 'Articulations', colorArticulations],
-                        ] as const).map(([key, label, value]) => (
-                          <label key={key} className="flex items-center gap-2 text-[11px] cursor-pointer group">
-                            <input
-                              type="checkbox"
-                              checked={value}
-                              onChange={(e) =>
-                                setSetting(key, e.target.checked)
-                              }
-                              className="grunge-checkbox"
-                            />
-                            <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
+                        <div className="flex gap-1.5">
+                          {([
+                            ['colorAccidentals', 'Accidentals', colorAccidentals],
+                            ['colorDots', 'Dots', colorDots],
+                            ['colorArticulations', 'Articulations', colorArticulations],
+                          ] as const).map(([key, label, value]) => (
+                            <button
+                              key={key}
+                              onClick={() => setSetting(key, !value)}
+                              className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wide border transition-all cursor-pointer ${
+                                value
+                                  ? 'bg-white text-black border-white'
+                                  : 'bg-transparent text-neutral-500 border-neutral-700 hover:border-neutral-500 hover:text-neutral-300'
+                              }`}
+                            >
                               {label}
-                            </span>
-                          </label>
-                        ))}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </>
                   )}

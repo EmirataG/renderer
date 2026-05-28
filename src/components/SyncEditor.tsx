@@ -3,6 +3,7 @@ import { useVerovio } from '../hooks/useVerovio';
 import { useSyncStore } from '../stores/syncStore';
 import { extractTimemapEvents, type TimemapEvent } from '../lib/getEvents';
 import { TimestampInput } from './TimestampInput';
+import { WaveformScrubber } from './WaveformScrubber';
 import { interpolateTimestamps } from '../lib/interpolation';
 import {
   initAnimationController,
@@ -410,17 +411,14 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
     };
   }, [isPlaying, interpolatedEvents]);
 
-  // Update highlight on scrub (when not playing)
-  const handleScrub = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
+  // Shared seek logic: update audio time, highlight the event at that time
+  const seekToTime = useCallback((time: number) => {
     if (audioRef.current) {
       audioRef.current.currentTime = time;
     }
     setCurrentTime(time);
 
-    // Update highlight for scrubbed position
     if (interpolatedEvents.length > 0 && scoreRef.current) {
-      // Binary search for the last event whose computedTimestamp <= time
       let newEventIndex = -1;
       let low = 0;
       let high = interpolatedEvents.length - 1;
@@ -434,12 +432,10 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
         }
       }
 
-      // Clear previous event's inline styles (CSS rule underneath shows through)
       if (currentEventIndexRef.current >= 0 && playingSvgIdsRef.current.length > 0) {
         clearPlaybackColor(playingSvgIdsRef.current);
       }
 
-      // Apply playing color (orange) to new event via inline style
       if (newEventIndex >= 0) {
         const currentEvent = interpolatedEvents[newEventIndex];
         applyPlaybackColor(currentEvent.svgIds, '#f59e0b');
@@ -652,16 +648,15 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
               {formatTime(currentTime)} / {formatTime(audioDuration)}
             </div>
 
-            {/* Scrubber */}
+            {/* Waveform Scrubber */}
             <div className="flex-1">
-              <input
-                type="range"
-                min="0"
-                max={audioDuration || 0}
-                step="0.01"
-                value={currentTime}
-                onChange={handleScrub}
-                className="grunge-range"
+              <WaveformScrubber
+                audioElement={audioRef.current}
+                audioUrl={audioUrl!}
+                duration={audioDuration}
+                events={interpolatedEvents}
+                onSeek={seekToTime}
+                height={80}
               />
             </div>
 

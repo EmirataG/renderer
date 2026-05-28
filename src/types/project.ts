@@ -10,6 +10,8 @@ export interface Project {
   audioFileName?: string;
   backgroundUrl?: string;
   backgroundFileName?: string;
+  aspectRatio?: number;
+  bgColor?: string;
 
   // Settings (all optional -- missing = use defaults)
   scoreColor?: string;

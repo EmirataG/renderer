@@ -6,10 +6,12 @@ import { uploadFile } from '@/lib/storage';
 // Allowed extensions (server-side validation, duplicated from fileValidation.ts to avoid client imports)
 const SCORE_EXTENSIONS = ['.xml', '.musicxml', '.mxl', '.mei'];
 const AUDIO_EXTENSIONS = ['.mp3', '.wav'];
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 // Size limits in bytes
 const SCORE_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB
 const AUDIO_SIZE_LIMIT = 50 * 1024 * 1024; // 50MB
+const IMAGE_SIZE_LIMIT = 20 * 1024 * 1024; // 20MB
 
 function getExtension(filename: string): string {
   const lastDot = filename.lastIndexOf('.');
@@ -72,6 +74,10 @@ export async function POST(request: Request) {
   const viewMode = viewModeRaw === 'single-line' ? 'single-line' : 'page';
   const scoreFile = formData.get('score') as File | null;
   const audioFile = formData.get('audio') as File | null;
+  const aspectRatioRaw = formData.get('aspectRatio');
+  const aspectRatio = aspectRatioRaw ? parseFloat(String(aspectRatioRaw)) : undefined;
+  const bgColor = formData.get('bgColor') as string | null;
+  const bgFile = formData.get('background') as File | null;
 
   // Validate name
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -127,15 +133,34 @@ export async function POST(request: Request) {
     );
   }
 
+  // Validate optional background image
+  let bgExt = '';
+  if (bgFile && bgFile instanceof File && bgFile.size > 0) {
+    bgExt = getExtension(bgFile.name);
+    if (!IMAGE_EXTENSIONS.includes(bgExt)) {
+      return Response.json(
+        { error: `Invalid image type. Accepted: ${IMAGE_EXTENSIONS.join(', ')}` },
+        { status: 400 }
+      );
+    }
+    if (bgFile.size > IMAGE_SIZE_LIMIT) {
+      return Response.json(
+        { error: 'Background image exceeds 20MB limit' },
+        { status: 400 }
+      );
+    }
+  }
+
   // Generate project ID and storage paths
   const projectId = crypto.randomUUID();
-  const scorePath = `users/${user.uid}/projects/${projectId}/score${scoreExt}`;
-  const audioPath = `users/${user.uid}/projects/${projectId}/audio${audioExt}`;
+  const basePath = `users/${user.uid}/projects/${projectId}`;
+  const scorePath = `${basePath}/score${scoreExt}`;
+  const audioPath = `${basePath}/audio${audioExt}`;
 
   log(`uploading files (score: ${scoreFile.size} bytes, audio: ${audioFile.size} bytes)`);
 
-  // Upload files to Firebase Storage (buffer + upload chained per file, both in parallel)
-  const [scoreUrl, audioUrl] = await Promise.all([
+  // Upload files to Firebase Storage (all in parallel)
+  const uploads: Promise<string>[] = [
     scoreFile.arrayBuffer().then(ab => {
       log('score buffer ready');
       return uploadFile(scorePath, Buffer.from(ab), scoreFile.type || 'application/octet-stream');
@@ -144,7 +169,23 @@ export async function POST(request: Request) {
       log('audio buffer ready');
       return uploadFile(audioPath, Buffer.from(ab), audioFile.type || 'application/octet-stream');
     }).then(url => { log('audio uploaded'); return url; }),
-  ]);
+  ];
+
+  // Include background upload if provided
+  const hasBg = bgFile && bgFile instanceof File && bgFile.size > 0 && bgExt;
+  if (hasBg) {
+    uploads.push(
+      bgFile.arrayBuffer().then(ab => {
+        log('bg buffer ready');
+        return uploadFile(`${basePath}/background${bgExt}`, Buffer.from(ab), bgFile.type || 'image/jpeg');
+      }).then(url => { log('bg uploaded'); return url; })
+    );
+  }
+
+  const uploadResults = await Promise.all(uploads);
+  const scoreUrl = uploadResults[0];
+  const audioUrl = uploadResults[1];
+  const backgroundUrl = hasBg ? uploadResults[2] : undefined;
 
   log('all files uploaded');
 
@@ -162,6 +203,9 @@ export async function POST(request: Request) {
       scoreFileName: scoreFile.name,
       audioUrl,
       audioFileName: audioFile.name,
+      ...(backgroundUrl ? { backgroundUrl, backgroundFileName: bgFile!.name } : {}),
+      ...(aspectRatio && !isNaN(aspectRatio) ? { aspectRatio } : {}),
+      ...(bgColor ? { bgColor } : {}),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

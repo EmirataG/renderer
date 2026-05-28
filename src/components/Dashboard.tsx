@@ -21,6 +21,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
 
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
   const [deleteConfirm, setDeleteConfirm] = useState<{
     id: string;
     name: string;
@@ -146,7 +147,35 @@ export function Dashboard({ initialProjects }: DashboardProps) {
           >
             Manuscript
           </h1>
-          <div className="flex gap-3">
+          <div className="flex items-stretch gap-2">
+            {/* Layout toggle */}
+            {projects.length > 0 && (
+              <div className="flex border border-neutral-700 overflow-hidden mr-1">
+                <button
+                  onClick={() => setLayoutMode('grid')}
+                  className={`px-2.5 flex items-center transition-colors ${layoutMode === 'grid' ? 'bg-white text-black' : 'text-neutral-500 hover:text-neutral-200'}`}
+                  title="Grid view"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="1" y="1" width="6" height="6" />
+                    <rect x="9" y="1" width="6" height="6" />
+                    <rect x="1" y="9" width="6" height="6" />
+                    <rect x="9" y="9" width="6" height="6" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setLayoutMode('list')}
+                  className={`px-2.5 flex items-center transition-colors ${layoutMode === 'list' ? 'bg-white text-black' : 'text-neutral-500 hover:text-neutral-200'}`}
+                  title="List view"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <rect x="1" y="2" width="14" height="2.5" />
+                    <rect x="1" y="6.75" width="14" height="2.5" />
+                    <rect x="1" y="11.5" width="14" height="2.5" />
+                  </svg>
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setIsCreateModalOpen(true)}
               className="grunge-btn-primary"
@@ -155,7 +184,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             </button>
             <button
               onClick={handleSignOut}
-              className="grunge-btn grunge-btn-sm"
+              className="grunge-btn"
             >
               Sign out
             </button>
@@ -193,17 +222,31 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             </button>
           </div>
         ) : (
-          /* Project grid */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {projects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                onDelete={handleDeleteRequest}
-                onDuplicate={handleDuplicate}
-              />
-            ))}
-          </div>
+          layoutMode === 'grid' ? (
+            /* Grid view */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {projects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onDelete={handleDeleteRequest}
+                  onDuplicate={handleDuplicate}
+                />
+              ))}
+            </div>
+          ) : (
+            /* List view */
+            <div className="border border-neutral-800 divide-y divide-neutral-800/60">
+              {projects.map((project) => (
+                <ProjectListRow
+                  key={project.id}
+                  project={project}
+                  onDelete={handleDeleteRequest}
+                  onDuplicate={handleDuplicate}
+                />
+              ))}
+            </div>
+          )
         )}
       </div>
 
@@ -250,6 +293,66 @@ export function Dashboard({ initialProjects }: DashboardProps) {
         </div>
       )}
     </main>
+  );
+}
+
+function ProjectListRow({
+  project,
+  onDelete,
+  onDuplicate,
+}: {
+  project: Project;
+  onDelete: (id: string, name: string) => void;
+  onDuplicate: (id: string) => void;
+}) {
+  const router = useRouter();
+
+  const formattedDate = new Date(project.updatedAt).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  return (
+    <div
+      onClick={() => router.push(`/project/${project.id}`)}
+      className="group flex items-center gap-4 px-4 py-3 hover:bg-neutral-900/60 transition-colors cursor-pointer"
+    >
+      <span className="text-xs font-semibold uppercase tracking-wider text-neutral-200 truncate flex-1 min-w-0">
+        {project.name}
+      </span>
+      <span className="text-[11px] text-neutral-600 shrink-0">
+        {formattedDate}
+      </span>
+      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDuplicate(project.id);
+          }}
+          className="p-1.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
+          title="Duplicate"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(project.id, project.name);
+          }}
+          className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors"
+          title="Delete"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3,6 5,6 21,6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+      </div>
+    </div>
   );
 }
 
