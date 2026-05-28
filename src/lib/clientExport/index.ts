@@ -204,10 +204,21 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // Feature check: drawElementImage is Chrome-only and behind a flag.
   // This branch assumes Chrome + flag enabled and does NOT keep a fallback.
-  if (typeof (CanvasRenderingContext2D.prototype as unknown as { drawElementImage?: unknown }).drawElementImage !== 'function') {
-    throw new Error(
-      'drawElementImage not available. Enable chrome://flags/#canvas-draw-element in Chrome 138+ (or use an M148–M151 origin trial).',
-    );
+  //
+  // Probe an actual context (not just the prototype) and accept the
+  // legacy `drawElement` alias too — it was kept around through Chrome
+  // 145 before the rename. We pick whichever exists and call through
+  // the same reference in the frame loop.
+  {
+    const probe = document.createElement('canvas').getContext('2d') as unknown as {
+      drawElementImage?: unknown;
+      drawElement?: unknown;
+    };
+    if (typeof probe.drawElementImage !== 'function' && typeof probe.drawElement !== 'function') {
+      throw new Error(
+        'drawElementImage not available. Open chrome://flags/#canvas-draw-element, set it to Enabled, and restart Chrome (138+).',
+      );
+    }
   }
 
   onProgress(0, 'Preparing score...');
@@ -360,6 +371,20 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   canvas.style.height = `${viewportHeight}px`;
   document.body.appendChild(canvas);
   const ctx = canvas.getContext('2d')! as DrawElementCtx;
+  // Resolve whichever name this Chrome exposes. The frame loop calls
+  // through this reference so it works on either 138–145 (drawElement)
+  // or 146+ (drawElementImage).
+  const ctxAny = ctx as unknown as Record<string, Function>;
+  const drawElRaw = (typeof ctxAny.drawElementImage === 'function'
+    ? ctxAny.drawElementImage
+    : ctxAny.drawElement) as (
+    el: Element,
+    dx: number,
+    dy: number,
+    dw?: number,
+    dh?: number,
+  ) => DOMMatrix;
+  const drawEl = drawElRaw.bind(ctx);
 
   // Score-color stylesheet. Scoped by className since we're not in a
   // shadow DOM anymore; preview SVGs in the main DOM use different
@@ -607,7 +632,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         const sectionH = pageHeights[p];
         if (sectionX + sectionW < 0 || sectionX > regionWidth) continue;
         const yOff = (regionHeight - sectionH) / 2;
-        ctx.drawElementImage(pageContainers[p], sectionX, yOff, sectionW, sectionH);
+        drawEl(pageContainers[p], sectionX, yOff, sectionW, sectionH);
       }
     } else {
       const cameraY = animState.cameraY;
@@ -615,7 +640,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         const pageY = pageOffsets[p] - cameraY;
         const pageH = pageHeights[p];
         if (pageY + pageH < 0 || pageY > regionHeight) continue;
-        ctx.drawElementImage(pageContainers[p], 0, pageY, regionWidth, pageH);
+        drawEl(pageContainers[p], 0, pageY, regionWidth, pageH);
       }
     }
     ctx.restore();
