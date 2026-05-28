@@ -359,17 +359,36 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const regionRotation = settings.scoreRegion?.rotation ?? 0;
   const borderStyle = (settings.scoreBorder ?? 'none') as BorderStyle;
 
+  // The canvas MUST be on-screen (in the visible viewport) for Chrome
+  // to render its <layoutsubtree> children — drawElementImage paints
+  // nothing from offscreen subtrees because Chrome elides their paint.
+  // (Verified in /test-hic: position:fixed; left:-99999px makes the
+  // bitmap stay magenta-only; z-index behind an opaque cover keeps the
+  // snapshot working.)
+  //
+  // So we put the canvas at top-left fixed, give it a z-index below
+  // the cover, and stack an opaque overlay above it to hide it from
+  // the user during export.
   const canvas = document.createElement('canvas') as LayoutsubtreeCanvas;
   canvas.width = viewportWidth;
   canvas.height = viewportHeight;
   canvas.setAttribute('layoutsubtree', '');
-  // Park offscreen so the canvas's painted children don't visually appear.
   canvas.style.position = 'fixed';
-  canvas.style.left = '-99999px';
   canvas.style.top = '0';
+  canvas.style.left = '0';
   canvas.style.width = `${viewportWidth}px`;
   canvas.style.height = `${viewportHeight}px`;
+  canvas.style.zIndex = '2147483646'; // just below overlay
+  canvas.style.pointerEvents = 'none';
   document.body.appendChild(canvas);
+
+  const overlay = document.createElement('div');
+  overlay.style.position = 'fixed';
+  overlay.style.inset = '0';
+  overlay.style.background = '#000';
+  overlay.style.zIndex = '2147483647';
+  overlay.style.pointerEvents = 'none';
+  document.body.appendChild(overlay);
   const ctx = canvas.getContext('2d')! as DrawElementCtx;
   // Resolve whichever name this Chrome exposes. The frame loop calls
   // through this reference so it works on either 138–145 (drawElement)
@@ -710,6 +729,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // ── 11. Cleanup ───────────────────────────────────────────────────
   bgImage?.close();
   canvas.remove();
+  overlay.remove();
   styleEl.remove();
 
   onProgress(100, 'Complete');
