@@ -1102,7 +1102,20 @@ export default memo(function RegularRenderer({
                             key={i}
                             ref={(el) => { pageContainerRefs.current[i] = el; }}
                             className="preview-score"
-                            style={{ width: regionWidth }}
+                            style={{
+                              width: regionWidth,
+                              // Opt this page into the browser's native
+                              // skip-rendering-if-offscreen behavior. The
+                              // SVG subtree stays in the DOM but its layout/
+                              // paint cost is skipped while the page is out
+                              // of view, which dominates total preview
+                              // paint cost on large scores. contain-
+                              // intrinsic-size reserves the expected
+                              // dimensions so scroll position doesn't jump
+                              // when the page is "skipped".
+                              contentVisibility: 'auto',
+                              containIntrinsicSize: `${regionWidth}px ${pageHeights[i]}px`,
+                            }}
                             dangerouslySetInnerHTML={{ __html: svg }}
                           />
                         );

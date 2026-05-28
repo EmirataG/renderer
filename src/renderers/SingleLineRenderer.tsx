@@ -1155,6 +1155,11 @@ export default function SingleLineRenderer({
                               height: maxHeight,
                               display: 'flex',
                               alignItems: 'flex-start',
+                              // Opt this section into the browser's native
+                              // skip-rendering-if-offscreen behavior. See
+                              // RegularRenderer for the rationale.
+                              contentVisibility: 'auto',
+                              containIntrinsicSize: `${sectionWidths[i]}px ${maxHeight}px`,
                             }}
                             dangerouslySetInnerHTML={{ __html: svg }}
                           />
