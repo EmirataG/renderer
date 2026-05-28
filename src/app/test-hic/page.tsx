@@ -31,7 +31,8 @@ export default function TestHic() {
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastDOMMatrix, setLastDOMMatrix] = useState<string>('');
   const [sourceRect, setSourceRect] = useState<string>('');
-  const [offscreen, setOffscreen] = useState(false);
+  type HideMode = 'visible' | 'offscreen' | 'opacity' | 'clipPath' | 'zIndex' | 'translate';
+  const [hideMode, setHideMode] = useState<HideMode>('visible');
   const [mirrorSrc, setMirrorSrc] = useState<string>('');
   const [tick, setTick] = useState(0);
 
@@ -164,12 +165,19 @@ export default function TestHic() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={forceRedraw} style={btn}>requestPaint()</button>
         <button onClick={mutateSource} style={btn}>mutate source (cycle color)</button>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={offscreen} onChange={(e) => setOffscreen(e.target.checked)} />
-          canvas offscreen (position:fixed; left:-99999px) — mimics export
+          canvas hiding:
+          <select value={hideMode} onChange={(e) => setHideMode(e.target.value as HideMode)} style={{ ...btn, padding: '4px 8px' }}>
+            <option value="visible">visible (in flow)</option>
+            <option value="offscreen">offscreen (left:-99999) — KNOWN BROKEN</option>
+            <option value="opacity">opacity: 0</option>
+            <option value="clipPath">clip-path: inset(100%)</option>
+            <option value="zIndex">z-index -1 behind overlay</option>
+            <option value="translate">transform: translate(-200%, 0)</option>
+          </select>
         </label>
       </div>
 
@@ -190,35 +198,18 @@ export default function TestHic() {
         </div>
 
         {/* TEST: canvas with the same SVG as a layoutsubtree child */}
-        <div>
-          <h2 style={{ fontSize: 14, marginBottom: 8 }}>2. Canvas via {methodName || 'drawElementImage'}{offscreen ? ' (offscreen — see mirror →)' : ''}</h2>
+        <div style={{ position: 'relative' }}>
+          <h2 style={{ fontSize: 14, marginBottom: 8 }}>
+            2. Canvas via {methodName || 'drawElementImage'} ({hideMode}
+            {hideMode !== 'visible' ? ' — see mirror →' : ''})
+          </h2>
           <canvas
             ref={canvasRef}
             width={W}
             height={H}
             // @ts-expect-error layoutsubtree is not in lib.dom yet
             layoutsubtree=""
-            style={
-              offscreen
-                ? {
-                    background: '#0e1116',
-                    border: '1px solid #333',
-                    width: W,
-                    height: H,
-                    display: 'block',
-                    position: 'fixed',
-                    left: -99999,
-                    top: 0,
-                  }
-                : {
-                    background: '#0e1116',
-                    border: '1px solid #333',
-                    width: W,
-                    height: H,
-                    display: 'block',
-                    position: 'relative',
-                  }
-            }
+            style={canvasStyle(hideMode)}
           >
             {/* The drawElementImage source. Must be a direct child of
                 the canvas. Positioned far above the canvas's border
@@ -235,6 +226,26 @@ export default function TestHic() {
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           </canvas>
+          {hideMode === 'zIndex' && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 28,
+                left: 0,
+                width: W,
+                height: H,
+                background: '#0a0c10',
+                zIndex: 1,
+                pointerEvents: 'none',
+                border: '1px dashed #555',
+                color: '#666',
+                display: 'grid',
+                placeItems: 'center',
+              }}
+            >
+              overlay covers canvas (z-index test)
+            </div>
+          )}
         </div>
 
         {/* MIRROR: <img> populated from canvas.toDataURL() every ~30
@@ -260,6 +271,30 @@ export default function TestHic() {
       </div>
     </div>
   );
+}
+
+function canvasStyle(mode: 'visible' | 'offscreen' | 'opacity' | 'clipPath' | 'zIndex' | 'translate'): React.CSSProperties {
+  const base: React.CSSProperties = {
+    background: '#0e1116',
+    border: '1px solid #333',
+    width: W,
+    height: H,
+    display: 'block',
+  };
+  switch (mode) {
+    case 'visible':
+      return { ...base, position: 'relative' };
+    case 'offscreen':
+      return { ...base, position: 'fixed', left: -99999, top: 0 };
+    case 'opacity':
+      return { ...base, position: 'relative', opacity: 0, pointerEvents: 'none' };
+    case 'clipPath':
+      return { ...base, position: 'relative', clipPath: 'inset(100%)' };
+    case 'zIndex':
+      return { ...base, position: 'relative', zIndex: 0 };
+    case 'translate':
+      return { ...base, position: 'relative', transform: 'translate(-200%, 0)' };
+  }
 }
 
 const btn: React.CSSProperties = {
