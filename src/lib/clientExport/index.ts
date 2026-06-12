@@ -27,6 +27,7 @@ import {
   getBorderHeight,
   type BorderStyle,
 } from './borders';
+import { splitSingleLineSvg } from '../splitSingleLineSvg';
 import { VideoExporter } from './encode';
 import type { ScoreRegion } from '../../types/score';
 
@@ -235,6 +236,7 @@ async function svgPageToImage(
   width: number,
   rasterScale: number,
   hideLeadStaffSymbols = false,
+  overscanCss = 0,
 ): Promise<CanvasImageSource> {
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
@@ -248,6 +250,25 @@ async function svgPageToImage(
   // Ensure xmlns
   if (!svgString.includes('xmlns=')) {
     svgString = svgString.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+
+  if (overscanCss > 0) {
+    // Expand both viewBoxes horizontally so content that overflows the
+    // section window (ties/slurs reaching into a neighboring section) is
+    // included in the raster. The caller draws the image shifted left by the
+    // same overscan, so neighboring sections composite seamlessly.
+    const vbs = [...svgString.matchAll(/viewBox="(-?[\d.]+)[ ,]+(-?[\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)"/g)];
+    if (vbs.length >= 2) {
+      const oW = parseFloat(vbs[0][3]);
+      const iX = parseFloat(vbs[1][1]);
+      const iW = parseFloat(vbs[1][3]);
+      if (oW > 0 && iW > 0) {
+        const innerOverscan = (overscanCss * iW) / oW;
+        svgString = svgString
+          .replace(vbs[0][0], `viewBox="0 0 ${oW + 2 * overscanCss} ${vbs[0][4]}"`)
+          .replace(vbs[1][0], `viewBox="${iX - innerOverscan} ${vbs[1][2]} ${iW + 2 * innerOverscan} ${vbs[1][4]}"`);
+      }
+    }
   }
 
   // Set width/height to the final output pixel dimensions so the browser
@@ -413,26 +434,47 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const pageOffsets: number[] = [];
   const sectionWidths: number[] = [];
   const sectionOffsets: number[] = [];
+  // Whether single-line sections came from one seamless layout split (true)
+  // vs per-section re-layout via select() (false). Affects continuation
+  // clef hiding and raster overscan below.
+  let singleLineSeamless = true;
 
   if (isSingleLine) {
     // Single-line: render as one SVG only when its raster at output scale
-    // stays under the browser decode/draw limit. Longer scores are rendered
-    // in measure-range sections (same technique as useSingleLineVerovio) —
-    // a single giant SVG would exceed MAX_RASTER_DIM at 4K (blank frames)
-    // and force whole-score re-rasterization on every animated frame.
+    // stays under the browser decode/draw limit. Longer scores are laid out
+    // ONCE and the rendered SVG is split into sections (same approach as
+    // useSingleLineVerovio) — one layout pass keeps staff spacing identical
+    // across sections, while sections keep each raster under MAX_RASTER_DIM
+    // and limit per-frame re-rasterization to the section with active
+    // noteheads.
     const EXPORT_MEASURES_PER_SECTION = 8;
     let renderedSections: string[] | null = null;
 
-    const fullSvg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
-    const fullDims = extractSectionDims(fullSvg);
-    if (
-      toolkit.getPageCount() <= 1 &&
-      fullDims.width > 0 &&
-      fullDims.width * scaleFactor <= MAX_RASTER_DIM &&
-      fullDims.height * scaleFactor <= MAX_RASTER_DIM
-    ) {
-      renderedSections = [fullSvg];
-    } else {
+    if (toolkit.getPageCount() <= 1) {
+      const fullSvg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
+      const fullDims = extractSectionDims(fullSvg);
+      if (fullDims.width > 0) {
+        if (
+          fullDims.width * scaleFactor <= MAX_RASTER_DIM &&
+          fullDims.height * scaleFactor <= MAX_RASTER_DIM
+        ) {
+          renderedSections = [fullSvg];
+        } else {
+          const split = splitSingleLineSvg(fullSvg, EXPORT_MEASURES_PER_SECTION);
+          // No split possible → keep the single SVG; svgPageToImage's raster
+          // guard fails the export with an actionable error instead of
+          // silently producing blank frames.
+          renderedSections = split ? split.map((s) => s.svg) : [fullSvg];
+        }
+      }
+    }
+
+    if (!renderedSections) {
+      // Score overflows Verovio's 100,000px page width — fall back to
+      // per-measure-range re-layout (staff spacing may differ between
+      // sections; leading clef/key/time signatures are re-stated per section
+      // and hidden at raster time).
+      singleLineSeamless = false;
       const mei = toolkit.getMEI();
       const totalMeasures = (mei.match(/<measure /g) || []).length;
       renderedSections = [];
@@ -814,12 +856,22 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
 
   // Pre-rasterize all SVG pages into a cache. During the frame loop,
   // only pages with active notehead animations are re-rasterized.
+  // Horizontal raster overscan (CSS px) for seamless single-line sections:
+  // a tie/slur that crosses a section boundary lives in the section where it
+  // starts and extends past that section's viewBox. Padding each raster (and
+  // drawing it shifted left by the same amount) lets those tails composite
+  // into the neighboring section's area.
+  const SECTION_RASTER_OVERSCAN = 100;
+  const sectionOverscan =
+    isSingleLine && singleLineSeamless && svgPages.length > 1 ? SECTION_RASTER_OVERSCAN : 0;
+
   const pageCache: (CanvasImageSource | null)[] = [];
   for (let p = 0; p < pageContainers.length; p++) {
     const w = isSingleLine ? sectionWidths[p] : regionWidth;
     pageCache[p] = await svgPageToImage(
       pageContainers[p], settings.scoreColor, w, scaleFactor,
-      isSingleLine && p > 0,
+      isSingleLine && p > 0 && !singleLineSeamless,
+      isSingleLine ? sectionOverscan : 0,
     );
   }
 
@@ -888,17 +940,27 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         const sectionW = sectionWidths[p];
         const sectionH = pageHeights[p];
 
-        if (sectionX + sectionW < 0 || sectionX > regionWidth) continue;
+        if (sectionX + sectionW < -sectionOverscan || sectionX > regionWidth + sectionOverscan) continue;
 
         if (dirtyPages.has(p)) {
           pageCache[p] = await svgPageToImage(
-            pageContainers[p], settings.scoreColor, sectionW, scaleFactor, p > 0,
+            pageContainers[p], settings.scoreColor, sectionW, scaleFactor,
+            p > 0 && !singleLineSeamless,
+            sectionOverscan,
           );
         }
         if (pageCache[p]) {
-          // Vertically center the section within the region
+          // Vertically center the section within the region. The raster is
+          // overscanned horizontally — draw it shifted left by the overscan
+          // so the section content lands exactly at sectionX.
           const yOff = (regionHeight - sectionH) / 2;
-          ctx.drawImage(pageCache[p]!, sectionX, yOff, sectionW, sectionH);
+          ctx.drawImage(
+            pageCache[p]!,
+            sectionX - sectionOverscan,
+            yOff,
+            sectionW + 2 * sectionOverscan,
+            sectionH,
+          );
         }
       }
     } else {
