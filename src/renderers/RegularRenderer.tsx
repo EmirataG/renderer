@@ -171,10 +171,30 @@ export default memo(function RegularRenderer({
   const cameraTransitionFrom = useRef(0);        // cameraY we're transitioning FROM
   const cameraTransitionTarget = useRef(0);       // cameraY we're transitioning TO
   const cameraTransitionStart = useRef(-Infinity); // timestamp (seconds) when transition started
-  const extractionDoneRef = useRef(false);
   const prevActiveRangeRef = useRef<{ start: number; end: number } | null>(null);
   const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0, 1]));
   const visiblePagesRef = useRef<Set<number>>(new Set([0, 1]));
+
+  /* ---------------- virtualization phase ----------------
+   * Two-phase rendering, derived from the event store rather than a ref flag
+   * so no code path can leave it stale:
+   *
+   *   measuring   — svgPagesRef !== svgPages: events for the current SVG pages
+   *                 haven't been extracted yet. ALL pages are mounted (position
+   *                 measurement needs a complete DOM) and content-visibility is
+   *                 OFF (getBoundingClientRect inside a skipped
+   *                 content-visibility subtree returns empty rects).
+   *   virtualized — extraction stored events for this exact svgPages reference.
+   *                 Only visiblePages are mounted — placeholders elsewhere, for
+   *                 memory — and mounted pages get content-visibility: auto so
+   *                 the ±1 buffer pages also skip layout/paint.
+   *
+   * renderMode (headless frame capture) never virtualizes.
+   */
+  const isVirtualized = !renderMode && svgPages.length > 0 && svgPagesRef === svgPages;
+  // Ref mirror for rAF callbacks (applyCamera runs outside the render cycle).
+  const isVirtualizedRef = useRef(isVirtualized);
+  isVirtualizedRef.current = isVirtualized;
 
   function setDims(w: number, h: number) {
     const f = WIDTH / w;
@@ -273,12 +293,12 @@ export default memo(function RegularRenderer({
 
   /* ---------------- Verovio SVG rendering ---------------- */
 
-  // When Verovio renders SVG pages, update DOM and reset noteheads
+  // When Verovio renders SVG pages, update DOM, reset noteheads, and extract
+  // event positions (the measuring phase guarantees all pages are mounted).
   useEffect(() => {
     if (svgPages.length === 0 || !scoreRef.current) return;
 
-    // Reset extraction state for new score — all pages mount for extraction
-    extractionDoneRef.current = false;
+    let cancelled = false;
 
     // dangerouslySetInnerHTML updates the DOM synchronously during React's
     // commit phase, but this useEffect fires AFTER the commit. However,
@@ -286,7 +306,7 @@ export default memo(function RegularRenderer({
     // Use requestAnimationFrame to wait for the next paint, then verify
     // the Verovio SVG is actually present in the DOM before resetting noteheads.
     requestAnimationFrame(() => {
-      if (!scoreRef.current) return;
+      if (cancelled || !scoreRef.current) return;
       // Guard: confirm Verovio SVG elements exist in the DOM before
       // attempting to query/reset noteheads. The svg.definition-scale
       // class is Verovio's root SVG element.
@@ -295,6 +315,31 @@ export default memo(function RegularRenderer({
         console.warn('[RegularRenderer] Verovio SVG not found in DOM after rAF');
         return;
       }
+
+      // Cache validity: events in the store were extracted from this exact
+      // svgPages reference. Read non-reactively — putting svgPagesRef in this
+      // effect's deps would re-run the effect on our own store write below,
+      // which is the bug that used to permanently disarm virtualization.
+      const cacheValid = useEventStore.getState().svgPagesRef === svgPages;
+
+      if (cacheValid) {
+        // Same pages, but the effect re-ran because the viewport changed
+        // (e.g. background image loaded → containerWidth changed). The DOM
+        // wasn't replaced, so skip reorder/reset/extraction — just refresh
+        // the element cache and recompute the visible window so
+        // virtualization stays armed and correct.
+        elementCacheRef.current.clear();
+        elementCacheRef.current = buildElementCache(scoreRef.current);
+        if (!renderMode && pageCount > 0) {
+          const newVisible = getVisiblePageRange();
+          if (!setsEqual(visiblePagesRef.current, newVisible)) {
+            visiblePagesRef.current = newVisible;
+            setVisiblePages(newVisible);
+          }
+        }
+        return;
+      }
+
       reorderNoteheadsAboveStems(scoreRef.current);
       resetNoteheadAnimations(scoreRef.current);
       // Drop references to the previous render's SVG nodes immediately so
@@ -303,23 +348,24 @@ export default memo(function RegularRenderer({
       elementCacheRef.current = buildElementCache(scoreRef.current);
       prevActiveRangeRef.current = null;
 
-      // Cache validity check: skip extraction if svgPages reference unchanged
-      if (svgPagesRef === svgPages) return;
-
-      // Extract events using two-phase extraction and store in cache
+      // Extract events using two-phase extraction and store in cache.
+      // Pass the UNFILTERED ref array — computeEventPositions indexes it by
+      // absolute page index, so a compacted copy would measure wrong pages.
       if (toolkit) {
         const timemapEvents = extractTimemapEvents(toolkit);
-        const containers = pageContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
-        const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, pageOffsets);
-        setEventsInStore(cachedEvents, svgPages);
+        const cachedEvents = computeEventPositions(timemapEvents, toolkit, pageContainerRefs.current, pageOffsets);
+        if (cancelled) return;
 
-        // Extraction complete — activate virtualization (skip in render mode to keep all pages mounted)
+        // Set the visible window BEFORE the store write: the write flips
+        // isVirtualized on the next render, which must not commit with a
+        // stale window from the previous score.
         if (!renderMode) {
-          extractionDoneRef.current = true;
           const initialVisible = getVisiblePageRange();
           visiblePagesRef.current = initialVisible;
           setVisiblePages(initialVisible);
         }
+        // This makes svgPagesRef === svgPages → next render virtualizes.
+        setEventsInStore(cachedEvents, svgPages);
       }
     });
 
@@ -330,7 +376,28 @@ export default memo(function RegularRenderer({
       currentYRef.current = 0;
       applyCamera(0);
     }
-  }, [svgPages, svgPagesRef, toolkit, pageOffsets, setEventsInStore, containerWidth]);
+
+    return () => {
+      // Strict Mode double-mount / rapid re-render guard: a stale rAF must
+      // not write events or the visible window for a superseded effect run.
+      cancelled = true;
+    };
+  }, [svgPages, toolkit, pageOffsets, setEventsInStore, containerWidth]);
+
+  // Rebuild the element cache when the page window changes (pages mount and
+  // unmount). Without this the cache pins the detached SVG subtrees of
+  // unmounted pages (so virtualization frees no memory) and remounted pages
+  // miss the cache on every lookup.
+  useEffect(() => {
+    if (!isVirtualizedRef.current || !scoreRef.current) return;
+    const id = requestAnimationFrame(() => {
+      if (scoreRef.current) {
+        elementCacheRef.current.clear();
+        elementCacheRef.current = buildElementCache(scoreRef.current);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [visiblePages]);
 
   /* ---------------- score color and styling ---------------- */
 
@@ -436,8 +503,8 @@ export default memo(function RegularRenderer({
       cameraRef.current.style.transform = `translateY(${-cameraY}px)`;
     }
 
-    // Update visible pages (only if extraction is done and pages exist)
-    if (extractionDoneRef.current && pageCount > 0) {
+    // Update visible pages (only when virtualization is active)
+    if (isVirtualizedRef.current && pageCount > 0) {
       const newVisible = getVisiblePageRange();
       if (!setsEqual(visiblePagesRef.current, newVisible)) {
         visiblePagesRef.current = newVisible;
@@ -1079,9 +1146,9 @@ export default memo(function RegularRenderer({
                       }}
                     >
                       {svgPages.map((svg, i) => {
-                        // Before extraction is done, mount all pages for DOM measurement
-                        // After extraction, only mount visible pages
-                        const isMounted = !extractionDoneRef.current || visiblePages.has(i);
+                        // Measuring phase: mount all pages for DOM measurement.
+                        // Virtualized phase: only mount visible pages.
+                        const isMounted = !isVirtualized || visiblePages.has(i);
 
                         if (!isMounted) {
                           // Placeholder: maintain layout height, clear ref
@@ -1104,17 +1171,24 @@ export default memo(function RegularRenderer({
                             className="preview-score"
                             style={{
                               width: regionWidth,
-                              // Opt this page into the browser's native
-                              // skip-rendering-if-offscreen behavior. The
-                              // SVG subtree stays in the DOM but its layout/
-                              // paint cost is skipped while the page is out
-                              // of view, which dominates total preview
-                              // paint cost on large scores. contain-
-                              // intrinsic-size reserves the expected
-                              // dimensions so scroll position doesn't jump
+                              // Virtualized phase only: opt this page into the
+                              // browser's native skip-rendering-if-offscreen
+                              // behavior so the ±1 buffer pages skip layout/
+                              // paint. contain-intrinsic-size reserves the
+                              // expected dimensions so layout doesn't jump
                               // when the page is "skipped".
-                              contentVisibility: 'auto',
-                              containIntrinsicSize: `${regionWidth}px ${pageHeights[i]}px`,
+                              //
+                              // Must NOT be applied during the measuring
+                              // phase: getBoundingClientRect on descendants
+                              // of a skipped content-visibility subtree
+                              // returns empty rects, which corrupts event
+                              // position extraction on offscreen pages.
+                              ...(isVirtualized
+                                ? {
+                                    contentVisibility: 'auto' as const,
+                                    containIntrinsicSize: `${regionWidth}px ${pageHeights[i]}px`,
+                                  }
+                                : null),
                             }}
                             dangerouslySetInnerHTML={{ __html: svg }}
                           />
