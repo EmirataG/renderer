@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { VerovioToolkit } from 'verovio/esm';
 import { createToolkit } from '../lib/verovioService';
 import { reorderNoteheadsInSvgString } from '../lib/noteAnimation';
+import { splitSingleLineSvg } from '../lib/splitSingleLineSvg';
 
 // Pre-compiled regex patterns (module scope) - compiled once at module load
 const WIDTH_REGEX = /width="(\d+(?:\.\d+)?)px"/;
@@ -18,6 +19,14 @@ export interface UseSingleLineVerovioResult {
   maxHeight: number;            // Maximum section height for alignment
   sectionCount: number;         // Number of sections
   measureCount: number;         // Total measures in score
+  /**
+   * True when sections were split from ONE full-score layout (identical
+   * geometry, contiguous content — no re-stated clefs at section starts).
+   * False only for the select()-based fallback, where each section has its
+   * own layout and re-states leading clef/key/time signatures (hidden via
+   * .section-continuation CSS).
+   */
+  seamless: boolean;
   toolkit: VerovioToolkit | null;
   isLoading: boolean;
   error: string | null;
@@ -52,6 +61,7 @@ export function useSingleLineVerovio(
   const [maxHeight, setMaxHeight] = useState<number>(0);
   const [sectionCount, setSectionCount] = useState<number>(0);
   const [measureCount, setMeasureCount] = useState<number>(0);
+  const [seamless, setSeamless] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const toolkitRef = useRef<VerovioToolkit | null>(null);
@@ -147,32 +157,42 @@ export function useSingleLineVerovio(
           return;
         }
 
-        // Strategy: section long scores so the renderer can virtualize them
-        // (mount/unmount sections as the camera moves). A single giant SVG
-        // can't be virtualized — it always intersects the viewport, so
-        // content-visibility is a no-op — and its DOM dominates memory and
-        // paint cost on long scores.
+        // Strategy: lay out the WHOLE score once, then split the rendered
+        // SVG into per-section chunks (splitSingleLineSvg). A single layout
+        // pass keeps staff spacing and vertical alignment identical across
+        // sections — re-rendering each measure range via toolkit.select()
+        // gives every section its own layout, and staff distances visibly
+        // jump at section boundaries. Sections (vs one giant SVG) are what
+        // make virtualization possible: the renderer mounts only the visible
+        // window.
         //
-        // Short scores render as one SVG to avoid stitching seams: at ≤3
-        // sections the renderer mounts everything anyway (no virtualization
-        // benefit), so sectioning them would only risk seams. Sectioning is
-        // also the fallback when a "short" score still overflows Verovio's
-        // 100,000px page width.
+        // Short scores (≤3 sections' worth) stay as one SVG: the renderer
+        // mounts ≤3 sections in full anyway, so splitting buys nothing.
         const SINGLE_SVG_MAX_MEASURES = measuresPerSection * 3;
         let renderedSections: string[] | null = null;
+        let isSeamless = true;
 
-        if (totalMeasures <= SINGLE_SVG_MAX_MEASURES) {
+        if (toolkit.getPageCount() <= 1) {
           const fullSvg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
           const fullDims = extractSectionDimensions(fullSvg);
-          if (toolkit.getPageCount() <= 1 && fullDims.width > 0) {
-            renderedSections = [fullSvg];
+          if (fullDims.width > 0) {
+            if (totalMeasures <= SINGLE_SVG_MAX_MEASURES) {
+              renderedSections = [fullSvg];
+            } else {
+              const split = splitSingleLineSvg(fullSvg, measuresPerSection);
+              renderedSections = split ? split.map((s) => s.svg) : [fullSvg];
+            }
           }
         }
 
         if (!renderedSections) {
-          // Render in measure-range sections and stitch them. Leading
-          // clef/key/time signatures of sections 1+ are hidden by the
-          // renderer's .section-continuation CSS.
+          // Score overflows Verovio's 100,000px page width — the single-SVG
+          // render is unusable, so fall back to per-measure-range re-layout.
+          // Sections from this path each get an independent layout (staff
+          // spacing may differ at boundaries) and re-state leading
+          // clef/key/time signatures, which the renderer hides via the
+          // .section-continuation CSS (gated on seamless === false).
+          isSeamless = false;
           renderedSections = [];
           for (let start = 1; start <= totalMeasures; start += measuresPerSection) {
             const end = Math.min(start + measuresPerSection - 1, totalMeasures);
@@ -209,6 +229,7 @@ export function useSingleLineVerovio(
           setMaxHeight(maxH);
           setSectionCount(renderedSections.length);
           setMeasureCount(totalMeasures);
+          setSeamless(isSeamless);
           setIsLoading(false);
         }
       } catch (err) {
@@ -248,6 +269,7 @@ export function useSingleLineVerovio(
     maxHeight,
     sectionCount,
     measureCount,
+    seamless,
     toolkit: toolkitRef.current,
     isLoading,
     error,

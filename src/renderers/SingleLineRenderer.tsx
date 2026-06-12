@@ -124,7 +124,7 @@ export default function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
-  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
+  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, seamless, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
 
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1208,25 +1208,26 @@ export default function SingleLineRenderer({
                           <div
                             key={i}
                             ref={(el) => { sectionContainerRefs.current[i] = el; }}
-                            className={`preview-score${i > 0 ? ' section-continuation' : ''}`}
+                            // .section-continuation hides re-stated leading
+                            // clef/key/time signatures — only the select()-
+                            // based fallback produces those. Seamless (split)
+                            // sections are contiguous slices of one layout:
+                            // any clef inside them is real content.
+                            className={`preview-score${i > 0 && !seamless ? ' section-continuation' : ''}`}
                             style={{
                               flexShrink: 0,
                               width: sectionWidths[i],
                               height: maxHeight,
                               display: 'flex',
                               alignItems: 'flex-start',
-                              // Virtualized phase only: skip layout/paint of
-                              // offscreen buffer sections. Must NOT apply
-                              // during measuring — rects inside a skipped
-                              // content-visibility subtree are empty, which
-                              // corrupts position extraction. See
-                              // RegularRenderer for the full rationale.
-                              ...(isVirtualized
-                                ? {
-                                    contentVisibility: 'auto' as const,
-                                    containIntrinsicSize: `${sectionWidths[i]}px ${maxHeight}px`,
-                                  }
-                                : null),
+                              // NOTE: unlike page mode, sections must NOT get
+                              // content-visibility: auto. Its paint
+                              // containment clips at the element box, but
+                              // seamless sections rely on SVG overflow to
+                              // paint ties/slurs that cross a section
+                              // boundary into the neighbor's area. React
+                              // windowing (placeholders) is the
+                              // virtualization mechanism here.
                             }}
                             dangerouslySetInnerHTML={{ __html: svg }}
                           />
