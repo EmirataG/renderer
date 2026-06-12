@@ -233,14 +233,17 @@ export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
  *
  * @param timemapEvents - Events from extractTimemapEvents()
  * @param toolkit - Verovio toolkit instance (for getPageWithElement API)
- * @param pageContainers - Array of DOM elements containing each page's SVG
+ * @param pageContainers - Array of DOM elements containing each page's SVG.
+ *   MUST be indexed by absolute page index (pass the raw ref array, NOT a
+ *   filtered/compacted copy) — entries are looked up as pageContainers[pageIndex]
+ *   and a compacted array silently measures against the wrong page.
  * @param pageOffsets - Cumulative Y offset for each page (for global coordinates)
  * @returns Array of CachedEvents with pageIndex and globalY populated
  */
 export function computeEventPositions(
   timemapEvents: TimemapEvent[],
   toolkit: VerovioToolkit,
-  pageContainers: HTMLElement[],
+  pageContainers: (HTMLElement | null)[],
   pageOffsets: number[]
 ): CachedEvent[] {
   const cachedEvents: CachedEvent[] = timemapEvents.map((event) => ({
@@ -253,10 +256,15 @@ export function computeEventPositions(
   // getBoundingClientRect() returns viewport coordinates that include CSS transforms,
   // but pageOffsets are in pre-transform CSS pixels. We need positions in the same
   // pre-transform space so the camera translateY (applied inside the transform) is correct.
-  const firstContainer = pageContainers[0];
+  const firstContainer = pageContainers.find((c): c is HTMLElement => c !== null);
   const domScale = firstContainer && firstContainer.clientWidth > 0
     ? firstContainer.getBoundingClientRect().width / firstContainer.clientWidth
     : 1;
+
+  // Pages whose container was missing during measurement — should never happen
+  // (callers must extract with all pages mounted), but if it does, warn once
+  // instead of silently producing globalY=0 positions.
+  const missingPages = new Set<number>();
 
   for (const event of cachedEvents) {
     const posId = event.positionSvgId || event.svgIds[0];
@@ -270,7 +278,10 @@ export function computeEventPositions(
     event.pageIndex = pageIndex;
 
     const container = pageContainers[pageIndex];
-    if (!container) continue;
+    if (!container) {
+      missingPages.add(pageIndex);
+      continue;
+    }
 
     const containerRect = container.getBoundingClientRect();
     const noteEl = container.querySelector(`#${CSS.escape(posId)}`);
@@ -291,6 +302,14 @@ export function computeEventPositions(
     }
   }
 
+  if (missingPages.size > 0) {
+    console.warn(
+      `[computeEventPositions] ${missingPages.size} page container(s) missing during ` +
+      `position extraction (pages: ${[...missingPages].join(', ')}). Events on these ` +
+      `pages will have incorrect positions — extraction must run with all pages mounted.`
+    );
+  }
+
   // Enforce monotonically non-decreasing globalY. The camera should only
   // scroll down during playback — never jump backwards to an earlier system.
   for (let i = 1; i < cachedEvents.length; i++) {
@@ -309,17 +328,20 @@ export function computeEventPositions(
  * Call after section SVGs are mounted in the DOM.
  *
  * @param events - Events with timing data (from extractTimemapEvents or with pageIndex/globalY)
- * @param sectionContainers - Array of DOM elements containing each section's SVG
+ * @param sectionContainers - Array of DOM elements containing each section's SVG.
+ *   MUST be indexed by absolute section index (pass the raw ref array, NOT a
+ *   filtered copy) — sectionOffsets[i] is paired with sectionContainers[i].
  * @param sectionOffsets - Cumulative X offset for each section (from useSingleLineVerovio)
  * @returns Events with sectionIndex, localX, and globalX populated
  */
 export function computeSectionPositions(
   events: CachedEvent[],
-  sectionContainers: HTMLElement[],
+  sectionContainers: (HTMLElement | null)[],
   sectionOffsets: number[]
 ): CachedEvent[] {
   // Clone events to avoid mutation
   const result = events.map(event => ({ ...event }));
+  let unplacedCount = 0;
 
   for (const event of result) {
     const posId = event.positionSvgId || event.svgIds[0];
@@ -350,7 +372,16 @@ export function computeSectionPositions(
       event.sectionIndex = sectionIndex;
       event.localX = localX;
       event.globalX = sectionOffsets[sectionIndex] + localX;
+    } else {
+      unplacedCount++;
     }
+  }
+
+  if (unplacedCount > 0) {
+    console.warn(
+      `[computeSectionPositions] ${unplacedCount} event(s) not found in any section ` +
+      `container. Extraction must run with all sections mounted.`
+    );
   }
 
   // Enforce monotonically non-decreasing globalX. The camera should only
