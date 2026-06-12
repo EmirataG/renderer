@@ -110,6 +110,14 @@ export default function SingleLineRenderer({
     }))
   );
 
+  // O(1) id → event lookup for the per-frame animation loop (animateSync
+  // needs each event's sectionIndex; a linear events.find per animated event
+  // per frame is O(n) and stalls long scores).
+  const eventById = useMemo(
+    () => new Map(events.map((e) => [e.id, e])),
+    [events],
+  );
+
   // (interpolatedEvents is derived via useMemo below; no useState needed.)
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -598,7 +606,7 @@ export default function SingleLineRenderer({
         const evt = interpolatedEvents[i];
         if (evt?.svgIds?.length) {
           // For single-line mode, query from the section container if available
-          const cachedEvent = events.find(e => e.id === evt.id);
+          const cachedEvent = eventById.get(evt.id);
           const sectionIndex = cachedEvent?.sectionIndex;
           const root = sectionIndex !== undefined && sectionContainerRefs.current[sectionIndex]
             ? sectionContainerRefs.current[sectionIndex]
