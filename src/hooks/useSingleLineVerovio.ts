@@ -147,22 +147,32 @@ export function useSingleLineVerovio(
           return;
         }
 
-        // Strategy: render the entire score as ONE SVG to avoid visual
-        // stitching artifacts at section boundaries. Only fall back to
-        // the measure-range sectioning if the score overflows to multiple
-        // pages (exceeds Verovio's 100,000 px pageWidth limit).
-        let renderedSections: string[];
+        // Strategy: section long scores so the renderer can virtualize them
+        // (mount/unmount sections as the camera moves). A single giant SVG
+        // can't be virtualized — it always intersects the viewport, so
+        // content-visibility is a no-op — and its DOM dominates memory and
+        // paint cost on long scores.
+        //
+        // Short scores render as one SVG to avoid stitching seams: at ≤3
+        // sections the renderer mounts everything anyway (no virtualization
+        // benefit), so sectioning them would only risk seams. Sectioning is
+        // also the fallback when a "short" score still overflows Verovio's
+        // 100,000px page width.
+        const SINGLE_SVG_MAX_MEASURES = measuresPerSection * 3;
+        let renderedSections: string[] | null = null;
 
-        let fullSvg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
-        const fullDims = extractSectionDimensions(fullSvg);
-        const pageCount = toolkit.getPageCount();
+        if (totalMeasures <= SINGLE_SVG_MAX_MEASURES) {
+          const fullSvg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
+          const fullDims = extractSectionDimensions(fullSvg);
+          if (toolkit.getPageCount() <= 1 && fullDims.width > 0) {
+            renderedSections = [fullSvg];
+          }
+        }
 
-        if (pageCount <= 1 && fullDims.width > 0) {
-          // Score fits in one SVG — use it directly (no stitching seams)
-          renderedSections = [fullSvg];
-        } else {
-          // Score overflows Verovio's max page width — fall back to
-          // rendering in measure-range sections and stitching them.
+        if (!renderedSections) {
+          // Render in measure-range sections and stitch them. Leading
+          // clef/key/time signatures of sections 1+ are hidden by the
+          // renderer's .section-continuation CSS.
           renderedSections = [];
           for (let start = 1; start <= totalMeasures; start += measuresPerSection) {
             const end = Math.min(start + measuresPerSection - 1, totalMeasures);
