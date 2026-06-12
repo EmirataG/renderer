@@ -200,16 +200,26 @@ export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
     (entry) => entry.on && entry.on.length > 0
   );
 
+  // Scores with repeats: Verovio expands repeated passages in the timemap,
+  // and second-pass entries reference ids with a "-rendN" suffix (rendition
+  // N) that do NOT exist in the rendered SVG — the notation is only rendered
+  // once. Resolve them back to the base id so repeat passes highlight the
+  // real notes and position lookup doesn't silently fail.
+  const resolveRenditionId = (id: string) => id.replace(/-rend\d+$/, '');
+
   // Build TimemapEvent array from onset entries, excluding tied continuations.
   // positionSvgId keeps the first note ID (even if tied) for position lookup —
   // events where ALL notes are continuations still need a DOM position for scrolling.
-  const events: TimemapEvent[] = onsetEntries.map((entry, index) => ({
-    id: `evt-${index}`,
-    beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
-    beatDuration: 0, // Calculated below
-    svgIds: entry.on!.filter((id) => !tieInfo.continuationIds.has(id)),
-    positionSvgId: entry.on![0],
-  }));
+  const events: TimemapEvent[] = onsetEntries.map((entry, index) => {
+    const resolved = [...new Set(entry.on!.map(resolveRenditionId))];
+    return {
+      id: `evt-${index}`,
+      beatOnset: entry.qstamp / 4, // Convert quarter-note units to whole-note fractions (RealValue convention)
+      beatDuration: 0, // Calculated below
+      svgIds: resolved.filter((id) => !tieInfo.continuationIds.has(id)),
+      positionSvgId: resolved[0],
+    };
+  });
 
   // Calculate beatDuration for each event
   for (let i = 0; i < events.length - 1; i++) {
@@ -266,40 +276,61 @@ export function computeEventPositions(
   // instead of silently producing globalY=0 positions.
   const missingPages = new Set<number>();
 
+  // Carry-forward state: when an event's position can't be resolved (id not
+  // in the rendered SVG, container missing), inherit the previous event's
+  // position instead of leaving 0 — a 0 would read as "scroll to top" to any
+  // consumer that sees the value before the monotonic pass below.
+  let lastY = 0;
+  let lastPageIndex = 0;
+  let unresolved = 0;
+
   for (const event of cachedEvents) {
     const posId = event.positionSvgId || event.svgIds[0];
-    if (!posId) continue;
 
-    // Use Verovio API to find which page this event is on (1-based)
-    const pageNum = toolkit.getPageWithElement(posId);
-    if (pageNum === 0) continue; // Element not found
+    const resolve = (): boolean => {
+      if (!posId) return false;
 
-    const pageIndex = pageNum - 1;
-    event.pageIndex = pageIndex;
+      // Use Verovio API to find which page this event is on (1-based)
+      const pageNum = toolkit.getPageWithElement(posId);
+      if (pageNum === 0) return false; // Element not found
 
-    const container = pageContainers[pageIndex];
-    if (!container) {
-      missingPages.add(pageIndex);
-      continue;
-    }
+      const pageIndex = pageNum - 1;
+      const container = pageContainers[pageIndex];
+      if (!container) {
+        missingPages.add(pageIndex);
+        return false;
+      }
 
-    const containerRect = container.getBoundingClientRect();
-    const noteEl = container.querySelector(`#${CSS.escape(posId)}`);
-    if (!noteEl) continue;
+      const containerRect = container.getBoundingClientRect();
+      const noteEl = container.querySelector(`#${CSS.escape(posId)}`);
+      if (!noteEl) return false;
 
-    // Find parent g.system element for consistent Y positioning
-    const systemEl = noteEl.closest('g.system');
-    if (systemEl) {
-      const sysRect = systemEl.getBoundingClientRect();
+      event.pageIndex = pageIndex;
+      // Find parent g.system element for consistent Y positioning
+      const systemEl = noteEl.closest('g.system');
       // Divide by domScale to convert from viewport pixels to pre-transform CSS pixels
-      const localY = (sysRect.top - containerRect.top + sysRect.height / 2) / domScale;
+      const rect = (systemEl ?? noteEl).getBoundingClientRect();
+      const localY = (rect.top - containerRect.top + rect.height / 2) / domScale;
       event.globalY = pageOffsets[pageIndex] + localY;
+      return true;
+    };
+
+    if (resolve()) {
+      lastY = event.globalY;
+      lastPageIndex = event.pageIndex;
     } else {
-      // Fallback: use note's own position
-      const noteRect = noteEl.getBoundingClientRect();
-      const localY = (noteRect.top - containerRect.top + noteRect.height / 2) / domScale;
-      event.globalY = pageOffsets[pageIndex] + localY;
+      event.globalY = lastY;
+      event.pageIndex = lastPageIndex;
+      unresolved++;
     }
+  }
+
+  if (unresolved > 0) {
+    console.warn(
+      `[computeEventPositions] ${unresolved}/${cachedEvents.length} event(s) could not ` +
+      'be positioned (id missing from rendered SVG?). They inherit the previous ' +
+      "event's position."
+    );
   }
 
   if (missingPages.size > 0) {
@@ -342,6 +373,9 @@ export function computeSectionPositions(
   // Clone events to avoid mutation
   const result = events.map(event => ({ ...event }));
   let unplacedCount = 0;
+  // Carry-forward state for unresolvable events (see computeEventPositions)
+  let lastX = 0;
+  let lastSectionIndex = 0;
 
   for (const event of result) {
     const posId = event.positionSvgId || event.svgIds[0];
@@ -372,15 +406,22 @@ export function computeSectionPositions(
       event.sectionIndex = sectionIndex;
       event.localX = localX;
       event.globalX = sectionOffsets[sectionIndex] + localX;
+      lastX = event.globalX;
+      lastSectionIndex = sectionIndex;
     } else {
+      // Inherit the previous event's position instead of leaving globalX
+      // undefined (which downstream consumers would read as 0 = far left).
+      event.sectionIndex = lastSectionIndex;
+      event.globalX = lastX;
       unplacedCount++;
     }
   }
 
   if (unplacedCount > 0) {
     console.warn(
-      `[computeSectionPositions] ${unplacedCount} event(s) not found in any section ` +
-      `container. Extraction must run with all sections mounted.`
+      `[computeSectionPositions] ${unplacedCount}/${result.length} event(s) not found ` +
+      "in any section container (id missing from rendered SVG?). They inherit the " +
+      "previous event's position."
     );
   }
 
