@@ -48,9 +48,18 @@ function cachedLookup(
 ): SVGGElement | null {
   const cached = cache?.get(id);
   // Guard: if the cached node was detached (e.g. dangerouslySetInnerHTML
-  // replaced the SVG), fall back to a live querySelector.
+  // replaced the SVG, or page virtualization unmounted it), fall back to a
+  // live querySelector.
   if (cached && cached.isConnected) return cached;
-  return root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
+  const fresh = root.querySelector<SVGGElement>(`#${CSS.escape(id)}`);
+  if (cache) {
+    // Repair the cache so subsequent frames hit it again: replace the stale
+    // entry with the live node, or drop it entirely so a detached subtree
+    // isn't pinned in memory while its page is unmounted.
+    if (fresh) cache.set(id, fresh);
+    else if (cached) cache.delete(id);
+  }
+  return fresh;
 }
 
 // Default selectors for resetting all possible note sub-elements
