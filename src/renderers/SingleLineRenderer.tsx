@@ -97,7 +97,6 @@ export default function SingleLineRenderer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sectionContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const elementCacheRef = useRef<ElementCache>(new Map());
-  const extractionDoneRef = useRef(false);
   const [visibleSections, setVisibleSections] = useState<Set<number>>(new Set([0, 1]));
   const visibleSectionsRef = useRef<Set<number>>(new Set([0, 1]));
   const cameraXRef = useRef(0);
@@ -222,6 +221,24 @@ export default function SingleLineRenderer({
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("render") === "true";
 
+  /* ---------------- virtualization phase ----------------
+   * Two-phase rendering, derived from the event store rather than a ref flag
+   * so no code path can leave it stale (see RegularRenderer for the full
+   * rationale):
+   *
+   *   measuring   — svgPagesRef !== sections: ALL sections mounted for
+   *                 position measurement, content-visibility OFF.
+   *   virtualized — extraction stored events for this exact sections
+   *                 reference: only visibleSections mounted, with
+   *                 content-visibility: auto on the buffer sections.
+   *
+   * Render mode (headless frame capture) never virtualizes.
+   */
+  const isVirtualized = !isRenderMode && sections.length > 0 && svgPagesRef === sections;
+  // Ref mirror for rAF callbacks (applyCamera runs outside the render cycle).
+  const isVirtualizedRef = useRef(isVirtualized);
+  isVirtualizedRef.current = isVirtualized;
+
   /* ---------------- background / dimensions ---------------- */
 
   useEffect(() => {
@@ -285,12 +302,12 @@ export default function SingleLineRenderer({
 
   /* ---------------- Verovio section rendering ---------------- */
 
-  // When Verovio renders sections, update DOM and reset noteheads
+  // When Verovio renders sections, update DOM, reset noteheads, and extract
+  // event positions (the measuring phase guarantees all sections are mounted).
   useEffect(() => {
     if (sections.length === 0 || !scoreRef.current) return;
 
-    // Reset extraction state — all sections mount for extraction
-    extractionDoneRef.current = false;
+    let cancelled = false;
 
     // dangerouslySetInnerHTML updates the DOM synchronously during React's
     // commit phase, but this useEffect fires AFTER the commit. However,
@@ -298,7 +315,7 @@ export default function SingleLineRenderer({
     // Use requestAnimationFrame to wait for the next paint, then verify
     // the Verovio SVG is actually present in the DOM before resetting noteheads.
     requestAnimationFrame(() => {
-      if (!scoreRef.current) return;
+      if (cancelled || !scoreRef.current) return;
       // Guard: confirm Verovio SVG elements exist in the DOM before
       // attempting to query/reset noteheads. The svg.definition-scale
       // class is Verovio's root SVG element.
@@ -307,6 +324,31 @@ export default function SingleLineRenderer({
         console.warn('[SingleLineRenderer] Verovio SVG not found in DOM after rAF');
         return;
       }
+
+      // Cache validity: events in the store were extracted from this exact
+      // sections reference. Read non-reactively — putting svgPagesRef in this
+      // effect's deps would re-run the effect on our own store write below,
+      // which is the bug that used to permanently disarm virtualization.
+      const cacheValid = useEventStore.getState().svgPagesRef === sections;
+
+      if (cacheValid) {
+        // Same sections, but the effect re-ran because the viewport changed
+        // (e.g. background image loaded → containerWidth changed). The DOM
+        // wasn't replaced, so skip reorder/reset/extraction — just refresh
+        // the element cache and recompute the visible window so
+        // virtualization stays armed and correct.
+        elementCacheRef.current.clear();
+        elementCacheRef.current = buildElementCache(scoreRef.current);
+        if (!isRenderMode && sections.length > 0) {
+          const newVisible = getVisibleSectionRange();
+          if (!setsEqual(visibleSectionsRef.current, newVisible)) {
+            visibleSectionsRef.current = newVisible;
+            setVisibleSections(newVisible);
+          }
+        }
+        return;
+      }
+
       reorderNoteheadsAboveStems(scoreRef.current);
       resetNoteheadAnimations(scoreRef.current);
       // Drop references to the previous render's SVG nodes immediately so
@@ -315,26 +357,27 @@ export default function SingleLineRenderer({
       elementCacheRef.current = buildElementCache(scoreRef.current);
       prevActiveRangeRef.current = null;
 
-      // Cache validity check: skip extraction if sections reference unchanged
-      if (svgPagesRef === sections) return;
-
-      // Extract events using two-phase extraction and store in cache
+      // Extract events using two-phase extraction and store in cache.
+      // Pass the UNFILTERED ref array — section index must pair with
+      // sectionOffsets[i], so a compacted copy would misalign positions.
       if (toolkit) {
         const timemapEvents = extractTimemapEvents(toolkit);
-        const containers = sectionContainerRefs.current.filter((c): c is HTMLDivElement => c !== null);
         // Compute vertical positions (for compatibility, using section 0 offset as fallback)
-        const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, [0]);
+        const cachedEvents = computeEventPositions(timemapEvents, toolkit, sectionContainerRefs.current, [0]);
         // Compute horizontal positions for camera
-        const eventsWithX = computeSectionPositions(cachedEvents, containers, sectionOffsets);
-        setEventsInStore(eventsWithX, sections);
+        const eventsWithX = computeSectionPositions(cachedEvents, sectionContainerRefs.current, sectionOffsets);
+        if (cancelled) return;
 
-        // Extraction complete — activate virtualization (skip in render mode to keep all sections mounted)
+        // Set the visible window BEFORE the store write: the write flips
+        // isVirtualized on the next render, which must not commit with a
+        // stale window from the previous score.
         if (!isRenderMode) {
-          extractionDoneRef.current = true;
           const initialVisible = getVisibleSectionRange();
           visibleSectionsRef.current = initialVisible;
           setVisibleSections(initialVisible);
         }
+        // This makes svgPagesRef === sections → next render virtualizes.
+        setEventsInStore(eventsWithX, sections);
       }
     });
 
@@ -343,17 +386,26 @@ export default function SingleLineRenderer({
       currentXRef.current = 0;
       applyCamera(0);
     }
-  }, [sections, svgPagesRef, toolkit, sectionOffsets, setEventsInStore, containerWidth]);
 
-  // Rebuild element cache when visible sections change (sections mount/unmount)
+    return () => {
+      // Strict Mode double-mount / rapid re-render guard: a stale rAF must
+      // not write events or the visible window for a superseded effect run.
+      cancelled = true;
+    };
+  }, [sections, toolkit, sectionOffsets, setEventsInStore, containerWidth]);
+
+  // Rebuild the element cache when the section window changes (sections
+  // mount/unmount), so the cache never pins detached subtrees and remounted
+  // sections don't miss it on every lookup.
   useEffect(() => {
-    if (!extractionDoneRef.current || !scoreRef.current) return;
-    requestAnimationFrame(() => {
+    if (!isVirtualizedRef.current || !scoreRef.current) return;
+    const id = requestAnimationFrame(() => {
       if (scoreRef.current) {
         elementCacheRef.current.clear();
         elementCacheRef.current = buildElementCache(scoreRef.current);
       }
     });
+    return () => cancelAnimationFrame(id);
   }, [visibleSections]);
 
   /* ---------------- score color and styling ---------------- */
@@ -467,8 +519,8 @@ export default function SingleLineRenderer({
       cameraRef.current.style.transform = `translateX(${-cameraX}px)`;
     }
 
-    // Update visible sections (only after extraction is done)
-    if (extractionDoneRef.current && sections.length > 0) {
+    // Update visible sections (only when virtualization is active)
+    if (isVirtualizedRef.current && sections.length > 0) {
       const newVisible = getVisibleSectionRange();
       if (!setsEqual(visibleSectionsRef.current, newVisible)) {
         visibleSectionsRef.current = newVisible;
@@ -1125,9 +1177,9 @@ export default function SingleLineRenderer({
                       }}
                     >
                       {sections.map((svg, i) => {
-                        // Before extraction is done, mount all sections for DOM measurement.
-                        // After extraction, only mount visible sections (virtualization).
-                        const isMounted = !extractionDoneRef.current || visibleSections.has(i);
+                        // Measuring phase: mount all sections for DOM measurement.
+                        // Virtualized phase: only mount visible sections.
+                        const isMounted = !isVirtualized || visibleSections.has(i);
 
                         if (!isMounted) {
                           // Placeholder: maintain layout width, clear ref
@@ -1155,11 +1207,18 @@ export default function SingleLineRenderer({
                               height: maxHeight,
                               display: 'flex',
                               alignItems: 'flex-start',
-                              // Opt this section into the browser's native
-                              // skip-rendering-if-offscreen behavior. See
-                              // RegularRenderer for the rationale.
-                              contentVisibility: 'auto',
-                              containIntrinsicSize: `${sectionWidths[i]}px ${maxHeight}px`,
+                              // Virtualized phase only: skip layout/paint of
+                              // offscreen buffer sections. Must NOT apply
+                              // during measuring — rects inside a skipped
+                              // content-visibility subtree are empty, which
+                              // corrupts position extraction. See
+                              // RegularRenderer for the full rationale.
+                              ...(isVirtualized
+                                ? {
+                                    contentVisibility: 'auto' as const,
+                                    containIntrinsicSize: `${sectionWidths[i]}px ${maxHeight}px`,
+                                  }
+                                : null),
                             }}
                             dangerouslySetInnerHTML={{ __html: svg }}
                           />
