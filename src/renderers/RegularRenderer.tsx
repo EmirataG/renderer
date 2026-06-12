@@ -276,6 +276,23 @@ export default memo(function RegularRenderer({
       }
     }
 
+    if (process.env.NODE_ENV !== 'production') {
+      // The playback binary search requires computedTimestamp sorted along
+      // the beat-sorted array. Anchors with out-of-order times (e.g. stale
+      // anchors from a previous version of the score) violate this and cause
+      // erratic camera jumps — surface it instead of failing silently.
+      for (let i = 1; i < merged.length; i++) {
+        if (merged[i].computedTimestamp < merged[i - 1].computedTimestamp - 1e-6) {
+          console.warn(
+            '[RegularRenderer] interpolated timestamps are NOT monotonic — playback will misbehave.',
+            `${merged[i - 1].id} (ts ${merged[i - 1].computedTimestamp.toFixed(3)}) -> ${merged[i].id} (ts ${merged[i].computedTimestamp.toFixed(3)}).`,
+            'Check sync anchors for out-of-order timestamps.',
+          );
+          break;
+        }
+      }
+    }
+
     return merged;
   }, [events, syncAnchors, activeNoteheadUseNoteDuration]);
 
@@ -619,6 +636,18 @@ export default memo(function RegularRenderer({
 
     // Camera Y: events in the same system share identical Y values,
     // so this only changes at system boundaries
+    if (process.env.NODE_ENV !== 'production' && event.y < currentYRef.current - 1) {
+      // Invariant: extraction enforces non-decreasing globalY, so the camera
+      // target must never move backward during playback. If this fires, the
+      // event data is broken — capture everything needed to diagnose it.
+      console.warn(
+        '[RegularRenderer] camera target moved BACKWARD during playback:',
+        `${currentYRef.current.toFixed(1)} -> ${event.y.toFixed(1)}px,`,
+        `audio t=${currentTime.toFixed(3)}s, event ${index} (${event.id}),`,
+        `beatOnset=${event.beatOnset}, computedTimestamp=${event.computedTimestamp.toFixed(3)}s,`,
+        `prevEvent=${interpolatedEvents[index - 1]?.id} ts=${interpolatedEvents[index - 1]?.computedTimestamp?.toFixed(3)}`,
+      );
+    }
     currentYRef.current = event.y;
 
     applyCamera(currentYRef.current);

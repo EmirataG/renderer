@@ -220,6 +220,23 @@ export default function SingleLineRenderer({
       }
     }
 
+    if (process.env.NODE_ENV !== 'production') {
+      // The playback binary search requires computedTimestamp sorted along
+      // the beat-sorted array. Anchors with out-of-order times (e.g. stale
+      // anchors from a previous version of the score) violate this and cause
+      // erratic camera jumps — surface it instead of failing silently.
+      for (let i = 1; i < merged.length; i++) {
+        if (merged[i].computedTimestamp < merged[i - 1].computedTimestamp - 1e-6) {
+          console.warn(
+            '[SingleLineRenderer] interpolated timestamps are NOT monotonic — playback will misbehave.',
+            `${merged[i - 1].id} (ts ${merged[i - 1].computedTimestamp.toFixed(3)}) -> ${merged[i].id} (ts ${merged[i].computedTimestamp.toFixed(3)}).`,
+            'Check sync anchors for out-of-order timestamps.',
+          );
+          break;
+        }
+      }
+    }
+
     return merged;
   }, [events, syncAnchors, activeNoteheadUseNoteDuration]);
 
@@ -651,6 +668,7 @@ export default function SingleLineRenderer({
     const currentX = event.x;
     const nextEvent = interpolatedEvents[index + 1];
 
+    let targetX: number;
     if (nextEvent) {
       // Calculate progress between current and next event
       const currentTimestamp = event.computedTimestamp;
@@ -659,14 +677,29 @@ export default function SingleLineRenderer({
 
       if (duration > 0) {
         const progress = (currentTime - currentTimestamp) / duration;
-        currentXRef.current = lerp(currentX, nextEvent.x, progress);
+        targetX = lerp(currentX, nextEvent.x, progress);
       } else {
-        currentXRef.current = currentX;
+        targetX = currentX;
       }
     } else {
       // At last event, no interpolation needed
-      currentXRef.current = currentX;
+      targetX = currentX;
     }
+
+    if (process.env.NODE_ENV !== 'production' && targetX < currentXRef.current - 1) {
+      // Invariant: extraction enforces non-decreasing globalX, so the camera
+      // target must never move backward during playback. If this fires, the
+      // event data is broken — capture everything needed to diagnose it.
+      console.warn(
+        '[SingleLineRenderer] camera target moved BACKWARD during playback:',
+        `${currentXRef.current.toFixed(1)} -> ${targetX.toFixed(1)}px,`,
+        `audio t=${currentTime.toFixed(3)}s, event ${index} (${event.id}),`,
+        `x=${event.x.toFixed(1)}, nextX=${nextEvent?.x?.toFixed(1)},`,
+        `beatOnset=${event.beatOnset}, computedTimestamp=${event.computedTimestamp.toFixed(3)}s,`,
+        `nextTs=${nextEvent?.computedTimestamp?.toFixed(3)}`,
+      );
+    }
+    currentXRef.current = targetX;
 
     applyCamera(currentXRef.current);
 
