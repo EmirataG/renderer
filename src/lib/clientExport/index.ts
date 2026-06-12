@@ -63,6 +63,11 @@ export interface ExportSettings {
 
 const EDITOR_WIDTH = 980;
 
+// Maximum raster dimension for a single SVG page/section image. Browsers
+// silently fail (or produce blank frames) when decoding/drawing images far
+// beyond GPU texture limits — Chrome's practical ceiling is ~16384px.
+const MAX_RASTER_DIM = 16000;
+
 // ---------------------------------------------------------------------------
 // SVG helpers (ported from export-service/src/standalone/render.ts)
 // ---------------------------------------------------------------------------
@@ -155,7 +160,11 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
  * Add inline CSS to an SVG string so it renders correctly when
  * rasterized outside the document context.
  */
-function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
+function inlineScoreColorInSvg(
+  svgString: string,
+  scoreColor: string,
+  hideLeadStaffSymbols = false,
+): string {
   // IMPORTANT: `path` and `use` are NOT targeted by CSS here.
   //
   // Music glyphs are <path> elements inside <use> shadow trees. A CSS
@@ -167,11 +176,16 @@ function inlineScoreColorInSvg(svgString: string, scoreColor: string): string {
   // All paths inherit scoreColor via SVG inheritance. Animated <use>
   // elements have fill="highlightColor" set by the animation, which
   // cascades to their shadow paths without CSS interference.
+  // hideLeadStaffSymbols: continuation sections of a sectioned single-line
+  // score render their own leading clef/key/time signature — hide them for
+  // visual parity with the preview's .section-continuation CSS (which can't
+  // reach this standalone serialized SVG).
   const style = `<style>
     rect, polygon, ellipse { fill: ${scoreColor}; }
     text { fill: ${scoreColor}; }
     [fill="none"] { fill: none !important; }
     g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
+    ${hideLeadStaffSymbols ? 'g.clef, g.keySig, g.meterSig { display: none !important; }' : ''}
   </style>`;
   // Set fill on root SVG for inheritance to all descendant paths
   return svgString.replace(/<svg([^>]*)>/, `<svg$1 fill="${scoreColor}">${style}`);
@@ -220,6 +234,7 @@ async function svgPageToImage(
   scoreColor: string,
   width: number,
   rasterScale: number,
+  hideLeadStaffSymbols = false,
 ): Promise<CanvasImageSource> {
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
@@ -228,7 +243,7 @@ async function svgPageToImage(
   setDefaultFillOnUseElements(svgEl, scoreColor);
 
   let svgString = new XMLSerializer().serializeToString(svgEl);
-  svgString = inlineScoreColorInSvg(svgString, scoreColor);
+  svgString = inlineScoreColorInSvg(svgString, scoreColor, hideLeadStaffSymbols);
 
   // Ensure xmlns
   if (!svgString.includes('xmlns=')) {
@@ -244,6 +259,14 @@ async function svgPageToImage(
   const vbH = vbMatch ? parseFloat(vbMatch[4]) : 1000;
   const pixelW = Math.round(vbW * rasterScale);
   const pixelH = Math.round(vbH * rasterScale);
+  if (pixelW > MAX_RASTER_DIM || pixelH > MAX_RASTER_DIM) {
+    // Fail loudly: browsers decode oversized images to blank/garbage frames
+    // with no error, which is much harder to diagnose than this.
+    throw new Error(
+      `Score section too large to rasterize (${pixelW}x${pixelH}px, limit ${MAX_RASTER_DIM}px). ` +
+      'Try the Page layout or a smaller score size.',
+    );
+  }
   // Strip existing width/height then inject scaled dimensions
   svgString = svgString.replace(/\s(width|height)="[^"]*"/g, '');
   svgString = svgString.replace(
@@ -392,16 +415,52 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const sectionOffsets: number[] = [];
 
   if (isSingleLine) {
-    // Single-line: render as one SVG (same as useSingleLineVerovio)
-    let svg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
-    svgPages.push(svg);
-    const dims = extractSectionDims(svg);
-    sectionWidths.push(dims.width);
-    sectionOffsets.push(0);
-    totalWidth = dims.width;
-    totalHeight = dims.height;
-    pageHeights.push(dims.height);
-    pageOffsets.push(0);
+    // Single-line: render as one SVG only when its raster at output scale
+    // stays under the browser decode/draw limit. Longer scores are rendered
+    // in measure-range sections (same technique as useSingleLineVerovio) —
+    // a single giant SVG would exceed MAX_RASTER_DIM at 4K (blank frames)
+    // and force whole-score re-rasterization on every animated frame.
+    const EXPORT_MEASURES_PER_SECTION = 8;
+    let renderedSections: string[] | null = null;
+
+    const fullSvg = reorderNoteheadsInSvgString(toolkit.renderToSVG(1));
+    const fullDims = extractSectionDims(fullSvg);
+    if (
+      toolkit.getPageCount() <= 1 &&
+      fullDims.width > 0 &&
+      fullDims.width * scaleFactor <= MAX_RASTER_DIM &&
+      fullDims.height * scaleFactor <= MAX_RASTER_DIM
+    ) {
+      renderedSections = [fullSvg];
+    } else {
+      const mei = toolkit.getMEI();
+      const totalMeasures = (mei.match(/<measure /g) || []).length;
+      renderedSections = [];
+      for (let start = 1; start <= totalMeasures; start += EXPORT_MEASURES_PER_SECTION) {
+        const end = Math.min(start + EXPORT_MEASURES_PER_SECTION - 1, totalMeasures);
+        toolkit.select({ measureRange: `${start}-${end}` });
+        toolkit.redoLayout();
+        renderedSections.push(reorderNoteheadsInSvgString(toolkit.renderToSVG(1)));
+      }
+      // Clear selection so timemap/position queries see the full score
+      toolkit.select({});
+      toolkit.redoLayout();
+    }
+
+    let cumulative = 0;
+    let maxSectionHeight = 0;
+    for (const svg of renderedSections) {
+      const dims = extractSectionDims(svg);
+      svgPages.push(svg);
+      sectionWidths.push(dims.width);
+      sectionOffsets.push(cumulative);
+      cumulative += dims.width;
+      pageHeights.push(dims.height);
+      pageOffsets.push(0);
+      maxSectionHeight = Math.max(maxSectionHeight, dims.height);
+    }
+    totalWidth = cumulative;
+    totalHeight = maxSectionHeight;
   } else {
     // Page mode: render multi-page
     const pageCount = toolkit.getPageCount();
@@ -572,9 +631,21 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const positions = computeEventPositions(timemapEvents, toolkit, pageContainers, pageOffsets);
   const yMap = new Map(positions.map((p) => [p.id, p.globalY]));
 
-  // For single-line mode, compute X positions
+  // For single-line mode, compute X positions and a note-id → section index
+  // map. The section map drives per-frame dirty tracking: with breaks:'none'
+  // every section is Verovio page 1, so getPageWithElement can't distinguish
+  // sections — only a DOM search can.
   let xMap = new Map<string, number>();
+  const sectionIndexByNoteId = new Map<string, number>();
   if (isSingleLine) {
+    const locate = (id: string): { ci: number; el: Element } | null => {
+      for (let ci = 0; ci < pageContainers.length; ci++) {
+        const el = pageContainers[ci].querySelector(`#${CSS.escape(id)}`);
+        if (el) return { ci, el };
+      }
+      return null;
+    };
+
     // Detect CSS transform scale on ancestor elements (scaleEl).
     // getBoundingClientRect() returns viewport pixels that include CSS transforms,
     // but sectionOffsets are in pre-transform SVG viewBox units. We need positions
@@ -587,16 +658,20 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     for (const tmEvt of timemapEvents) {
       const posId = tmEvt.positionSvgId || tmEvt.svgIds[0];
       if (!posId) continue;
-      for (let ci = 0; ci < pageContainers.length; ci++) {
-        const noteEl = pageContainers[ci].querySelector(`#${CSS.escape(posId)}`);
-        if (noteEl) {
-          const containerRect = pageContainers[ci].getBoundingClientRect();
-          const noteRect = noteEl.getBoundingClientRect();
-          // Divide by domScale to convert from viewport pixels to pre-transform units
-          const localX = (noteRect.left - containerRect.left + noteRect.width / 2) / domScale;
-          xMap.set(tmEvt.id, sectionOffsets[ci] + localX);
-          break;
-        }
+      const found = locate(posId);
+      if (found) {
+        sectionIndexByNoteId.set(posId, found.ci);
+        const containerRect = pageContainers[found.ci].getBoundingClientRect();
+        const noteRect = found.el.getBoundingClientRect();
+        // Divide by domScale to convert from viewport pixels to pre-transform units
+        const localX = (noteRect.left - containerRect.left + noteRect.width / 2) / domScale;
+        xMap.set(tmEvt.id, sectionOffsets[found.ci] + localX);
+      }
+      // Tied continuations can live in a later section than the event onset —
+      // locate them too so dirty tracking re-rasterizes their section.
+      for (const contId of tmEvt.tiedContinuationIds ?? []) {
+        const f = locate(contId);
+        if (f) sectionIndexByNoteId.set(contId, f.ci);
       }
     }
     // Enforce monotonically non-decreasing X
@@ -642,13 +717,23 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     }
   }
 
-  // Build event→page index for dirty tracking during frame loop.
-  // Maps each event index to the page (0-based) containing its first note.
-  const eventPageIndex: number[] = interpolated.map((evt) => {
-    const posId = evt.positionSvgId || evt.svgIds[0];
-    if (!posId) return -1;
-    const pageNum = toolkit.getPageWithElement(posId);
-    return pageNum > 0 ? pageNum - 1 : -1;
+  // Build event→pages index for dirty tracking during frame loop.
+  // Maps each event index to the pages/sections (0-based) its animated notes
+  // live on — including tied continuations, which can cross a page/section
+  // boundary and must mark that page dirty too.
+  const eventPageIndices: number[][] = interpolated.map((evt) => {
+    const ids = [
+      evt.positionSvgId || evt.svgIds[0],
+      ...(evt.tiedContinuationIds ?? []),
+    ].filter((id): id is string => !!id);
+    const pages = new Set<number>();
+    for (const id of ids) {
+      const pg = isSingleLine
+        ? (sectionIndexByNoteId.get(id) ?? -1)
+        : toolkit.getPageWithElement(id) - 1;
+      if (pg >= 0) pages.add(pg);
+    }
+    return [...pages];
   });
 
   // ── 6. Setup animation ────────────────────────────────────────────
@@ -732,7 +817,10 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const pageCache: (CanvasImageSource | null)[] = [];
   for (let p = 0; p < pageContainers.length; p++) {
     const w = isSingleLine ? sectionWidths[p] : regionWidth;
-    pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, w, scaleFactor);
+    pageCache[p] = await svgPageToImage(
+      pageContainers[p], settings.scoreColor, w, scaleFactor,
+      isSingleLine && p > 0,
+    );
   }
 
   // Start audio decoding in parallel with video frame rendering.
@@ -761,8 +849,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     const dirtyPages = new Set<number>();
     if (animState.prevActiveRange) {
       for (let i = animState.prevActiveRange.start; i <= animState.prevActiveRange.end; i++) {
-        const pg = eventPageIndex[i];
-        if (pg >= 0) dirtyPages.add(pg);
+        for (const pg of eventPageIndices[i]) dirtyPages.add(pg);
       }
     }
 
@@ -804,7 +891,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         if (sectionX + sectionW < 0 || sectionX > regionWidth) continue;
 
         if (dirtyPages.has(p)) {
-          pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, sectionW, scaleFactor);
+          pageCache[p] = await svgPageToImage(
+            pageContainers[p], settings.scoreColor, sectionW, scaleFactor, p > 0,
+          );
         }
         if (pageCache[p]) {
           // Vertically center the section within the region
