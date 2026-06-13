@@ -196,9 +196,30 @@ export function extractTimemapEvents(toolkit: VerovioToolkit): TimemapEvent[] {
   }
 
   // Filter to note onset entries only (entries with `on` array)
-  const onsetEntries = timemap.filter(
+  const rawOnsetEntries = timemap.filter(
     (entry) => entry.on && entry.on.length > 0
   );
+
+  // Verovio's timemap is normally time-ordered, but it is NOT guaranteed:
+  // observed with a MuseScore 4 export where one layer's run of measures
+  // (252-306 of a 381-measure score) was emitted as a separate pass APPENDED
+  // after the rest, rewinding qstamp mid-array. Everything downstream
+  // (beat-sorted interpolation, monotonic position clamps, the playback
+  // binary search) requires time order — without this sort, the two passes
+  // interleave after beat-sorting and the camera sawtooths across the
+  // overlapped measures. Sort by qstamp (stable), then merge entries at the
+  // same instant so one musical moment stays one event.
+  const sortedEntries = [...rawOnsetEntries].sort((a, b) => a.qstamp - b.qstamp);
+  const onsetEntries: typeof sortedEntries = [];
+  for (const entry of sortedEntries) {
+    const last = onsetEntries[onsetEntries.length - 1];
+    if (last && entry.qstamp === last.qstamp) {
+      last.on = [...last.on!, ...entry.on!];
+    } else {
+      // Copy — never mutate Verovio's timemap objects
+      onsetEntries.push({ ...entry, on: [...entry.on!] });
+    }
+  }
 
   // Scores with repeats: Verovio expands repeated passages in the timemap,
   // and second-pass entries reference ids with a "-rendN" suffix (rendition
