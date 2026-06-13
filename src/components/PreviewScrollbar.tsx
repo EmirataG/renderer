@@ -30,6 +30,10 @@ export function PreviewScrollbar({
   useEffect(() => {
     if (!shouldShow) return;
 
+    // The loop runs continuously, but the camera only moves during playback
+    // and seeks — skip the layout read/write entirely on idle frames.
+    let lastPos = -1;
+
     const update = () => {
       if (!thumbRef.current || !trackRef.current || isDraggingRef.current) {
         rafRef.current = requestAnimationFrame(update);
@@ -37,6 +41,11 @@ export function PreviewScrollbar({
       }
 
       const pos = cameraPositionRef.current ?? 0;
+      if (pos === lastPos) {
+        rafRef.current = requestAnimationFrame(update);
+        return;
+      }
+      lastPos = pos;
       const trackSize = isVertical
         ? trackRef.current.clientHeight
         : trackRef.current.clientWidth;
