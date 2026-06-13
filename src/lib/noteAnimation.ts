@@ -65,6 +65,31 @@ function cachedLookup(
 // Default selectors for resetting all possible note sub-elements
 const ALL_EXTRAS_SELECTORS = "g.stem, g.accid, g.flag, g.dots, g.artic";
 
+/* ---------------- pending exit timers ----------------
+ * animateNoteheads schedules a setTimeout per notehead for the exit phase
+ * (entry + hold later). With "use note duration" holds these can be many
+ * seconds long; their closures pin DOM nodes (including subtrees of pages
+ * unmounted by virtualization) until they fire, and they must never fire
+ * after the renderer unmounts. Track them so full resets and unmounts can
+ * cancel the lot. Note: pause deliberately does NOT cancel — in-flight
+ * highlights should finish their exit instead of freezing mid-animation.
+ */
+const pendingExitTimers = new Set<number>();
+
+function scheduleExitTimer(delayMs: number, fn: () => void): void {
+  const id = window.setTimeout(() => {
+    pendingExitTimers.delete(id);
+    fn();
+  }, delayMs);
+  pendingExitTimers.add(id);
+}
+
+/** Cancel all pending notehead exit timers (full reset / renderer unmount). */
+export function cancelPendingNoteheadTimers(): void {
+  pendingExitTimers.forEach((id) => window.clearTimeout(id));
+  pendingExitTimers.clear();
+}
+
 function applyColorToElement(el: SVGGraphicsElement, color: string, transitionMs: number, easing: string) {
   el.style.transition = `fill ${transitionMs}ms ${easing}, stroke ${transitionMs}ms ${easing}`;
   // Use setProperty with 'important' to override CSS stylesheet rules
@@ -127,7 +152,7 @@ export function animateNoteheads(
         /* ---------------- exit ---------------- */
         const totalDelay = entryMs + holdMs;
 
-        window.setTimeout(() => {
+        scheduleExitTimer(totalDelay, () => {
           nh.style.transition = `transform ${exitMs}ms ease-in`;
           nh.style.transform = "scale(1)";
 
@@ -136,7 +161,7 @@ export function animateNoteheads(
               clearColorFromElement(shape, exitMs, "ease-in");
             }
           });
-        }, totalDelay);
+        });
       });
     });
 
@@ -153,13 +178,13 @@ export function animateNoteheads(
       });
 
       const totalDelay = entryMs + holdMs;
-      window.setTimeout(() => {
+      scheduleExitTimer(totalDelay, () => {
         extras.forEach((group) => {
           const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse");
           children.forEach((child) => clearColorFromElement(child, exitMs, "ease-in"));
           clearColorFromElement(group as SVGGraphicsElement, exitMs, "ease-in");
         });
-      }, totalDelay);
+      });
     }
   });
 }
@@ -250,6 +275,10 @@ export function reorderNoteheadsInSvgString(svgString: string): string {
 
 export function resetNoteheadAnimations(root: HTMLElement | null) {
   if (!root) return;
+
+  // Everything is reset to base state below — pending exit timers are
+  // redundant (and would pin the nodes they close over until they fire).
+  cancelPendingNoteheadTimers();
 
   root.querySelectorAll<SVGGElement>("g.notehead").forEach((nh) => {
     // Reset scale
