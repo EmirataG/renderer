@@ -20,10 +20,17 @@ import {
   reorderNoteheadsAboveStems,
   buildElementCache,
   buildColorExtrasSelector,
+  cancelPendingNoteheadTimers,
   type ElementCache,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
+
+/** Contiguous window of mounted pages, inclusive on both ends. */
+interface VisibleRange {
+  start: number;
+  end: number;
+}
 
 /**
  * Evaluate a CSS cubic-bezier(x1, y1, x2, y2) curve at time t.
@@ -172,8 +179,11 @@ export default memo(function RegularRenderer({
   const cameraTransitionTarget = useRef(0);       // cameraY we're transitioning TO
   const cameraTransitionStart = useRef(-Infinity); // timestamp (seconds) when transition started
   const prevActiveRangeRef = useRef<{ start: number; end: number } | null>(null);
-  const [visiblePages, setVisiblePages] = useState<Set<number>>(new Set([0, 1]));
-  const visiblePagesRef = useRef<Set<number>>(new Set([0, 1]));
+  // Visibility is always contiguous (+ symmetric buffer), so a plain range
+  // replaces the old Set<number> — getVisiblePageRange runs once per
+  // animation frame and must not allocate.
+  const [visiblePages, setVisiblePages] = useState<VisibleRange>({ start: 0, end: 1 });
+  const visiblePagesRef = useRef<VisibleRange>(visiblePages);
 
   /* ---------------- virtualization phase ----------------
    * Two-phase rendering, derived from the event store rather than a ref flag
@@ -349,7 +359,7 @@ export default memo(function RegularRenderer({
         elementCacheRef.current = buildElementCache(scoreRef.current);
         if (!renderMode && pageCount > 0) {
           const newVisible = getVisiblePageRange();
-          if (!setsEqual(visiblePagesRef.current, newVisible)) {
+          if (!rangesEqual(visiblePagesRef.current, newVisible)) {
             visiblePagesRef.current = newVisible;
             setVisiblePages(newVisible);
           }
@@ -462,42 +472,38 @@ export default memo(function RegularRenderer({
 
   /* ---------------- page virtualization helpers ---------------- */
 
-  function setsEqual(a: Set<number>, b: Set<number>): boolean {
-    if (a.size !== b.size) return false;
-    for (const v of a) if (!b.has(v)) return false;
-    return true;
+  function rangesEqual(a: VisibleRange, b: VisibleRange): boolean {
+    return a.start === b.start && a.end === b.end;
   }
 
-  function getVisiblePageRange(): Set<number> {
-    if (pageCount === 0) return new Set([0]);
+  function getVisiblePageRange(): VisibleRange {
+    if (pageCount === 0) return { start: 0, end: 0 };
     // Short scores: mount all pages
-    if (pageCount <= 3) {
-      return new Set(Array.from({ length: pageCount }, (_, i) => i));
-    }
+    if (pageCount <= 3) return { start: 0, end: pageCount - 1 };
 
     const viewportHeight = scoreRegion?.height ?? containerHeight;
     const viewTop = cameraYRef.current;
     const viewBottom = viewTop + viewportHeight;
 
-    const visible = new Set<number>();
+    let first = -1;
+    let last = -1;
     for (let i = 0; i < pageCount; i++) {
       const pageTop = pageOffsets[i];
       const pageBottom = pageTop + pageHeights[i];
       if (pageBottom > viewTop && pageTop < viewBottom) {
-        visible.add(i);
+        if (first === -1) first = i;
+        last = i;
+      } else if (first !== -1) {
+        break; // visibility is contiguous — past the window
       }
     }
+    if (first === -1) return { start: 0, end: Math.min(1, pageCount - 1) };
 
-    // Add symmetric buffer: 1 page above + 1 below
-    const indices = [...visible];
-    if (indices.length > 0) {
-      const minIdx = Math.min(...indices);
-      const maxIdx = Math.max(...indices);
-      if (minIdx > 0) visible.add(minIdx - 1);
-      if (maxIdx < pageCount - 1) visible.add(maxIdx + 1);
-    }
-
-    return visible;
+    // Symmetric buffer: 1 page above + 1 below
+    return {
+      start: Math.max(0, first - 1),
+      end: Math.min(pageCount - 1, last + 1),
+    };
   }
 
   /* ---------------- camera (vertical) ---------------- */
@@ -523,7 +529,7 @@ export default memo(function RegularRenderer({
     // Update visible pages (only when virtualization is active)
     if (isVirtualizedRef.current && pageCount > 0) {
       const newVisible = getVisiblePageRange();
-      if (!setsEqual(visiblePagesRef.current, newVisible)) {
+      if (!rangesEqual(visiblePagesRef.current, newVisible)) {
         visiblePagesRef.current = newVisible;
         setVisiblePages(newVisible);
       }
@@ -670,16 +676,27 @@ export default memo(function RegularRenderer({
     // Convert camera position back to a target center Y
     const targetY = newCameraY + viewportHeight / 2;
 
-    // Find closest event by Y position
-    let closestIdx = 0;
-    let closestDist = Math.abs(interpolatedEvents[0].y - targetY);
-    for (let i = 1; i < interpolatedEvents.length; i++) {
-      const dist = Math.abs(interpolatedEvents[i].y - targetY);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIdx = i;
+    // Find closest event by Y position. interpolatedEvents is beat-sorted and
+    // extraction enforces non-decreasing y, so binary search applies — this
+    // runs on every pointermove during a scrollbar drag.
+    let lo = 0;
+    let hi = interpolatedEvents.length - 1;
+    let firstAtOrAfter = interpolatedEvents.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (interpolatedEvents[mid].y >= targetY) {
+        firstAtOrAfter = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
       }
     }
+    const before = Math.max(0, firstAtOrAfter - 1);
+    const closestIdx =
+      Math.abs(interpolatedEvents[before].y - targetY) <=
+      Math.abs(interpolatedEvents[firstAtOrAfter].y - targetY)
+        ? before
+        : firstAtOrAfter;
 
     const event = interpolatedEvents[closestIdx];
 
@@ -767,6 +784,9 @@ export default memo(function RegularRenderer({
   useEffect(() => {
     return () => {
       stop();
+      // Pending notehead exit timers must not fire after unmount (they'd
+      // touch detached DOM and pin it until they fire).
+      cancelPendingNoteheadTimers();
       destroyAnimationController();
     };
   }, []);
@@ -1177,14 +1197,19 @@ export default memo(function RegularRenderer({
                       {svgPages.map((svg, i) => {
                         // Measuring phase: mount all pages for DOM measurement.
                         // Virtualized phase: only mount visible pages.
-                        const isMounted = !isVirtualized || visiblePages.has(i);
+                        const isMounted =
+                          !isVirtualized ||
+                          (i >= visiblePages.start && i <= visiblePages.end);
 
                         if (!isMounted) {
-                          // Placeholder: maintain layout height, clear ref
-                          pageContainerRefs.current[i] = null;
+                          // Placeholder: maintain layout height. Distinct key
+                          // from the mounted page forces React to swap the
+                          // DOM node (dropping the SVG subtree) instead of
+                          // reconciling in place; the mounted div's ref
+                          // callback then nulls pageContainerRefs[i].
                           return (
                             <div
-                              key={i}
+                              key={`ph-${i}`}
                               style={{
                                 width: regionWidth,
                                 height: pageHeights[i],
@@ -1195,7 +1220,7 @@ export default memo(function RegularRenderer({
 
                         return (
                           <div
-                            key={i}
+                            key={`page-${i}`}
                             ref={(el) => { pageContainerRefs.current[i] = el; }}
                             className="preview-score"
                             style={{

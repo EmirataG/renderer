@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useSingleLineVerovio } from "../hooks/useSingleLineVerovio";
@@ -20,10 +20,17 @@ import {
   reorderNoteheadsAboveStems,
   buildElementCache,
   buildColorExtrasSelector,
+  cancelPendingNoteheadTimers,
   type ElementCache,
 } from "../lib/noteAnimation";
 
 const WIDTH = 980;
+
+/** Contiguous window of mounted sections, inclusive on both ends. */
+interface VisibleRange {
+  start: number;
+  end: number;
+}
 
 // Linear interpolation helper for smooth camera movement
 function lerp(a: number, b: number, t: number): number {
@@ -64,7 +71,10 @@ interface Props {
   transportPortalEl?: HTMLDivElement | null;
 }
 
-export default function SingleLineRenderer({
+// memo: App re-renders on every transient UI state change (zoom, region
+// editing, export progress) — the renderer only needs to re-render when its
+// actual props change. RegularRenderer is already memoized.
+export default memo(function SingleLineRenderer({
   xml,
   bgUrl,
   fps = 60,
@@ -97,8 +107,11 @@ export default function SingleLineRenderer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sectionContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const elementCacheRef = useRef<ElementCache>(new Map());
-  const [visibleSections, setVisibleSections] = useState<Set<number>>(new Set([0, 1]));
-  const visibleSectionsRef = useRef<Set<number>>(new Set([0, 1]));
+  // Visibility is always contiguous (+ symmetric buffer), so a plain range
+  // replaces the old Set<number> — getVisibleSectionRange runs once per
+  // animation frame and must not allocate.
+  const [visibleSections, setVisibleSections] = useState<VisibleRange>({ start: 0, end: 1 });
+  const visibleSectionsRef = useRef<VisibleRange>(visibleSections);
   const cameraXRef = useRef(0);
 
   // Event cache from Zustand store (useShallow prevents re-renders on unrelated state changes)
@@ -366,7 +379,7 @@ export default function SingleLineRenderer({
         elementCacheRef.current = buildElementCache(scoreRef.current);
         if (!isRenderMode && sections.length > 0) {
           const newVisible = getVisibleSectionRange();
-          if (!setsEqual(visibleSectionsRef.current, newVisible)) {
+          if (!rangesEqual(visibleSectionsRef.current, newVisible)) {
             visibleSectionsRef.current = newVisible;
             setVisibleSections(newVisible);
           }
@@ -485,43 +498,39 @@ export default function SingleLineRenderer({
 
   /* ---------------- section virtualization helpers ---------------- */
 
-  function setsEqual(a: Set<number>, b: Set<number>): boolean {
-    if (a.size !== b.size) return false;
-    for (const v of a) if (!b.has(v)) return false;
-    return true;
+  function rangesEqual(a: VisibleRange, b: VisibleRange): boolean {
+    return a.start === b.start && a.end === b.end;
   }
 
-  function getVisibleSectionRange(): Set<number> {
+  function getVisibleSectionRange(): VisibleRange {
     const sectionCount = sections.length;
-    if (sectionCount === 0) return new Set([0]);
+    if (sectionCount === 0) return { start: 0, end: 0 };
     // Short scores: mount everything, no virtualization
-    if (sectionCount <= 3) {
-      return new Set(Array.from({ length: sectionCount }, (_, i) => i));
-    }
+    if (sectionCount <= 3) return { start: 0, end: sectionCount - 1 };
 
     const viewportWidth = scoreRegion?.width ?? containerWidth;
     const viewLeft = cameraXRef.current;
     const viewRight = viewLeft + viewportWidth;
 
-    const visible = new Set<number>();
+    let first = -1;
+    let last = -1;
     for (let i = 0; i < sectionCount; i++) {
       const sectionLeft = sectionOffsets[i];
       const sectionRight = sectionLeft + (sectionWidths[i] || 0);
       if (sectionRight > viewLeft && sectionLeft < viewRight) {
-        visible.add(i);
+        if (first === -1) first = i;
+        last = i;
+      } else if (first !== -1) {
+        break; // visibility is contiguous — past the window
       }
     }
+    if (first === -1) return { start: 0, end: Math.min(1, sectionCount - 1) };
 
-    // Add ±1 section buffer on each side
-    const indices = [...visible];
-    if (indices.length > 0) {
-      const minIdx = Math.min(...indices);
-      const maxIdx = Math.max(...indices);
-      if (minIdx > 0) visible.add(minIdx - 1);
-      if (maxIdx < sectionCount - 1) visible.add(maxIdx + 1);
-    }
-
-    return visible;
+    // ±1 section buffer on each side
+    return {
+      start: Math.max(0, first - 1),
+      end: Math.min(sectionCount - 1, last + 1),
+    };
   }
 
   /* ---------------- camera (horizontal) ---------------- */
@@ -547,7 +556,7 @@ export default function SingleLineRenderer({
     // Update visible sections (only when virtualization is active)
     if (isVirtualizedRef.current && sections.length > 0) {
       const newVisible = getVisibleSectionRange();
-      if (!setsEqual(visibleSectionsRef.current, newVisible)) {
+      if (!rangesEqual(visibleSectionsRef.current, newVisible)) {
         visibleSectionsRef.current = newVisible;
         setVisibleSections(newVisible);
       }
@@ -720,16 +729,27 @@ export default function SingleLineRenderer({
     const viewportWidth = scoreRegion?.width ?? containerWidth;
     const targetX = newCameraX + viewportWidth / 2;
 
-    // Find closest event by X position
-    let closestIdx = 0;
-    let closestDist = Math.abs(interpolatedEvents[0].x - targetX);
-    for (let i = 1; i < interpolatedEvents.length; i++) {
-      const dist = Math.abs(interpolatedEvents[i].x - targetX);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIdx = i;
+    // Find closest event by X position. interpolatedEvents is beat-sorted and
+    // extraction enforces non-decreasing x, so binary search applies — this
+    // runs on every pointermove during a scrollbar drag.
+    let lo = 0;
+    let hi = interpolatedEvents.length - 1;
+    let firstAtOrAfter = interpolatedEvents.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (interpolatedEvents[mid].x >= targetX) {
+        firstAtOrAfter = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
       }
     }
+    const before = Math.max(0, firstAtOrAfter - 1);
+    const closestIdx =
+      Math.abs(interpolatedEvents[before].x - targetX) <=
+      Math.abs(interpolatedEvents[firstAtOrAfter].x - targetX)
+        ? before
+        : firstAtOrAfter;
 
     const event = interpolatedEvents[closestIdx];
 
@@ -814,6 +834,9 @@ export default function SingleLineRenderer({
   useEffect(() => {
     return () => {
       stop();
+      // Pending notehead exit timers must not fire after unmount (they'd
+      // touch detached DOM and pin it until they fire).
+      cancelPendingNoteheadTimers();
       destroyAnimationController();
     };
   }, []);
@@ -1220,14 +1243,19 @@ export default function SingleLineRenderer({
                       {sections.map((svg, i) => {
                         // Measuring phase: mount all sections for DOM measurement.
                         // Virtualized phase: only mount visible sections.
-                        const isMounted = !isVirtualized || visibleSections.has(i);
+                        const isMounted =
+                          !isVirtualized ||
+                          (i >= visibleSections.start && i <= visibleSections.end);
 
                         if (!isMounted) {
-                          // Placeholder: maintain layout width, clear ref
-                          sectionContainerRefs.current[i] = null;
+                          // Placeholder: maintain layout width. Distinct key
+                          // from the mounted section forces React to swap the
+                          // DOM node (dropping the SVG subtree) instead of
+                          // reconciling in place; the mounted div's ref
+                          // callback then nulls sectionContainerRefs[i].
                           return (
                             <div
-                              key={i}
+                              key={`ph-${i}`}
                               style={{
                                 flexShrink: 0,
                                 width: sectionWidths[i],
@@ -1239,7 +1267,7 @@ export default function SingleLineRenderer({
 
                         return (
                           <div
-                            key={i}
+                            key={`section-${i}`}
                             ref={(el) => { sectionContainerRefs.current[i] = el; }}
                             // .section-continuation hides re-stated leading
                             // clef/key/time signatures — only the select()-
@@ -1389,4 +1417,4 @@ export default function SingleLineRenderer({
       )}
     </div>
   );
-}
+});
