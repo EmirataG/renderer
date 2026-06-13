@@ -409,7 +409,9 @@ export default memo(function RegularRenderer({
       // not write events or the visible window for a superseded effect run.
       cancelled = true;
     };
-  }, [svgPages, toolkit, pageOffsets, setEventsInStore, containerWidth]);
+    // isPlaying is read but deliberately NOT a dependency: re-running this
+    // effect on play/pause would reset the camera to 0 mid-session.
+  }, [svgPages, toolkit, pageOffsets, setEventsInStore, containerWidth, renderMode]);
 
   // Rebuild the element cache when the page window changes (pages mount and
   // unmount). Without this the cache pins the detached SVG subtrees of

@@ -430,7 +430,9 @@ export default memo(function SingleLineRenderer({
       // not write events or the visible window for a superseded effect run.
       cancelled = true;
     };
-  }, [sections, toolkit, sectionOffsets, setEventsInStore, containerWidth]);
+    // isPlaying is read but deliberately NOT a dependency: re-running this
+    // effect on play/pause would reset the camera to 0 mid-session.
+  }, [sections, toolkit, sectionOffsets, setEventsInStore, containerWidth, isRenderMode]);
 
   // Rebuild the element cache when the section window changes (sections
   // mount/unmount), so the cache never pins detached subtrees and remounted

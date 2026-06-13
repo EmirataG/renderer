@@ -634,9 +634,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                 </div>
               </section>
 
-              {/* Hidden audio element for duration detection (used by export) */}
+              {/* Hidden audio element for duration detection (used by export).
+                  preload="metadata": only the duration is needed here — the
+                  renderer creates its own playback element, so without this
+                  the same audio gets fetched/buffered twice. */}
               {audioFile && (
-                <audio ref={audioRef} src={audioFile.url} className="hidden" />
+                <audio ref={audioRef} src={audioFile.url} preload="metadata" className="hidden" />
               )}
 
               {/* PLAYBACK SECTION */}
