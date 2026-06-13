@@ -854,8 +854,6 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     bottomBorderImg = await loadSvgImg(generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'bottom'));
   }
 
-  // Pre-rasterize all SVG pages into a cache. During the frame loop,
-  // only pages with active notehead animations are re-rasterized.
   // Horizontal raster overscan (CSS px) for seamless single-line sections:
   // a tie/slur that crosses a section boundary lives in the section where it
   // starts and extends past that section's viewBox. Padding each raster (and
@@ -865,15 +863,21 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const sectionOverscan =
     isSingleLine && singleLineSeamless && svgPages.length > 1 ? SECTION_RASTER_OVERSCAN : 0;
 
+  // Lazily rasterized page/section images. A page is rasterized the first
+  // time it becomes visible in the frame loop (and re-rasterized while its
+  // noteheads animate), and RELEASED once it falls fully behind the camera —
+  // the export camera only moves forward, and the lazy path covers any
+  // unexpected revisit. This bounds raster memory to the visible window;
+  // the previous rasterize-everything-up-front pass held every page at
+  // output resolution for the entire export (GBs on long scores).
   const pageCache: (CanvasImageSource | null)[] = [];
-  for (let p = 0; p < pageContainers.length; p++) {
-    const w = isSingleLine ? sectionWidths[p] : regionWidth;
-    pageCache[p] = await svgPageToImage(
-      pageContainers[p], settings.scoreColor, w, scaleFactor,
-      isSingleLine && p > 0 && !singleLineSeamless,
-      isSingleLine ? sectionOverscan : 0,
-    );
-  }
+  const releasePage = (p: number) => {
+    const cached = pageCache[p];
+    if (cached) {
+      if ('close' in cached) cached.close();
+      pageCache[p] = null;
+    }
+  };
 
   // Start audio decoding in parallel with video frame rendering.
   // AudioContext.decodeAudioData runs on a separate browser thread.
@@ -931,8 +935,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     ctx.rect(0, 0, regionWidth, regionHeight);
     ctx.clip();
 
-    // Draw each page/section at its offset, shifted by camera.
-    // Only re-rasterize pages with active notehead animations; reuse cache otherwise.
+    // Draw each page/section at its offset, shifted by camera. Rasterize
+    // lazily on first visibility, re-rasterize while animating, release once
+    // fully behind the camera.
     if (isSingleLine) {
       const cameraX = animState.cameraX;
       for (let p = 0; p < pageContainers.length; p++) {
@@ -940,28 +945,31 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         const sectionW = sectionWidths[p];
         const sectionH = pageHeights[p];
 
-        if (sectionX + sectionW < -sectionOverscan || sectionX > regionWidth + sectionOverscan) continue;
+        if (sectionX + sectionW < -sectionOverscan) {
+          // Fully behind the camera — won't be needed again
+          releasePage(p);
+          continue;
+        }
+        if (sectionX > regionWidth + sectionOverscan) continue; // ahead, not yet visible
 
-        if (dirtyPages.has(p)) {
+        if (!pageCache[p] || dirtyPages.has(p)) {
           pageCache[p] = await svgPageToImage(
             pageContainers[p], settings.scoreColor, sectionW, scaleFactor,
             p > 0 && !singleLineSeamless,
             sectionOverscan,
           );
         }
-        if (pageCache[p]) {
-          // Vertically center the section within the region. The raster is
-          // overscanned horizontally — draw it shifted left by the overscan
-          // so the section content lands exactly at sectionX.
-          const yOff = (regionHeight - sectionH) / 2;
-          ctx.drawImage(
-            pageCache[p]!,
-            sectionX - sectionOverscan,
-            yOff,
-            sectionW + 2 * sectionOverscan,
-            sectionH,
-          );
-        }
+        // Vertically center the section within the region. The raster is
+        // overscanned horizontally — draw it shifted left by the overscan
+        // so the section content lands exactly at sectionX.
+        const yOff = (regionHeight - sectionH) / 2;
+        ctx.drawImage(
+          pageCache[p]!,
+          sectionX - sectionOverscan,
+          yOff,
+          sectionW + 2 * sectionOverscan,
+          sectionH,
+        );
       }
     } else {
       const cameraY = animState.cameraY;
@@ -969,14 +977,17 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         const pageY = pageOffsets[p] - cameraY;
         const pageH = pageHeights[p];
 
-        if (pageY + pageH < 0 || pageY > regionHeight) continue;
+        if (pageY + pageH < 0) {
+          // Fully behind the camera — won't be needed again
+          releasePage(p);
+          continue;
+        }
+        if (pageY > regionHeight) continue; // ahead, not yet visible
 
-        if (dirtyPages.has(p)) {
+        if (!pageCache[p] || dirtyPages.has(p)) {
           pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
         }
-        if (pageCache[p]) {
-          ctx.drawImage(pageCache[p]!, 0, pageY, regionWidth, pageH);
-        }
+        ctx.drawImage(pageCache[p]!, 0, pageY, regionWidth, pageH);
       }
     }
 
