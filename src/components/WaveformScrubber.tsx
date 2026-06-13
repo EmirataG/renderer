@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 
 interface WaveformScrubberProps {
@@ -10,7 +10,14 @@ interface WaveformScrubberProps {
   height?: number;
 }
 
-export function WaveformScrubber({
+/**
+ * Waveform with note-onset tick marks.
+ *
+ * Memoized, and the ticks are drawn on a single canvas: the previous
+ * implementation rendered one absolutely-positioned <div> per event, which
+ * meant thousands of DOM nodes diffed on every parent render for long scores.
+ */
+export const WaveformScrubber = memo(function WaveformScrubber({
   audioElement,
   audioUrl,
   duration,
@@ -19,6 +26,7 @@ export function WaveformScrubber({
   height = 80,
 }: WaveformScrubberProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const onSeekRef = useRef(onSeek);
   onSeekRef.current = onSeek;
@@ -56,42 +64,56 @@ export function WaveformScrubber({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioUrl, audioElement, height]);
 
+  // Draw note-onset tick marks on the overlay canvas. Redraws only when the
+  // events/duration change or the container resizes — never per frame.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const draw = () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight || height;
+      if (w === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (duration <= 0) return;
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
+      const tickW = Math.max(1, Math.round(dpr));
+      for (const evt of events) {
+        const pct = evt.computedTimestamp / duration;
+        if (pct < 0 || pct > 1) continue;
+        ctx.fillRect(Math.round(pct * canvas.width), 0, tickW, canvas.height);
+      }
+    };
+
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [events, duration, height]);
+
   return (
     <div style={{ position: 'relative', width: '100%' }}>
       {/* Wavesurfer renders here */}
       <div ref={containerRef} style={{ width: '100%' }} />
 
       {/* Note entry tick marks overlay */}
-      {duration > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: 'none',
-          }}
-        >
-          {events.map((evt, i) => {
-            const pct = (evt.computedTimestamp / duration) * 100;
-            if (pct < 0 || pct > 100) return null;
-            return (
-              <div
-                key={i}
-                style={{
-                  position: 'absolute',
-                  left: `${pct}%`,
-                  top: 0,
-                  width: 1,
-                  height: '100%',
-                  backgroundColor: 'rgba(34, 197, 94, 0.3)',
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          pointerEvents: 'none',
+        }}
+      />
     </div>
   );
-}
+});
