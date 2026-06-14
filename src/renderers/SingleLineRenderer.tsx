@@ -470,6 +470,9 @@ export default memo(function SingleLineRenderer({
     .preview-score svg [fill="none"] {
       fill: none !important;
     }
+    .preview-score svg path[stroke-width] {
+      stroke: ${scoreColor};
+    }
     .preview-score g.staff > path {
       fill: none !important;
       stroke: ${scoreColor} !important;

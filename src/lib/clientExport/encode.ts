@@ -16,12 +16,20 @@ export interface EncoderOptions {
 export class VideoExporter {
   private static readonly MAX_QUEUE = 5;
   private muxer: Muxer<ArrayBufferTarget>;
-  private videoEncoder: VideoEncoder;
+  private videoEncoder!: VideoEncoder;
   private frameIndex = 0;
   private fps: number;
+  private options: EncoderOptions;
+  // WebCodecs error callbacks fire asynchronously; a `throw` inside them is
+  // swallowed by the browser rather than rejecting our awaited calls. Capture
+  // the first error here and re-surface it from addFrame/finalize so a failed
+  // encode produces a real message instead of a cryptic muxer crash (the muxer
+  // throws "reading 'colorSpace' of null" when it's finalized with no chunks).
+  private encoderError: Error | null = null;
 
   constructor(options: EncoderOptions) {
     this.fps = options.fps;
+    this.options = options;
     this.muxer = new Muxer({
       target: new ArrayBufferTarget(),
       video: {
@@ -38,31 +46,69 @@ export class VideoExporter {
       fastStart: 'in-memory',
       firstTimestampBehavior: 'offset',
     });
+  }
 
+  /**
+   * Configure the video encoder, selecting an H.264 config the current
+   * browser/hardware actually supports. Must be awaited before addFrame.
+   *
+   * Without this, `configure()` with an unsupported codec/level (e.g. High
+   * 5.1 on a machine whose hardware encoder rejects it) fails via the async
+   * error callback — every frame then silently drops and the export dies in
+   * the muxer. We probe a fallback chain with isConfigSupported first.
+   */
+  async init(): Promise<void> {
     this.videoEncoder = new VideoEncoder({
       output: (chunk, meta) => this.muxer.addVideoChunk(chunk, meta),
-      error: (e) => { throw new Error(`VideoEncoder error: ${e.message}`); },
+      error: (e) => {
+        this.encoderError ??= new Error(`VideoEncoder error: ${e.message}`);
+      },
     });
 
+    const { width, height, fps } = this.options;
     // Scale bitrate with resolution: 50Mbps for 4K, 20Mbps for 1080p
-    const pixels = options.width * options.height;
-    const bitrate = pixels > 1920 * 1080 ? 50_000_000 : 20_000_000;
-
-    this.videoEncoder.configure({
-      codec: 'avc1.640033', // H.264 High Profile Level 5.1 (supports 4K@30fps)
-      width: options.width,
-      height: options.height,
+    const bitrate = width * height > 1920 * 1080 ? 50_000_000 : 20_000_000;
+    const base: VideoEncoderConfig = {
+      codec: 'avc1.640033', // H.264 High Profile Level 5.1 (4K-capable)
+      width,
+      height,
       bitrate,
-      framerate: options.fps,
-      // Explicit hardware preference — without this, Chrome falls back to
-      // a software encoder on some configurations. 'prefer-hardware' allows
-      // software if hardware is unavailable, so it's safe.
-      hardwareAcceleration: 'prefer-hardware',
-      // Prioritize throughput over latency-vs-quality balance at the same
-      // bitrate. We're encoding offline; we don't care about decode latency
-      // — we want frames to clear the encoder queue as fast as possible.
-      latencyMode: 'realtime',
-    });
+      framerate: fps,
+    };
+
+    // Ordered from most-preferred to most-compatible. Some hardware encoders
+    // reject High@5.1, 'realtime' latency, or hardware at 4K — fall through to
+    // Main/Baseline and software as needed.
+    const candidates: VideoEncoderConfig[] = [
+      { ...base, hardwareAcceleration: 'prefer-hardware', latencyMode: 'realtime' },
+      { ...base, hardwareAcceleration: 'prefer-hardware' },
+      { ...base },
+      { ...base, codec: 'avc1.4D0033' }, // Main Profile Level 5.1
+      { ...base, codec: 'avc1.42E033' }, // Constrained Baseline Level 5.1
+      { ...base, hardwareAcceleration: 'prefer-software' },
+    ];
+
+    let chosen: VideoEncoderConfig | null = null;
+    for (const candidate of candidates) {
+      try {
+        const support = await VideoEncoder.isConfigSupported(candidate);
+        if (support.supported) {
+          chosen = (support.config as VideoEncoderConfig) ?? candidate;
+          break;
+        }
+      } catch {
+        // isConfigSupported can throw on malformed configs — skip this one.
+      }
+    }
+
+    if (!chosen) {
+      throw new Error(
+        `No supported H.264 encoder configuration for ${width}x${height}. ` +
+        'Your browser may not support WebCodecs H.264 encoding at this resolution.',
+      );
+    }
+
+    this.videoEncoder.configure(chosen);
   }
 
   /**
@@ -70,6 +116,8 @@ export class VideoExporter {
    * Respects encoder backpressure — waits if the queue is too deep.
    */
   async addFrame(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void> {
+    if (this.encoderError) throw this.encoderError;
+
     // Backpressure: wait for encoder to drain before queuing more frames.
     // Prevents unbounded memory growth, especially at 4K.
     while (this.videoEncoder.encodeQueueSize > VideoExporter.MAX_QUEUE) {
@@ -90,9 +138,10 @@ export class VideoExporter {
    * Splits into 1-second chunks for the AudioEncoder.
    */
   async addAudio(audioBuffer: AudioBuffer): Promise<void> {
+    let audioError: Error | null = null;
     const audioEncoder = new AudioEncoder({
       output: (chunk, meta) => this.muxer.addAudioChunk(chunk, meta),
-      error: (e) => { throw new Error(`AudioEncoder error: ${e.message}`); },
+      error: (e) => { audioError ??= new Error(`AudioEncoder error: ${e.message}`); },
     });
 
     audioEncoder.configure({
@@ -132,14 +181,30 @@ export class VideoExporter {
 
     await audioEncoder.flush();
     audioEncoder.close();
+    if (audioError) throw audioError;
   }
 
   /**
    * Flush encoders, finalize the MP4, and return as ArrayBuffer.
    */
   async finalize(): Promise<ArrayBuffer> {
-    await this.videoEncoder.flush();
+    // A failed encoder rejects flush() with a generic message; prefer the
+    // specific error captured from the error callback.
+    try {
+      await this.videoEncoder.flush();
+    } catch (e) {
+      throw this.encoderError ?? e;
+    }
     this.videoEncoder.close();
+
+    // Surface a real cause before the muxer crashes on an empty video track
+    // (mp4-muxer reads decoderConfig.colorSpace, which is null when no chunk
+    // was ever written).
+    if (this.encoderError) throw this.encoderError;
+    if (this.frameIndex === 0) {
+      throw new Error('Export produced no video frames — nothing to encode.');
+    }
+
     this.muxer.finalize();
     return (this.muxer.target as ArrayBufferTarget).buffer;
   }

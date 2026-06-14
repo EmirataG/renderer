@@ -69,6 +69,14 @@ const EDITOR_WIDTH = 980;
 // beyond GPU texture limits — Chrome's practical ceiling is ~16384px.
 const MAX_RASTER_DIM = 16000;
 
+// Maximum pixel AREA for a single SVG → image rasterization. Above this,
+// Chrome silently downsamples the SVG raster and draws it upscaled, which
+// reads as blurry score detail. Single-line sections stay under this because
+// they're split into short strips; tall page-mode pages do not, so we tile
+// them into horizontal bands of at most this area. ~10MP leaves comfortable
+// margin below the ~14MP single-line sections already render sharply.
+const MAX_RASTER_AREA = 10_000_000;
+
 // ---------------------------------------------------------------------------
 // SVG helpers (ported from export-service/src/standalone/render.ts)
 // ---------------------------------------------------------------------------
@@ -138,6 +146,9 @@ function buildScoreColorCss(scoreColor: string, hideLabels: boolean): string {
     .client-export-score svg [fill="none"] {
       fill: none !important;
     }
+    .client-export-score svg path[stroke-width] {
+      stroke: ${scoreColor};
+    }
     .client-export-score g.staff > path {
       fill: none !important;
       stroke: ${scoreColor} !important;
@@ -185,6 +196,7 @@ function inlineScoreColorInSvg(
     rect, polygon, ellipse { fill: ${scoreColor}; }
     text { fill: ${scoreColor}; }
     [fill="none"] { fill: none !important; }
+    path[stroke-width] { stroke: ${scoreColor}; }
     g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
     ${hideLeadStaffSymbols ? 'g.clef, g.keySig, g.meterSig { display: none !important; }' : ''}
   </style>`;
@@ -217,6 +229,26 @@ function setDefaultFillOnUseElements(svgEl: Element, scoreColor: string): void {
   });
 }
 
+/**
+ * Set the score color as a `stroke` attribute on every stroke-drawn element
+ * (stems, barlines, ledger lines, ties/slurs, hairpins, ...). Verovio emits
+ * these as `<path>`/`<polyline>` with a `stroke-width` but NO `stroke` color,
+ * so they fall back to black. The live preview colors them via a stylesheet,
+ * but a CSS `stroke` rule inside a serialized SVG is not reliably honored by
+ * the browser's SVG-as-<img> rasterizer used for export — so we bake the
+ * color onto the elements directly. Elements that already carry a stroke
+ * (e.g. an animated highlight) are left untouched. Glyphs are fill-only (no
+ * `stroke-width`), so noteheads/clefs/rests are unaffected.
+ */
+function setDefaultStrokeOnStrokedElements(svgEl: Element, scoreColor: string): void {
+  svgEl.querySelectorAll('[stroke-width]').forEach((el) => {
+    const stroke = el.getAttribute('stroke');
+    if (!stroke || stroke === 'none') {
+      el.setAttribute('stroke', scoreColor);
+    }
+  });
+}
+
 /** Drawable source for canvas — either an Image or ImageBitmap. */
 type CanvasImageSource = HTMLImageElement | ImageBitmap;
 
@@ -237,12 +269,16 @@ async function svgPageToImage(
   rasterScale: number,
   hideLeadStaffSymbols = false,
   overscanCss = 0,
+  band?: { yCss: number; hCss: number },
 ): Promise<CanvasImageSource> {
   const svgEl = pageContainer.querySelector('svg');
   if (!svgEl) throw new Error('No SVG element found in page container');
 
   // Set default fill on use elements without an animated fill attribute
   setDefaultFillOnUseElements(svgEl, scoreColor);
+  // Color stroke-drawn elements (stems, barlines, ties, hairpins) — Verovio
+  // leaves these without a stroke color, so they'd otherwise raster as black.
+  setDefaultStrokeOnStrokedElements(svgEl, scoreColor);
 
   let svgString = new XMLSerializer().serializeToString(svgEl);
   svgString = inlineScoreColorInSvg(svgString, scoreColor, hideLeadStaffSymbols);
@@ -276,8 +312,20 @@ async function svgPageToImage(
   // space) is preserved — the vector content scales up to fill the
   // larger pixel grid, giving crisp output at 4K.
   const vbMatch = svgString.match(VIEWBOX_REGEX);
+  const vbX = vbMatch ? parseFloat(vbMatch[1]) : 0;
+  let vbY = vbMatch ? parseFloat(vbMatch[2]) : 0;
   const vbW = vbMatch ? parseFloat(vbMatch[3]) : width;
-  const vbH = vbMatch ? parseFloat(vbMatch[4]) : 1000;
+  let vbH = vbMatch ? parseFloat(vbMatch[4]) : 1000;
+  // Band rasterization: rewrite the viewBox to a horizontal slice of the page
+  // so this image only covers CSS y-range [yCss, yCss+hCss). Used to keep each
+  // decoded raster well under the area at which the browser silently
+  // downsamples large SVG <img> rasterizations (the cause of blurry page-mode
+  // export); the caller draws each band stacked at its offset.
+  if (band && vbMatch) {
+    vbY = vbY + band.yCss;
+    vbH = band.hCss;
+    svgString = svgString.replace(VIEWBOX_REGEX, `viewBox="${vbX} ${vbY} ${vbW} ${vbH}"`);
+  }
   const pixelW = Math.round(vbW * rasterScale);
   const pixelH = Math.round(vbH * rasterScale);
   if (pixelW > MAX_RASTER_DIM || pixelH > MAX_RASTER_DIM) {
@@ -819,6 +867,13 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   const fps = settings.fps;
   const totalFrames = Math.ceil(audioDuration * fps);
 
+  if (totalFrames <= 0) {
+    shadowHost.remove();
+    throw new Error(
+      'Export has no duration — set sync anchors and ensure the audio loaded before exporting.',
+    );
+  }
+
   const canvas = document.createElement('canvas');
   canvas.width = viewportWidth;
   canvas.height = viewportHeight;
@@ -829,6 +884,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     height: viewportHeight,
     fps,
   });
+  // Selects a supported H.264 config; throws a clear error if the browser
+  // can't encode at this resolution (rather than silently dropping frames).
+  await exporter.init();
 
   // Pre-load background image if present
   let bgImage: ImageBitmap | null = null;
@@ -870,13 +928,46 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // unexpected revisit. This bounds raster memory to the visible window;
   // the previous rasterize-everything-up-front pass held every page at
   // output resolution for the entire export (GBs on long scores).
-  const pageCache: (CanvasImageSource | null)[] = [];
+  // Each cache entry is one or more drawable pieces. Single-line sections are
+  // always a single piece; tall page-mode pages are tiled into horizontal
+  // bands (see MAX_RASTER_AREA) so no single decoded raster is large enough to
+  // be downsampled by the browser. `yCss`/`hCss` are the piece's CSS-space
+  // vertical offset/height within the page (0 / sectionH for single-line).
+  type RasterPiece = { img: CanvasImageSource; yCss: number; hCss: number };
+  const pageCache: (RasterPiece[] | null)[] = [];
   const releasePage = (p: number) => {
     const cached = pageCache[p];
     if (cached) {
-      if ('close' in cached) cached.close();
+      for (const piece of cached) {
+        if ('close' in piece.img) piece.img.close();
+      }
       pageCache[p] = null;
     }
+  };
+
+  // Rasterize a page-mode page into horizontal bands, each kept under
+  // MAX_RASTER_AREA so the browser never downsamples the SVG raster. A short
+  // page yields a single full-height band.
+  const rasterizePageBands = async (p: number): Promise<RasterPiece[]> => {
+    const pageH = pageHeights[p];
+    const pixelW = regionWidth * scaleFactor;
+    const maxBandHCss = Math.max(1, Math.floor(MAX_RASTER_AREA / pixelW) / scaleFactor);
+    if (pageH <= maxBandHCss) {
+      const img = await svgPageToImage(
+        pageContainers[p], settings.scoreColor, regionWidth, scaleFactor,
+      );
+      return [{ img, yCss: 0, hCss: pageH }];
+    }
+    const pieces: RasterPiece[] = [];
+    for (let y = 0; y < pageH; y += maxBandHCss) {
+      const hCss = Math.min(maxBandHCss, pageH - y);
+      const img = await svgPageToImage(
+        pageContainers[p], settings.scoreColor, regionWidth, scaleFactor,
+        false, 0, { yCss: y, hCss },
+      );
+      pieces.push({ img, yCss: y, hCss });
+    }
+    return pieces;
   };
 
   // Start audio decoding in parallel with video frame rendering.
@@ -953,18 +1044,19 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         if (sectionX > regionWidth + sectionOverscan) continue; // ahead, not yet visible
 
         if (!pageCache[p] || dirtyPages.has(p)) {
-          pageCache[p] = await svgPageToImage(
+          const img = await svgPageToImage(
             pageContainers[p], settings.scoreColor, sectionW, scaleFactor,
             p > 0 && !singleLineSeamless,
             sectionOverscan,
           );
+          pageCache[p] = [{ img, yCss: 0, hCss: sectionH }];
         }
         // Vertically center the section within the region. The raster is
         // overscanned horizontally — draw it shifted left by the overscan
         // so the section content lands exactly at sectionX.
         const yOff = (regionHeight - sectionH) / 2;
         ctx.drawImage(
-          pageCache[p]!,
+          pageCache[p]![0].img,
           sectionX - sectionOverscan,
           yOff,
           sectionW + 2 * sectionOverscan,
@@ -985,9 +1077,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         if (pageY > regionHeight) continue; // ahead, not yet visible
 
         if (!pageCache[p] || dirtyPages.has(p)) {
-          pageCache[p] = await svgPageToImage(pageContainers[p], settings.scoreColor, regionWidth, scaleFactor);
+          if (pageCache[p]) releasePage(p);
+          pageCache[p] = await rasterizePageBands(p);
         }
-        ctx.drawImage(pageCache[p]!, 0, pageY, regionWidth, pageH);
+        for (const piece of pageCache[p]!) {
+          ctx.drawImage(piece.img, 0, pageY + piece.yCss, regionWidth, piece.hCss);
+        }
       }
     }
 
@@ -1040,7 +1135,10 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // Close any ImageBitmap-backed page cache entries. HTMLImageElement
   // entries have no close() — they're GC'd with the shadowHost removal.
   for (const cached of pageCache) {
-    if (cached && 'close' in cached) cached.close();
+    if (!cached) continue;
+    for (const piece of cached) {
+      if ('close' in piece.img) piece.img.close();
+    }
   }
   shadowHost.remove();
 
