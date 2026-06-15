@@ -64,7 +64,7 @@ export default async function LoginPage() {
           {/* Legal */}
           <Link
             href="/terms"
-            className="mt-4 text-neutral-600 hover:text-neutral-400 transition-colors text-[10px] uppercase tracking-widest"
+            className="mt-4 text-neutral-400 hover:text-white transition-colors text-xs uppercase tracking-widest border-b border-neutral-600 hover:border-white pb-px"
           >
             Terms of Service
           </Link>
