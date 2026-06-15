@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 const SESSION_COOKIE_NAME = '__session';
 
 /** Routes that don't require authentication */
-const PUBLIC_ROUTES = ['/login'];
+const PUBLIC_ROUTES = ['/login', '/terms'];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -6,6 +6,7 @@ import { GoogleSignInButton } from "./client";
 import { SystemRequirementsButton } from "./system-requirements";
 import { ScrollArrow } from "./scroll-arrow";
 import Image from "next/image";
+import Link from "next/link";
 
 const SHOWCASE_VIDEOS = [
   { id: "aoACVvk15ko", title: "Manuscript Demo 1" },
@@ -59,6 +60,14 @@ export default async function LoginPage() {
 
           {/* System requirements link */}
           <SystemRequirementsButton />
+
+          {/* Legal */}
+          <Link
+            href="/terms"
+            className="mt-4 text-neutral-600 hover:text-neutral-400 transition-colors text-[10px] uppercase tracking-widest"
+          >
+            Terms of Service
+          </Link>
         </div>
 
         {/* Scroll arrow */}
