@@ -4,6 +4,8 @@ dist
 next-env.d.ts
 .env.local
 demo/
+verovio_examples/
+tmp/
 .DS_store
 .gstack/
 .harness/
