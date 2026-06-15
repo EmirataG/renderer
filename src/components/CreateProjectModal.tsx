@@ -194,7 +194,6 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
   if (!isOpen) return null;
 
   const selectedRatioLabel = ASPECT_RATIOS.find(r => Math.abs(r.value - aspectRatio) < 0.01)?.label;
-  const needsCrop = bgMode === 'image' && bgImageFile && !croppedFile;
 
   return (
     <>

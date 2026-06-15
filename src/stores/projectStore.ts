@@ -26,7 +26,7 @@ export interface ProjectSettings {
   smoothReveal: boolean;
 }
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
   viewMode: 'page',

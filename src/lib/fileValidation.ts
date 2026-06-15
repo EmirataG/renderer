@@ -1,7 +1,7 @@
 // File type definitions
 export type FileCategory = "musicxml" | "audio" | "image";
 
-export interface ValidationResult {
+interface ValidationResult {
   valid: boolean;
   error?: string;
   category?: FileCategory;
@@ -51,7 +51,7 @@ function getExtension(filename: string): string {
 /**
  * Detect file category by extension first, then MIME type as fallback
  */
-export function detectFileCategory(file: File): FileCategory | null {
+function detectFileCategory(file: File): FileCategory | null {
   const extension = getExtension(file.name);
 
   // Check extension first (more reliable for MusicXML)
@@ -73,7 +73,7 @@ export function detectFileCategory(file: File): FileCategory | null {
 /**
  * Validate file size against category limits
  */
-export function validateFileSize(
+function validateFileSize(
   file: File,
   category: FileCategory
 ): ValidationResult {
@@ -91,7 +91,7 @@ export function validateFileSize(
 /**
  * Validate that file extension is allowed
  */
-export function validateFileExtension(file: File): ValidationResult {
+function validateFileExtension(file: File): ValidationResult {
   const category = detectFileCategory(file);
 
   if (!category) {
@@ -129,7 +129,7 @@ export function validateFile(file: File): ValidationResult {
 /**
  * Format bytes into human-readable size string
  */
-export function formatFileSize(bytes: number): string {
+function formatFileSize(bytes: number): string {
   if (bytes === 0) return "0 B";
 
   const units = ["B", "KB", "MB", "GB"];
@@ -141,18 +141,4 @@ export function formatFileSize(bytes: number): string {
   const decimals = i >= 2 ? 1 : 0;
 
   return `${size.toFixed(decimals)} ${units[i]}`;
-}
-
-/**
- * Get the size limit for a file category (for display purposes)
- */
-export function getSizeLimit(category: FileCategory): number {
-  return SIZE_LIMITS[category];
-}
-
-/**
- * Get human-readable size limit for a category
- */
-export function getFormattedSizeLimit(category: FileCategory): string {
-  return formatFileSize(SIZE_LIMITS[category]);
 }

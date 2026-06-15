@@ -1,4 +1,4 @@
-export interface NoteheadAnimationOptions {
+interface NoteheadAnimationOptions {
   scale?: number;
   entryMs?: number;
   holdMs?: number;

@@ -27,7 +27,7 @@
  * therefore NOT establish paint containment (no content-visibility).
  */
 
-export interface SplitSection {
+interface SplitSection {
   svg: string;
   /** Section width in outer (CSS px) units. */
   width: number;

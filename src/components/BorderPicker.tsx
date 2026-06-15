@@ -1,4 +1,3 @@
-import React from 'react';
 import { BorderStyle, BORDER_OPTIONS, getBorderComponent } from '../borders';
 
 interface BorderPickerProps {

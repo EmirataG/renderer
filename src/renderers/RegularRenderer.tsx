@@ -158,7 +158,7 @@ export default memo(function RegularRenderer({
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
   const scoreWidth = scoreRegion?.width ?? containerWidth;
-  const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit, isLoading, error } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
+  const { svgPages, pageHeights, pageOffsets, totalHeight, pageCount, toolkit } = useVerovio(xml, scoreWidth, verovioScale, musicFont);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(propAudioDuration ?? 0);
   // `audioRef` is a ref (mutating it doesn't re-render). canPlay depends on

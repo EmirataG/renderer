@@ -17,12 +17,12 @@ export interface Toast {
   duration?: number;
 }
 
-export interface ToastShowOptions {
+interface ToastShowOptions {
   action?: ToastAction;
   duration?: number;
 }
 
-export interface ToastContextValue {
+interface ToastContextValue {
   toasts: Toast[];
   show: (message: string, type: ToastType, options?: ToastShowOptions) => void;
   dismiss: (id: string) => void;

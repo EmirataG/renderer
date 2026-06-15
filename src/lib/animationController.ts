@@ -1,5 +1,3 @@
-import type { InterpolatedEvent, InterpolatableEvent } from './interpolation';
-
 /**
  * Minimal interface for events the animation controller needs.
  * Only requires svgIds and computedTimestamp for highlighting.
@@ -12,7 +10,7 @@ interface AnimatableEvent {
 /**
  * Configuration for initializing the animation controller.
  */
-export interface AnimationControllerConfig {
+interface AnimationControllerConfig {
   /** Audio element for duration information (optional in render mode) */
   audioElement: HTMLAudioElement | null;
   /** Function to get current interpolated events */
@@ -24,7 +22,7 @@ export interface AnimationControllerConfig {
 /**
  * Animation controller interface for Puppeteer frame control.
  */
-export interface AnimationController {
+interface AnimationController {
   /** Set animation to specific frame (frame / fps = timestamp) */
   setFrame: (frameNumber: number, fps?: number) => void;
   /** Set animation to specific timestamp in seconds */

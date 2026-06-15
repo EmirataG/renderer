@@ -10,7 +10,7 @@ const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)px"/;
 const VIEWBOX_REGEX = /viewBox="0 0 ([\d.]+) ([\d.]+)"/;
 const MEASURE_REGEX = /<measure /g;
 
-export interface UseSingleLineVerovioResult {
+interface UseSingleLineVerovioResult {
   sections: string[];           // Array of SVG strings, one per section
   sectionWidths: number[];      // Width of each section in pixels
   sectionHeights: number[];     // Height of each section in pixels

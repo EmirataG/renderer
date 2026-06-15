@@ -346,7 +346,7 @@ async function svgPageToImage(
 // Public API
 // ---------------------------------------------------------------------------
 
-export interface ClientExportParams {
+interface ClientExportParams {
   musicXml: string;
   syncAnchors: Map<string, number>;
   settings: ExportSettings;

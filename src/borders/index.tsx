@@ -2,14 +2,14 @@ import React from 'react';
 
 export type BorderStyle = 'none' | 'line' | 'double-line' | 'ornate-1' | 'ornate-2' | 'flourish';
 
-export interface BorderProps {
+interface BorderProps {
   width: number;
   color: string;
   position: 'top' | 'bottom';
 }
 
 // Simple line border
-export const LineBorder: React.FC<BorderProps> = ({ width, color, position }) => (
+const LineBorder: React.FC<BorderProps> = ({ width, color, position }) => (
   <svg
     width={width}
     height="8"
@@ -28,7 +28,7 @@ export const LineBorder: React.FC<BorderProps> = ({ width, color, position }) =>
 );
 
 // Double line border
-export const DoubleLineBorder: React.FC<BorderProps> = ({ width, color, position }) => (
+const DoubleLineBorder: React.FC<BorderProps> = ({ width, color, position }) => (
   <svg
     width={width}
     height="12"
@@ -55,7 +55,7 @@ export const DoubleLineBorder: React.FC<BorderProps> = ({ width, color, position
 );
 
 // Ornate border style 1 - curved brackets with center ornament + baseline
-export const OrnateBorder1: React.FC<BorderProps> = ({ width, color, position }) => {
+const OrnateBorder1: React.FC<BorderProps> = ({ width, color, position }) => {
   const height = 28;
   const mid = width / 2;
   const flip = position === 'bottom' ? -1 : 1;
@@ -120,7 +120,7 @@ export const OrnateBorder1: React.FC<BorderProps> = ({ width, color, position })
 };
 
 // Ornate border style 2 - flowing waves with baseline
-export const OrnateBorder2: React.FC<BorderProps> = ({ width, color, position }) => {
+const OrnateBorder2: React.FC<BorderProps> = ({ width, color, position }) => {
   const height = 24;
   const flip = position === 'bottom' ? -1 : 1;
   // yBase is where the baseline sits (touching the score)
@@ -175,7 +175,7 @@ export const OrnateBorder2: React.FC<BorderProps> = ({ width, color, position })
 };
 
 // Flourish border - elegant scrollwork with baseline
-export const FlourishBorder: React.FC<BorderProps> = ({ width, color, position }) => {
+const FlourishBorder: React.FC<BorderProps> = ({ width, color, position }) => {
   const height = 36;
   const mid = width / 2;
   const flip = position === 'bottom' ? -1 : 1;

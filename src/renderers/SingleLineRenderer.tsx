@@ -137,7 +137,7 @@ export default memo(function SingleLineRenderer({
 
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
-  const { sections, sectionWidths, sectionHeights, sectionOffsets, totalWidth, maxHeight, seamless, toolkit, isLoading, error } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
+  const { sections, sectionWidths, sectionOffsets, totalWidth, maxHeight, seamless, toolkit } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
 
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);

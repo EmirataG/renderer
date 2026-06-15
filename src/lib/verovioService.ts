@@ -19,5 +19,3 @@ export async function createToolkit(): Promise<VerovioToolkit> {
   const mod = await ensureModule();
   return new VerovioToolkit(mod);
 }
-
-export const isReady: Promise<void> = ensureModule().then(() => {});

@@ -7,7 +7,7 @@
 
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
-export interface EncoderOptions {
+interface EncoderOptions {
   width: number;
   height: number;
   fps: number;

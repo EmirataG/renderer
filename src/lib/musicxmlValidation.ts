@@ -1,6 +1,6 @@
 import { createToolkit } from './verovioService';
 
-export interface MusicXMLValidationResult {
+interface MusicXMLValidationResult {
   valid: boolean;
   error?: string;
   measureCount?: number;

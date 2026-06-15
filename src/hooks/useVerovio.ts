@@ -7,7 +7,7 @@ import { reorderNoteheadsInSvgString } from '../lib/noteAnimation';
 const HEIGHT_REGEX = /height="(\d+(?:\.\d+)?)px"/;
 const VIEWBOX_HEIGHT_REGEX = /viewBox="0 0 [\d.]+ ([\d.]+)"/;
 
-export interface UseVerovioResult {
+interface UseVerovioResult {
   svgPages: string[];
   pageHeights: number[];
   pageOffsets: number[];

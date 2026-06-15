@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import RegularRenderer from "./renderers/RegularRenderer";
 import SingleLineRenderer from "./renderers/SingleLineRenderer";
 import { SyncEditor } from "./components/SyncEditor";
@@ -15,7 +15,6 @@ import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
 import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
 import { clientExport, type ExportSettings } from "./lib/clientExport";
-import { auth } from "./lib/firebase-client";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { validateMxl, isMxlFile } from "./lib/musicxmlValidation";
 
@@ -68,7 +67,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   } | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgFileName, setBgFileName] = useState<string | null>(null);
-  const [bgFile, setBgFile] = useState<File | null>(null);
   const [projectBgColor, setProjectBgColor] = useState<string | null>(null);
   const [projectAspectRatio, setProjectAspectRatio] = useState<number | null>(null);
 
@@ -413,7 +411,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     }
     setBgUrl(imageUrl || null);
     setBgFileName(fileName || null);
-    setBgFile(file || null);
 
     // Reset score region when background changes — the old region dimensions
     // are sized for the previous image and become invalid. Setting to null

@@ -2,7 +2,7 @@
  * Minimal interface for events that can be interpolated.
  * Both TimemapEvent and CachedEvent satisfy this interface.
  */
-export interface InterpolatableEvent {
+interface InterpolatableEvent {
   id: string;
   beatOnset: number;
   beatDuration: number;
@@ -14,7 +14,7 @@ export interface InterpolatableEvent {
   tiedNoteDurationBeats?: number;
 }
 
-export interface InterpolatedEvent extends InterpolatableEvent {
+interface InterpolatedEvent extends InterpolatableEvent {
   computedTimestamp: number;
   isAnchor: boolean;
 }
