@@ -6,6 +6,6 @@ next-env.d.ts
 demo/
 verovio_examples/
 tmp/
-.DS_store
+.DS_Store
 .gstack/
 .harness/
