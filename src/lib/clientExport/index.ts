@@ -192,15 +192,23 @@ function inlineScoreColorInSvg(
   // score render their own leading clef/key/time signature — hide them for
   // visual parity with the preview's .section-continuation CSS (which can't
   // reach this standalone serialized SVG).
+  // `svg { color }` is the key rule for stems/barlines/ties/hairpins: Verovio
+  // emits an ID-scoped `<style>` setting `path,polygon,... { stroke: currentColor }`,
+  // and its inner `definition-scale` <svg> carries a hard-coded `color="black"`
+  // presentation attribute. Setting color only on the root svg loses to that
+  // inner attribute via inheritance; a `svg { color }` CSS rule outranks the
+  // presentation attribute on every <svg> (including the inner one), so
+  // currentColor — and thus every stroked element — resolves to the score
+  // color instead of black. This is what the live preview already does.
   const style = `<style>
+    svg { color: ${scoreColor}; }
     rect, polygon, ellipse { fill: ${scoreColor}; }
     text { fill: ${scoreColor}; }
     [fill="none"] { fill: none !important; }
-    path[stroke-width] { stroke: ${scoreColor}; }
     g.staff > path { fill: none !important; stroke: ${scoreColor} !important; shape-rendering: crispEdges !important; }
     ${hideLeadStaffSymbols ? 'g.clef, g.keySig, g.meterSig { display: none !important; }' : ''}
   </style>`;
-  // Set fill on root SVG for inheritance to all descendant paths
+  // Set fill on root SVG for inheritance to all descendant paths.
   return svgString.replace(/<svg([^>]*)>/, `<svg$1 fill="${scoreColor}">${style}`);
 }
 
@@ -225,26 +233,6 @@ function setDefaultFillOnUseElements(svgEl: Element, scoreColor: string): void {
   svgEl.querySelectorAll('use').forEach((el) => {
     if (!el.getAttribute('fill')) {
       el.setAttribute('fill', scoreColor);
-    }
-  });
-}
-
-/**
- * Set the score color as a `stroke` attribute on every stroke-drawn element
- * (stems, barlines, ledger lines, ties/slurs, hairpins, ...). Verovio emits
- * these as `<path>`/`<polyline>` with a `stroke-width` but NO `stroke` color,
- * so they fall back to black. The live preview colors them via a stylesheet,
- * but a CSS `stroke` rule inside a serialized SVG is not reliably honored by
- * the browser's SVG-as-<img> rasterizer used for export — so we bake the
- * color onto the elements directly. Elements that already carry a stroke
- * (e.g. an animated highlight) are left untouched. Glyphs are fill-only (no
- * `stroke-width`), so noteheads/clefs/rests are unaffected.
- */
-function setDefaultStrokeOnStrokedElements(svgEl: Element, scoreColor: string): void {
-  svgEl.querySelectorAll('[stroke-width]').forEach((el) => {
-    const stroke = el.getAttribute('stroke');
-    if (!stroke || stroke === 'none') {
-      el.setAttribute('stroke', scoreColor);
     }
   });
 }
@@ -276,9 +264,6 @@ async function svgPageToImage(
 
   // Set default fill on use elements without an animated fill attribute
   setDefaultFillOnUseElements(svgEl, scoreColor);
-  // Color stroke-drawn elements (stems, barlines, ties, hairpins) — Verovio
-  // leaves these without a stroke color, so they'd otherwise raster as black.
-  setDefaultStrokeOnStrokedElements(svgEl, scoreColor);
 
   let svgString = new XMLSerializer().serializeToString(svgEl);
   svgString = inlineScoreColorInSvg(svgString, scoreColor, hideLeadStaffSymbols);
