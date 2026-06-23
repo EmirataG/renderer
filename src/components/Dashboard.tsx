@@ -201,9 +201,14 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             </button>
             <button
               onClick={handleSignOut}
-              className="grunge-btn"
+              className="group grunge-btn flex items-center gap-0 overflow-hidden"
+              title="Sign out"
+              aria-label="Sign out"
             >
-              Sign out
+              <SignOutIcon className="w-4 h-4 shrink-0" />
+              <span className="max-w-0 opacity-0 group-hover:max-w-[5rem] group-hover:ml-2 group-hover:opacity-100 whitespace-nowrap overflow-hidden transition-all duration-200">
+                Sign out
+              </span>
             </button>
           </div>
         </div>
@@ -487,6 +492,24 @@ function PlusIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function SignOutIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
     </svg>
   );
 }
