@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
+import { ManuscriptMark } from "@/components/ManuscriptMark";
 
 // ─────────────────────────────────────────────────────────────────────────
 // EDIT THESE before launch (and have a lawyer review the whole document).
@@ -159,13 +159,7 @@ export default function TermsPage() {
       {/* Header bar — mirrors the editor's top bar */}
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-canvas px-6 py-4">
         <Link href="/login" className="flex items-center gap-3 group">
-          <Image
-            src="/logo.png"
-            alt="Manuscript"
-            width={20}
-            height={20}
-            className="opacity-70 group-hover:opacity-100 transition-opacity"
-          />
+          <ManuscriptMark className="w-5 h-5 opacity-70 group-hover:opacity-100 transition-opacity" />
         </Link>
         <div className="w-px h-4 bg-surface-muted" />
         <span className="text-[11px] font-medium uppercase tracking-widest text-fg-subtle">

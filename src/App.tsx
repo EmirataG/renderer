@@ -12,6 +12,7 @@ import { useProjectStore, DEFAULT_SETTINGS } from "./stores/projectStore";
 import { useEventStore } from "./stores/eventStore";
 import { SaveIndicator } from "./components/SaveIndicator";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { ManuscriptMark } from "./components/ManuscriptMark";
 import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
 import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
@@ -568,7 +569,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               </svg>
             </button>
           )}
-          <img src="/logo.png" alt="Manuscript" className="h-5 w-5 opacity-70" />
+          <ManuscriptMark className="h-5 w-5 opacity-70" />
           <div className="w-px h-4 bg-surface-muted" />
           <input
             type="text"

@@ -6,8 +6,8 @@ import { GoogleSignInButton } from "./client";
 import { SystemRequirementsButton } from "./system-requirements";
 import { ScrollArrow } from "./scroll-arrow";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import Image from "next/image";
 import Link from "next/link";
+import { ManuscriptLogo } from "@/components/ManuscriptLogo";
 
 const SHOWCASE_VIDEOS = [
   { id: "aoACVvk15ko", title: "Manuscript Demo 1" },
@@ -45,12 +45,7 @@ export default async function LoginPage() {
         {/* Content */}
         <div className="flex flex-col items-center relative z-10">
           {/* Logo */}
-          <Image
-            src="/manuscript_logo.png"
-            alt="Manuscript"
-            width={1000}
-            height={150}
-          />
+          <ManuscriptLogo className="w-[min(90vw,1000px)] h-auto" />
 
           {/* Tagline */}
           <p className="text-fg-muted uppercase tracking-widest mb-20">
