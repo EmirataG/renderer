@@ -118,6 +118,7 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
   // otherwise never see it become non-null.
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const currentTimeRef = useRef(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const animationRef = useRef<number | null>(null);
@@ -379,6 +380,15 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
       audio.removeEventListener('ended', handleEnded);
     };
   }, [audioUrl, audioEl]);
+
+  // Keep the audio element's playbackRate in sync with the selected speed.
+  // Re-runs when the element is (re)created (audioEl) or the audio source
+  // changes, so a slowed-down rate survives reloads.
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate, audioEl, audioUrl]);
 
   // Ref to track currently playing svgIds for cleanup
   const playingSvgIdsRef = useRef<string[]>([]);
@@ -822,6 +832,9 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
               </svg>
             </button>
 
+            {/* Playback speed — slow down to place anchors precisely */}
+            <SpeedMenu value={playbackRate} onChange={setPlaybackRate} />
+
             {/* Time display — self-updating from ref, no per-frame renders */}
             <div className="font-mono text-sm text-fg-muted w-28">
               <RefText valueRef={currentTimeRef} format={formatTimePair} />
@@ -847,6 +860,80 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
         </div>
       )}
 
+    </div>
+  );
+}
+
+const SPEED_OPTIONS: { value: number; rate: string; label: string }[] = [
+  { value: 1, rate: '1×', label: 'Normal' },
+  { value: 0.5, rate: '0.5×', label: 'Slow' },
+  { value: 0.25, rate: '0.25×', label: 'Slowest' },
+  { value: 0.1, rate: '0.10×', label: 'Crawl' },
+];
+
+function SpeedMenu({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        className="h-9 flex items-center gap-2 border border-line-strong bg-canvas px-3 text-xs font-bold uppercase tracking-wider text-fg-muted hover:text-fg transition-colors tabular-nums"
+        title="Playback speed"
+      >
+        <span>{value}×</span>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <polyline points="2,4 6,8 10,4" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 bottom-full mb-1 w-40 bg-canvas border-2 border-line-strong shadow-xl overflow-hidden z-20">
+          {SPEED_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              className={`w-full flex items-baseline gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors hover:bg-surface-muted ${
+                option.value === value ? 'text-fg bg-surface' : 'text-fg-muted'
+              }`}
+            >
+              <span className="w-12 shrink-0 tabular-nums">{option.rate}</span>
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
