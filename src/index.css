@@ -131,6 +131,15 @@ button, input, select, textarea {
   border-radius: 0;
 }
 
+/* Buttons are clickable by default; disabled ones aren't. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 ::-webkit-scrollbar {
   display: none;
 }
