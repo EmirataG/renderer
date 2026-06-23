@@ -601,19 +601,33 @@ button, input, select, textarea {
    ============================================ */
 
 .login-page {
+  position: relative;
   width: 100%;
   overflow-x: hidden;
+}
+
+/* Fixed backdrop layer: pinned to the viewport so page scroll moves the
+   content over it rather than scrolling the sheet-music away. (The score still
+   animates on its own via .scroll-score-bg.) */
+.login-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  padding: 0.5rem;
+  pointer-events: none;
 }
 
 /* --- Hero Section --- */
 .hero-section {
   position: relative;
+  z-index: 1;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--canvas);
+  background: transparent;
   overflow: hidden;
   padding: 1rem;
 }
@@ -662,9 +676,10 @@ button, input, select, textarea {
 
 /* --- Showcase Section --- */
 .showcase-section {
-  background: var(--canvas);
+  position: relative;
+  z-index: 1;
+  background: transparent;
   padding: 5rem 1.5rem;
-  border-top: 1px solid var(--line);
 }
 
 .showcase-inner {

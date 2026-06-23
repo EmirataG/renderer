@@ -25,21 +25,21 @@ export default async function LoginPage() {
 
   return (
     <div className="login-page">
+      {/* Fixed scrolling-score backdrop — stays put while content scrolls over it */}
+      <div className="login-bg" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/score.svg"
+          alt=""
+          className="w-full scroll-score-bg hero-score-bg"
+        />
+      </div>
+
       {/* ============ HERO SECTION ============ */}
       <section className="hero-section">
         {/* Theme switch */}
         <div className="absolute top-4 right-4 z-20">
           <ThemeToggle className="h-8" />
-        </div>
-
-        {/* Scrolling score background */}
-        <div className="absolute inset-0 overflow-hidden p-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/score.svg"
-            alt=""
-            className="w-full scroll-score-bg hero-score-bg"
-          />
         </div>
 
         {/* Content */}
