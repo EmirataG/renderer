@@ -7,7 +7,7 @@ import { auth } from "@/lib/firebase-client";
 import { useToast } from "@/hooks/useToast";
 import { ProjectCard } from "@/components/ProjectCard";
 import { CreateProjectModal } from "@/components/CreateProjectModal";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { useTheme } from "@/hooks/useTheme";
 import type { Project } from "@/types/project";
 
 interface DashboardProps {
@@ -160,7 +160,6 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             Manuscript
           </h1>
           <div className="flex items-stretch gap-2">
-            <ThemeToggle className="mr-1" />
             {/* Sort control */}
             {projects.length > 0 && (
               <SortMenu value={sortBy} onChange={setSortBy} />
@@ -199,17 +198,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             >
               New Project
             </button>
-            <button
-              onClick={handleSignOut}
-              className="group grunge-btn flex items-center gap-0 overflow-hidden"
-              title="Sign out"
-              aria-label="Sign out"
-            >
-              <SignOutIcon className="w-4 h-4 shrink-0" />
-              <span className="max-w-0 opacity-0 group-hover:max-w-[5rem] group-hover:ml-2 group-hover:opacity-100 whitespace-nowrap overflow-hidden transition-all duration-200">
-                Sign out
-              </span>
-            </button>
+            <SettingsMenu onSignOut={handleSignOut} />
           </div>
         </div>
         <img
@@ -459,6 +448,75 @@ function SortMenu({
   );
 }
 
+function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
+  const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
+  const isLight = theme === 'light';
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const itemClass =
+    'w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-fg-muted hover:text-fg hover:bg-surface-muted transition-colors';
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        className="h-full flex items-center justify-center border border-line-strong bg-canvas px-2.5 text-fg-muted hover:text-fg hover:border-fg transition-colors"
+        title="Settings"
+        aria-label="Settings"
+        aria-expanded={open}
+      >
+        <GearIcon className="w-4 h-4" />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1 w-52 bg-canvas border-2 border-line-strong shadow-xl overflow-hidden z-20">
+          <button
+            onClick={() => toggleTheme()}
+            className={itemClass}
+          >
+            {isLight ? <MoonIcon className="w-4 h-4 shrink-0" /> : <SunIcon className="w-4 h-4 shrink-0" />}
+            <span>{isLight ? 'Dark mode' : 'Light mode'}</span>
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              router.push('/terms');
+            }}
+            className={itemClass}
+          >
+            <TermsIcon className="w-4 h-4 shrink-0" />
+            <span>Review terms</span>
+          </button>
+          <div className="border-t border-line" />
+          <button
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+            className={itemClass}
+          >
+            <SignOutIcon className="w-4 h-4 shrink-0" />
+            <span>Sign out</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewProjectCard({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -492,6 +550,76 @@ function PlusIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function GearIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function SunIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function TermsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="17" x2="16" y2="17" />
+      <line x1="8" y1="9" x2="10" y2="9" />
     </svg>
   );
 }
