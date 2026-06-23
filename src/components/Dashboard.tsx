@@ -7,6 +7,7 @@ import { auth } from "@/lib/firebase-client";
 import { useToast } from "@/hooks/useToast";
 import { ProjectCard } from "@/components/ProjectCard";
 import { CreateProjectModal } from "@/components/CreateProjectModal";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Project } from "@/types/project";
 
 interface DashboardProps {
@@ -138,9 +139,9 @@ export function Dashboard({ initialProjects }: DashboardProps) {
   });
 
   return (
-    <main className="min-h-screen bg-black text-neutral-100">
+    <main className="min-h-screen bg-canvas text-fg">
       {/* Header */}
-      <header className="relative border-b border-neutral-800 px-6 py-4">
+      <header className="relative border-b border-line px-6 py-4">
         {/* Staff lines */}
         <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-50">
           {[0, 1, 2, 3, 4].map((i) => (
@@ -159,16 +160,17 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             Manuscript
           </h1>
           <div className="flex items-stretch gap-2">
+            <ThemeToggle className="mr-1" />
             {/* Sort control */}
             {projects.length > 0 && (
               <SortMenu value={sortBy} onChange={setSortBy} />
             )}
             {/* Layout toggle */}
             {projects.length > 0 && (
-              <div className="flex border border-neutral-700 overflow-hidden mr-1">
+              <div className="flex border border-line-strong overflow-hidden mr-1">
                 <button
                   onClick={() => setLayoutMode('grid')}
-                  className={`px-2.5 flex items-center transition-colors ${layoutMode === 'grid' ? 'bg-white text-black' : 'text-neutral-500 hover:text-neutral-200'}`}
+                  className={`px-2.5 flex items-center transition-colors ${layoutMode === 'grid' ? 'bg-accent text-accent-fg' : 'text-fg-subtle hover:text-fg'}`}
                   title="Grid view"
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -180,7 +182,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
                 </button>
                 <button
                   onClick={() => setLayoutMode('list')}
-                  className={`px-2.5 flex items-center transition-colors ${layoutMode === 'list' ? 'bg-white text-black' : 'text-neutral-500 hover:text-neutral-200'}`}
+                  className={`px-2.5 flex items-center transition-colors ${layoutMode === 'list' ? 'bg-accent text-accent-fg' : 'text-fg-subtle hover:text-fg'}`}
                   title="List view"
                 >
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -217,16 +219,16 @@ export function Dashboard({ initialProjects }: DashboardProps) {
         {projects.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center justify-center py-32 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-neutral-800/50 mb-4">
-              <EmptyMusicIcon className="w-8 h-8 text-neutral-500" />
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-surface-muted mb-4">
+              <EmptyMusicIcon className="w-8 h-8 text-fg-subtle" />
             </div>
             <h2
-              className="text-lg font-bold tracking-wider uppercase text-neutral-300 mb-2"
+              className="text-lg font-bold tracking-wider uppercase text-fg-muted mb-2"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
               No projects yet
             </h2>
-            <p className="text-sm text-neutral-500 mb-6 max-w-sm">
+            <p className="text-sm text-fg-subtle mb-6 max-w-sm">
               Create your first project to start syncing scores with audio.
             </p>
             <button
@@ -252,7 +254,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             </div>
           ) : (
             /* List view */
-            <div className="border border-neutral-800 divide-y divide-neutral-800/60">
+            <div className="border border-line divide-y divide-line">
               {sortedProjects.map((project) => (
                 <ProjectListRow
                   key={project.id}
@@ -277,19 +279,19 @@ export function Dashboard({ initialProjects }: DashboardProps) {
       {/* Delete confirmation dialog */}
       {deleteConfirm && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
+          className="fixed inset-0 bg-overlay backdrop-blur-sm z-50 flex items-center justify-center"
           onClick={(e) => {
             if (e.target === e.currentTarget) setDeleteConfirm(null);
           }}
         >
-          <div className="bg-black border-2 border-neutral-700 p-6 max-w-sm w-full mx-4">
+          <div className="bg-canvas border-2 border-line-strong p-6 max-w-sm w-full mx-4">
             <h3
-              className="text-xs font-bold uppercase tracking-wider text-neutral-100 mb-2"
+              className="text-xs font-bold uppercase tracking-wider text-fg mb-2"
               style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
             >
               Delete project?
             </h3>
-            <p className="text-sm text-neutral-400 mb-6">
+            <p className="text-sm text-fg-muted mb-6">
               Delete &ldquo;{deleteConfirm.name}&rdquo;? This cannot be undone.
             </p>
             <div className="flex justify-end gap-3">
@@ -301,7 +303,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="grunge-btn grunge-btn-sm border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
+                className="grunge-btn grunge-btn-sm border-red-500 text-red-400 hover:bg-red-500 hover:text-fg"
               >
                 Delete
               </button>
@@ -333,12 +335,12 @@ function ProjectListRow({
   return (
     <div
       onClick={() => router.push(`/project/${project.id}`)}
-      className="group flex items-center gap-4 px-4 py-3 hover:bg-neutral-900/60 transition-colors cursor-pointer"
+      className="group flex items-center gap-4 px-4 py-3 hover:bg-surface-muted transition-colors cursor-pointer"
     >
-      <span className="text-xs font-semibold uppercase tracking-wider text-neutral-200 truncate flex-1 min-w-0">
+      <span className="text-xs font-semibold uppercase tracking-wider text-fg truncate flex-1 min-w-0">
         {project.name}
       </span>
-      <span className="text-[11px] text-neutral-600 shrink-0">
+      <span className="text-[11px] text-fg-subtle shrink-0">
         {formattedDate}
       </span>
       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -347,7 +349,7 @@ function ProjectListRow({
             e.stopPropagation();
             onDuplicate(project.id);
           }}
-          className="p-1.5 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 transition-colors"
+          className="p-1.5 text-fg-subtle hover:text-fg hover:bg-surface-muted transition-colors"
           title="Duplicate"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -360,7 +362,7 @@ function ProjectListRow({
             e.stopPropagation();
             onDelete(project.id, project.name);
           }}
-          className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors"
+          className="p-1.5 text-fg-subtle hover:text-red-400 hover:bg-surface-muted transition-colors"
           title="Delete"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -409,7 +411,7 @@ function SortMenu({
     <div ref={ref} className="relative mr-1">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="h-full flex items-center gap-2 border border-neutral-700 bg-black px-3 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-neutral-100 hover:border-neutral-500 transition-colors"
+        className="h-full flex items-center gap-2 border border-line-strong bg-canvas px-3 text-xs font-bold uppercase tracking-wider text-fg-muted hover:text-fg hover:border-line-strong transition-colors"
         title="Sort projects"
       >
         <span>{activeLabel}</span>
@@ -429,7 +431,7 @@ function SortMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-1 w-44 bg-black border-2 border-neutral-700 shadow-xl overflow-hidden z-20">
+        <div className="absolute right-0 mt-1 w-44 bg-canvas border-2 border-line-strong shadow-xl overflow-hidden z-20">
           {SORT_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -437,10 +439,10 @@ function SortMenu({
                 onChange(option.value);
                 setOpen(false);
               }}
-              className={`w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors hover:bg-neutral-800 ${
+              className={`w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors hover:bg-surface-muted ${
                 option.value === value
-                  ? 'text-white bg-neutral-900'
-                  : 'text-neutral-400'
+                  ? 'text-fg bg-surface'
+                  : 'text-fg-muted'
               }`}
             >
               {option.label}
@@ -457,9 +459,9 @@ function NewProjectCard({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col items-center justify-center bg-black border-2 border-dashed border-neutral-800 hover:border-neutral-500 transition-colors cursor-pointer min-h-full"
+      className="group flex flex-col items-center justify-center bg-canvas border-2 border-dashed border-line hover:border-line-strong transition-colors cursor-pointer min-h-full"
     >
-      <div className="aspect-[4/3] w-full flex flex-col items-center justify-center gap-3 text-neutral-600 group-hover:text-neutral-300 transition-colors">
+      <div className="aspect-[4/3] w-full flex flex-col items-center justify-center gap-3 text-fg-subtle group-hover:text-fg-muted transition-colors">
         <PlusIcon className="w-10 h-10" />
         <span className="text-xs font-bold uppercase tracking-wider">New Project</span>
       </div>
@@ -472,7 +474,7 @@ function NewProjectListRow({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="group w-full flex items-center gap-3 px-4 py-3 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-900/60 transition-colors cursor-pointer"
+      className="group w-full flex items-center gap-3 px-4 py-3 text-fg-subtle hover:text-fg hover:bg-surface-muted transition-colors cursor-pointer"
     >
       <PlusIcon className="w-4 h-4" />
       <span className="text-xs font-semibold uppercase tracking-wider">New Project</span>

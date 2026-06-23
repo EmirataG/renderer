@@ -36,10 +36,10 @@ export function ProjectCard({ project, onDelete, onDuplicate }: ProjectCardProps
   return (
     <div
       onClick={() => router.push(`/project/${project.id}`)}
-      className="group relative bg-black border-2 border-neutral-800 overflow-hidden hover:border-neutral-500 transition-colors cursor-pointer"
+      className="group relative bg-canvas border-2 border-line overflow-hidden hover:border-line-strong transition-colors cursor-pointer"
     >
       {/* Thumbnail */}
-      <div className="aspect-[4/3] bg-neutral-900 flex items-center justify-center">
+      <div className="aspect-[4/3] bg-surface flex items-center justify-center">
         {project.backgroundUrl ? (
           <img
             src={`/api/projects/${project.id}/background`}
@@ -47,14 +47,14 @@ export function ProjectCard({ project, onDelete, onDuplicate }: ProjectCardProps
             className="w-full h-full object-cover"
           />
         ) : (
-          <MusicNoteIcon className="w-10 h-10 text-neutral-700" />
+          <MusicNoteIcon className="w-10 h-10 text-fg-subtle" />
         )}
       </div>
 
       {/* Metadata */}
-      <div className="p-4 border-t border-neutral-800">
-        <p className="text-xs font-bold uppercase tracking-wider text-neutral-200 truncate">{project.name}</p>
-        <p className="text-xs text-neutral-500 mt-1 font-mono">{formattedDate}</p>
+      <div className="p-4 border-t border-line">
+        <p className="text-xs font-bold uppercase tracking-wider text-fg truncate">{project.name}</p>
+        <p className="text-xs text-fg-subtle mt-1 font-mono">{formattedDate}</p>
       </div>
 
       {/* Three-dot menu */}
@@ -64,21 +64,21 @@ export function ProjectCard({ project, onDelete, onDuplicate }: ProjectCardProps
             e.stopPropagation();
             setMenuOpen((prev) => !prev);
           }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200"
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-surface-muted text-fg-muted hover:text-fg"
           aria-label="Project options"
         >
           <MoreIcon className="w-4 h-4" />
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 mt-1 w-36 bg-black border-2 border-neutral-700 shadow-xl overflow-hidden z-10">
+          <div className="absolute right-0 mt-1 w-36 bg-canvas border-2 border-line-strong shadow-xl overflow-hidden z-10">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setMenuOpen(false);
                 onDuplicate(project.id);
               }}
-              className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:bg-neutral-800 transition-colors"
+              className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-fg-muted hover:bg-surface-muted transition-colors"
             >
               Duplicate
             </button>
@@ -88,7 +88,7 @@ export function ProjectCard({ project, onDelete, onDuplicate }: ProjectCardProps
                 setMenuOpen(false);
                 onDelete(project.id, project.name);
               }}
-              className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-400 hover:bg-neutral-800 transition-colors"
+              className="w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-400 hover:bg-surface-muted transition-colors"
             >
               Delete
             </button>

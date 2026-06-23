@@ -1126,7 +1126,7 @@ export default memo(function RegularRenderer({
   ]);
 
   if (!containerWidth || !containerHeight) {
-    return <div className="text-neutral-400">Select background</div>;
+    return <div className="text-fg-muted">Select background</div>;
   }
 
   return (
@@ -1339,7 +1339,7 @@ export default memo(function RegularRenderer({
             </button>
           </div>
           {transportMessage && (
-            <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
+            <p className="text-xs text-fg-subtle text-center mt-1">{transportMessage}</p>
           )}
         </div>
       )}
@@ -1369,7 +1369,7 @@ export default memo(function RegularRenderer({
             </button>
           </div>
           {transportMessage && (
-            <p className="text-xs text-neutral-500 text-center mt-1">{transportMessage}</p>
+            <p className="text-xs text-fg-subtle text-center mt-1">{transportMessage}</p>
           )}
         </>,
         transportPortalEl,

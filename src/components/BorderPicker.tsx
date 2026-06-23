@@ -22,8 +22,8 @@ export function BorderPicker({ value, onChange, color }: BorderPickerProps) {
               className={`
                 flex flex-col items-center justify-center p-2 border transition-colors cursor-pointer
                 ${isSelected
-                  ? 'border-neutral-300 bg-white/[0.08]'
-                  : 'border-neutral-800 bg-transparent hover:border-neutral-600'
+                  ? 'border-line-strong bg-surface-muted'
+                  : 'border-line bg-transparent hover:border-line-strong'
                 }
               `}
             >
@@ -32,11 +32,11 @@ export function BorderPicker({ value, onChange, color }: BorderPickerProps) {
                 {BorderComponent ? (
                   <BorderComponent width={100} color={color} position="top" />
                 ) : (
-                  <span className="text-neutral-600 text-[11px]">No border</span>
+                  <span className="text-fg-subtle text-[11px]">No border</span>
                 )}
               </div>
               {/* Label */}
-              <span className={`text-[11px] mt-1 ${isSelected ? 'text-white' : 'text-neutral-500'}`}>
+              <span className={`text-[11px] mt-1 ${isSelected ? 'text-fg' : 'text-fg-subtle'}`}>
                 {option.label}
               </span>
             </button>

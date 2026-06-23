@@ -155,9 +155,9 @@ const SECTIONS: Section[] = [
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-black text-neutral-100">
+    <div className="min-h-screen bg-canvas text-fg">
       {/* Header bar — mirrors the editor's top bar */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-neutral-800/60 bg-black px-6 py-4">
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-canvas px-6 py-4">
         <Link href="/login" className="flex items-center gap-3 group">
           <Image
             src="/logo.png"
@@ -167,14 +167,14 @@ export default function TermsPage() {
             className="opacity-70 group-hover:opacity-100 transition-opacity"
           />
         </Link>
-        <div className="w-px h-4 bg-neutral-800" />
-        <span className="text-[11px] font-medium uppercase tracking-widest text-neutral-500">
+        <div className="w-px h-4 bg-surface-muted" />
+        <span className="text-[11px] font-medium uppercase tracking-widest text-fg-subtle">
           Legal
         </span>
         <div className="flex-1" />
         <Link
           href="/login"
-          className="text-[11px] uppercase tracking-widest text-neutral-500 hover:text-neutral-200 transition-colors"
+          className="text-[11px] uppercase tracking-widest text-fg-subtle hover:text-fg transition-colors"
         >
           ← Back
         </Link>
@@ -182,21 +182,21 @@ export default function TermsPage() {
 
       <main className="mx-auto max-w-3xl px-6 py-16">
         {/* Title block */}
-        <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-3">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle mb-3">
           {COMPANY_NAME}
         </p>
         <h1
-          className="text-3xl font-bold uppercase tracking-[0.15em] text-white"
+          className="text-3xl font-bold uppercase tracking-[0.15em] text-fg"
           style={serif}
         >
           Terms of Service
         </h1>
-        <div className="mt-5 mb-6 h-0.5 w-16 bg-white" />
-        <p className="text-xs uppercase tracking-wider text-neutral-500">
+        <div className="mt-5 mb-6 h-0.5 w-16 bg-accent" />
+        <p className="text-xs uppercase tracking-wider text-fg-subtle">
           Last updated: {LAST_UPDATED}
         </p>
 
-        <p className="mt-8 text-sm leading-relaxed text-neutral-400">
+        <p className="mt-8 text-sm leading-relaxed text-fg-muted">
           Please read these Terms carefully before using {COMPANY_NAME}. They
           set out the rules for using the Service and the rights and
           responsibilities of both you and us.
@@ -208,13 +208,13 @@ export default function TermsPage() {
             <section key={section.title} className="scroll-mt-24">
               <div className="flex items-baseline gap-3">
                 <span
-                  className="text-sm tabular-nums text-neutral-600"
+                  className="text-sm tabular-nums text-fg-subtle"
                   style={serif}
                 >
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <h2
-                  className="text-lg font-bold uppercase tracking-wider text-white"
+                  className="text-lg font-bold uppercase tracking-wider text-fg"
                   style={serif}
                 >
                   {section.title}
@@ -225,7 +225,7 @@ export default function TermsPage() {
                 {section.paras?.map((p, j) => (
                   <p
                     key={j}
-                    className="text-sm leading-relaxed text-neutral-400"
+                    className="text-sm leading-relaxed text-fg-muted"
                   >
                     {p}
                   </p>
@@ -235,8 +235,8 @@ export default function TermsPage() {
                   <ul className="space-y-2.5">
                     {section.bullets.map((b, j) => (
                       <li key={j} className="flex items-start gap-3">
-                        <span className="mt-2 h-1 w-1 flex-shrink-0 rounded-full bg-neutral-600" />
-                        <span className="text-sm leading-relaxed text-neutral-400">
+                        <span className="mt-2 h-1 w-1 flex-shrink-0 rounded-full bg-fg-subtle" />
+                        <span className="text-sm leading-relaxed text-fg-muted">
                           {b}
                         </span>
                       </li>
@@ -247,7 +247,7 @@ export default function TermsPage() {
                 {section.outro?.map((p, j) => (
                   <p
                     key={j}
-                    className="text-sm leading-relaxed text-neutral-400"
+                    className="text-sm leading-relaxed text-fg-muted"
                   >
                     {p}
                   </p>
@@ -258,22 +258,22 @@ export default function TermsPage() {
         </div>
 
         {/* Footer */}
-        <footer className="mt-20 border-t border-neutral-800 pt-8">
-          <p className="text-xs leading-relaxed text-neutral-600">
+        <footer className="mt-20 border-t border-line pt-8">
+          <p className="text-xs leading-relaxed text-fg-subtle">
             By continuing to use {COMPANY_NAME}, you acknowledge that you have
             read and agree to these Terms of Service.
           </p>
-          <div className="mt-4 flex items-center gap-4 text-[11px] uppercase tracking-widest text-neutral-500">
+          <div className="mt-4 flex items-center gap-4 text-[11px] uppercase tracking-widest text-fg-subtle">
             <Link
               href="/login"
-              className="hover:text-neutral-200 transition-colors"
+              className="hover:text-fg transition-colors"
             >
               Back to {COMPANY_NAME}
             </Link>
-            <span className="text-neutral-700">·</span>
+            <span className="text-fg-subtle">·</span>
             <a
               href={`mailto:${CONTACT_EMAIL}`}
-              className="hover:text-neutral-200 transition-colors"
+              className="hover:text-fg transition-colors"
             >
               Contact
             </a>

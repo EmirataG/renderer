@@ -1,5 +1,102 @@
 @import "tailwindcss";
 
+/* ============================================================
+   THEME TOKENS  (the one place to tweak the look)
+   ------------------------------------------------------------
+   Semantic design tokens. Components reference these through
+   the Tailwind utilities generated in the `@theme inline` block
+   below (e.g. `bg-canvas`, `text-fg`, `border-line`) or the
+   `.grunge-*` component classes further down.
+
+   To tweak a theme, change the values here — nothing else.
+   To add a theme, copy the `[data-theme="light"]` block and
+   give it a new attribute value.
+   ============================================================ */
+
+/* Dark — the default theme (also `data-theme="dark"`). */
+:root {
+  color-scheme: dark;
+
+  --canvas: #000000;          /* app background            */
+  --surface: #0a0a0a;         /* cards, inputs, raised bg  */
+  --surface-muted: #1a1a1a;   /* hover fills, subtle chips */
+  --elevated: #0a0a0a;        /* popovers / menus          */
+
+  --line: #262626;            /* default borders           */
+  --line-strong: #525252;     /* prominent borders         */
+  --line-subtle: rgba(255, 255, 255, 0.06); /* faint rules */
+
+  --fg: #f5f5f5;              /* primary text              */
+  --fg-muted: #a3a3a3;        /* secondary text            */
+  --fg-subtle: #6b6b6b;       /* tertiary / dim text       */
+
+  --accent: #ffffff;          /* primary action surface    */
+  --accent-fg: #000000;       /* text/icon on accent       */
+  --accent-hover: #e0e0e0;    /* accent hover              */
+
+  --danger: #f87171;          /* destructive text          */
+  --overlay: rgba(0, 0, 0, 0.8);   /* modal backdrop       */
+  --ring: rgba(255, 255, 255, 0.15); /* focus ring         */
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.06);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.12);
+}
+
+/* Light. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --canvas: #f4f4f5;
+  --surface: #ffffff;
+  --surface-muted: #e9e9eb;
+  --elevated: #ffffff;
+
+  --line: #d4d4d4;
+  --line-strong: #a3a3a3;
+  --line-subtle: rgba(0, 0, 0, 0.08);
+
+  --fg: #18181b;
+  --fg-muted: #52525b;
+  --fg-subtle: #71717a;
+
+  --accent: #18181b;
+  --accent-fg: #ffffff;
+  --accent-hover: #3f3f46;
+
+  --danger: #dc2626;
+  --overlay: rgba(0, 0, 0, 0.45);
+  --ring: rgba(0, 0, 0, 0.2);
+
+  --scrollbar-thumb: rgba(0, 0, 0, 0.14);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+}
+
+/* Expose the tokens as Tailwind utilities. `inline` keeps the
+   value as a `var()` reference so utilities re-resolve at runtime
+   when `data-theme` flips — that's what makes theming work without
+   a rebuild. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-elevated: var(--elevated);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-line-subtle: var(--line-subtle);
+
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-hover: var(--accent-hover);
+
+  --color-danger: var(--danger);
+  --color-overlay: var(--overlay);
+}
+
 @layer base {
   .scroll-score-bg {
     animation: scroll-score 120s linear alternate infinite;
@@ -25,8 +122,8 @@
 }
 
 body {
-  background-color: black;
-  color: white;
+  background-color: var(--canvas);
+  color: var(--fg);
 }
 
 /* Override Tailwind preflight border-radius on interactive elements */
@@ -81,12 +178,12 @@ button, input, select, textarea {
 }
 
 .grunge-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--scrollbar-thumb);
   border-radius: 100px;
 }
 
 .grunge-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* --- Buttons --- */
@@ -100,18 +197,18 @@ button, input, select, textarea {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border: 1px solid #555;
+  border: 1px solid var(--line-strong);
   border-radius: 0;
   background: transparent;
-  color: #ccc;
+  color: var(--fg-muted);
   cursor: pointer;
   transition: all 150ms ease;
 }
 
 .grunge-btn:hover {
-  background: white;
-  border-color: white;
-  color: black;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .grunge-btn:disabled {
@@ -121,8 +218,8 @@ button, input, select, textarea {
 
 .grunge-btn:disabled:hover {
   background: transparent;
-  border-color: #555;
-  color: #ccc;
+  border-color: var(--line-strong);
+  color: var(--fg-muted);
 }
 
 .grunge-btn-primary {
@@ -135,17 +232,17 @@ button, input, select, textarea {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border: 1px solid white;
+  border: 1px solid var(--accent);
   border-radius: 0;
-  background: white;
-  color: black;
+  background: var(--accent);
+  color: var(--accent-fg);
   cursor: pointer;
   transition: all 150ms ease;
 }
 
 .grunge-btn-primary:hover {
-  background: #e0e0e0;
-  border-color: #e0e0e0;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .grunge-btn-primary:disabled {
@@ -154,8 +251,8 @@ button, input, select, textarea {
 }
 
 .grunge-btn-primary:disabled:hover {
-  background: white;
-  color: black;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 .grunge-btn-sm {
@@ -174,30 +271,30 @@ button, input, select, textarea {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  border: 1px solid white;
+  border: 1px solid var(--accent);
   border-radius: 0;
-  background: white;
-  color: black;
+  background: var(--accent);
+  color: var(--accent-fg);
   cursor: pointer;
   transition: all 150ms ease;
 }
 
 .grunge-btn-export:hover {
-  background: #e0e0e0;
-  border-color: #e0e0e0;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .grunge-btn-export:disabled {
-  background: #1a1a1a;
-  border-color: #333;
-  color: #555;
+  background: var(--surface-muted);
+  border-color: var(--line);
+  color: var(--fg-subtle);
   cursor: not-allowed;
 }
 
 .grunge-btn-export:disabled:hover {
-  background: #1a1a1a;
-  border-color: #333;
-  color: #555;
+  background: var(--surface-muted);
+  border-color: var(--line);
+  color: var(--fg-subtle);
 }
 
 /* --- Range Slider --- */
@@ -206,7 +303,7 @@ button, input, select, textarea {
   appearance: none;
   width: 100%;
   height: 3px;
-  background: #222;
+  background: var(--surface-muted);
   outline: none;
   border-radius: 2px;
 }
@@ -216,25 +313,25 @@ button, input, select, textarea {
   appearance: none;
   width: 12px;
   height: 12px;
-  background: white;
+  background: var(--accent);
   border-radius: 50%;
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 2px var(--canvas);
 }
 
 .grunge-range::-moz-range-thumb {
   width: 12px;
   height: 12px;
-  background: white;
+  background: var(--accent);
   border-radius: 50%;
   cursor: pointer;
   border: none;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 2px var(--canvas);
 }
 
 .grunge-range:focus::-webkit-slider-thumb {
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6), 0 0 0 4px rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--ring);
 }
 
 /* --- Toggle Switch --- */
@@ -244,7 +341,7 @@ button, input, select, textarea {
   width: 28px;
   height: 16px;
   min-width: 28px;
-  background: #222;
+  background: var(--surface-muted);
   border: none;
   border-radius: 100px;
   cursor: pointer;
@@ -259,27 +356,27 @@ button, input, select, textarea {
   top: 2px;
   width: 12px;
   height: 12px;
-  background: #666;
+  background: var(--fg-subtle);
   border-radius: 50%;
   transition: all 180ms ease;
 }
 
 .grunge-checkbox:hover::after {
-  background: #888;
+  background: var(--fg-muted);
 }
 
 .grunge-checkbox:checked {
-  background: white;
+  background: var(--accent);
 }
 
 .grunge-checkbox:checked::after {
   left: 14px;
-  background: black;
+  background: var(--accent-fg);
 }
 
 /* --- Panel / Section --- */
 .grunge-panel {
-  background: black;
+  background: var(--canvas);
 }
 
 .grunge-section-title {
@@ -287,7 +384,7 @@ button, input, select, textarea {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: #6b6b6b;
+  color: var(--fg-subtle);
   padding: 0;
   margin: 0;
 }
@@ -298,7 +395,7 @@ button, input, select, textarea {
    replacing the previous double-border (title underline + section border). */
 .grunge-section {
   padding: 0.875rem 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--line-subtle);
 }
 
 .grunge-section:first-child {
@@ -323,7 +420,7 @@ button, input, select, textarea {
 /* Unified control label. */
 .grunge-label {
   font-size: 0.6875rem;
-  color: #8a8a8a;
+  color: var(--fg-muted);
   line-height: 1.2;
 }
 
@@ -336,7 +433,7 @@ button, input, select, textarea {
 
 .grunge-field-value {
   font-size: 0.6875rem;
-  color: #d4d4d4;
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -346,13 +443,13 @@ button, input, select, textarea {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.6875rem;
-  color: #9a9a9a;
+  color: var(--fg-muted);
   cursor: pointer;
   transition: color 150ms ease;
 }
 
 .grunge-toggle-row:hover {
-  color: #d4d4d4;
+  color: var(--fg);
 }
 
 /* Small segmented chips (e.g. "Also color" options) — outline style that
@@ -364,28 +461,28 @@ button, input, select, textarea {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  border: 1px solid #2f2f2f;
+  border: 1px solid var(--line);
   background: transparent;
-  color: #777;
+  color: var(--fg-subtle);
   cursor: pointer;
   transition: all 150ms ease;
 }
 
 .grunge-chip:hover {
-  border-color: #555;
-  color: #ccc;
+  border-color: var(--line-strong);
+  color: var(--fg-muted);
 }
 
 .grunge-chip-active {
-  border-color: #d4d4d4;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  border-color: var(--line-strong);
+  background: var(--surface-muted);
+  color: var(--fg);
 }
 
 /* Read-out of the current color value next to a color picker. */
 .grunge-color-value {
   font-size: 0.6875rem;
-  color: #9a9a9a;
+  color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -393,10 +490,10 @@ button, input, select, textarea {
 
 /* --- Input --- */
 .grunge-input {
-  background: #0a0a0a;
-  border: 1px solid #2a2a2a;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 0;
-  color: white;
+  color: var(--fg);
   padding: 0.375rem 0.5rem;
   font-size: 0.75rem;
   outline: none;
@@ -404,7 +501,7 @@ button, input, select, textarea {
 }
 
 .grunge-input:focus {
-  border-color: #666;
+  border-color: var(--line-strong);
 }
 
 /* --- View Toggle / Tabs --- */
@@ -417,14 +514,14 @@ button, input, select, textarea {
   border: 1px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: #666;
+  color: var(--fg-subtle);
   cursor: pointer;
   transition: all 150ms ease;
 }
 
 .grunge-tab:hover {
-  color: #ccc;
-  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg-muted);
+  background: var(--surface-muted);
 }
 
 .grunge-tab-active {
@@ -433,10 +530,10 @@ button, input, select, textarea {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border: 1px solid #444;
+  border: 1px solid var(--line-strong);
   border-radius: 0;
-  background: rgba(255, 255, 255, 0.08);
-  color: white;
+  background: var(--surface-muted);
+  color: var(--fg);
   cursor: pointer;
 }
 
@@ -444,8 +541,8 @@ button, input, select, textarea {
 .grunge-color-picker {
   height: 1.875rem;
   width: 2.5rem;
-  background: #0a0a0a;
-  border: 1px solid #2a2a2a;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 0;
   cursor: pointer;
   padding: 0;
@@ -453,7 +550,7 @@ button, input, select, textarea {
 }
 
 .grunge-color-picker:hover {
-  border-color: #444;
+  border-color: var(--line-strong);
 }
 
 .grunge-color-picker::-webkit-color-swatch-wrapper {
@@ -469,36 +566,38 @@ button, input, select, textarea {
 .grunge-select {
   -webkit-appearance: none;
   appearance: none;
-  background: #0a0a0a;
-  border: 1px solid #2a2a2a;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 0;
-  color: #ccc;
+  color: var(--fg-muted);
   padding: 0.4375rem 0.625rem;
   font-size: 0.6875rem;
   outline: none;
   cursor: pointer;
   transition: border-color 150ms;
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.625rem center;
   padding-right: 2rem;
 }
 
 .grunge-select:hover {
-  border-color: #444;
+  border-color: var(--line-strong);
 }
 
 .grunge-select:focus {
-  border-color: #666;
+  border-color: var(--line-strong);
 }
 
 .grunge-select option {
-  background: #111;
-  color: white;
+  background: var(--elevated);
+  color: var(--fg);
 }
 
 /* ============================================
    LOGIN PAGE LAYOUT
+   --------------------------------------------
+   Themed via the same tokens as the rest of the app.
    ============================================ */
 
 .login-page {
@@ -514,9 +613,21 @@ button, input, select, textarea {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: black;
+  background: var(--canvas);
   overflow: hidden;
   padding: 1rem;
+}
+
+/* Faint score watermark behind the hero. The source SVG is dark ink, so it is
+   inverted to read on the dark canvas; in light mode it stays dark ink. */
+.hero-score-bg {
+  opacity: 0.12;
+  filter: invert(1);
+}
+
+[data-theme="light"] .hero-score-bg {
+  opacity: 0.07;
+  filter: invert(0);
 }
 
 /* --- Scroll Arrow --- */
@@ -530,6 +641,7 @@ button, input, select, textarea {
   border: none;
   cursor: pointer;
   padding: 0.5rem;
+  color: var(--fg);
   animation: arrow-bounce 2s ease-in-out infinite;
   opacity: 0.7;
   transition: opacity 200ms;
@@ -550,9 +662,9 @@ button, input, select, textarea {
 
 /* --- Showcase Section --- */
 .showcase-section {
-  background: black;
+  background: var(--canvas);
   padding: 5rem 1.5rem;
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--line);
 }
 
 .showcase-inner {
@@ -566,7 +678,7 @@ button, input, select, textarea {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.15em;
-  color: white;
+  color: var(--fg);
   text-align: center;
   margin-bottom: 1rem;
 }
@@ -574,7 +686,7 @@ button, input, select, textarea {
 .showcase-divider {
   width: 4rem;
   height: 2px;
-  background: white;
+  background: var(--fg);
   margin: 0 auto 3rem;
 }
 
@@ -592,13 +704,13 @@ button, input, select, textarea {
 }
 
 .showcase-video-card {
-  border: 1px solid #333;
-  background: #0a0a0a;
+  border: 1px solid var(--line);
+  background: var(--surface);
   transition: border-color 200ms;
 }
 
 .showcase-video-card:hover {
-  border-color: #666;
+  border-color: var(--line-strong);
 }
 
 .showcase-video-wrapper {

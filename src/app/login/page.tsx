@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { GoogleSignInButton } from "./client";
 import { SystemRequirementsButton } from "./system-requirements";
 import { ScrollArrow } from "./scroll-arrow";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -26,17 +27,18 @@ export default async function LoginPage() {
     <div className="login-page">
       {/* ============ HERO SECTION ============ */}
       <section className="hero-section">
+        {/* Theme switch */}
+        <div className="absolute top-4 right-4 z-20">
+          <ThemeToggle className="h-8" />
+        </div>
+
         {/* Scrolling score background */}
         <div className="absolute inset-0 overflow-hidden p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/score.svg"
             alt=""
-            className="w-full scroll-score-bg"
-            style={{
-              opacity: 0.15,
-              filter: "invert(1)",
-            }}
+            className="w-full scroll-score-bg hero-score-bg"
           />
         </div>
 
@@ -51,7 +53,7 @@ export default async function LoginPage() {
           />
 
           {/* Tagline */}
-          <p className="text-neutral-400 uppercase tracking-widest mb-20">
+          <p className="text-fg-muted uppercase tracking-widest mb-20">
             Score visualization &amp; sync
           </p>
 
@@ -64,7 +66,7 @@ export default async function LoginPage() {
           {/* Legal */}
           <Link
             href="/terms"
-            className="mt-4 text-neutral-400 hover:text-white transition-colors text-xs uppercase tracking-widest border-b border-neutral-600 hover:border-white pb-px"
+            className="mt-4 text-fg-muted hover:text-fg transition-colors text-xs uppercase tracking-widest border-b border-line-strong hover:border-fg pb-px"
           >
             Terms of Service
           </Link>

@@ -9,7 +9,7 @@ export function SaveIndicator() {
   return (
     <div className="flex items-center gap-1.5 text-xs">
       {saveStatus === 'saving' && (
-        <span className="text-neutral-400">Saving...</span>
+        <span className="text-fg-muted">Saving...</span>
       )}
       {saveStatus === 'saved' && (
         <span className="text-green-500">Saved</span>

@@ -648,16 +648,16 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
       )}
 
       {/* Header with selected note info */}
-      <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-3 flex items-center gap-4 h-14">
+      <div className="flex-shrink-0 bg-canvas border-b border-line px-4 py-3 flex items-center gap-4 h-14">
         <div className="flex-1">
           {selectedEvent ? (
             <div className="flex items-center gap-4">
-              <span className="text-sm text-neutral-300">
-                Selected: <span className="font-mono text-white">{selectedEvent.id}</span>
+              <span className="text-sm text-fg-muted">
+                Selected: <span className="font-mono text-fg">{selectedEvent.id}</span>
                 {' '}(beat {selectedEvent.beatOnset.toFixed(2)})
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-neutral-400">Timestamp:</span>
+                <span className="text-sm text-fg-muted">Timestamp:</span>
                 <TimestampInput
                   value={selectedAnchorTime ?? selectedEvent.computedTimestamp}
                   onChange={handleTimestampChange}
@@ -666,7 +666,7 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
                 {selectedEvent.isAnchor && selectedEventId ? (
                   <button
                     onClick={() => removeAnchor(selectedEventId)}
-                    className="grunge-btn grunge-btn-sm text-red-400 border-red-400 hover:bg-red-400 hover:text-black"
+                    className="grunge-btn grunge-btn-sm text-red-400 border-red-400 hover:bg-red-400 hover:text-accent-fg"
                   >
                     Remove Anchor
                   </button>
@@ -702,26 +702,26 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
               </div>
             </div>
           ) : (
-            <span className="text-sm text-neutral-500">
+            <span className="text-sm text-fg-subtle">
               Click on a note to select it and set its timestamp
             </span>
           )}
         </div>
         <div className="flex items-center gap-3">
           <div
-            className="text-xs text-neutral-500"
+            className="text-xs text-fg-subtle"
             title="Arrow keys: navigate | PgUp/PgDn: page | Delete: remove anchor | Esc: deselect"
           >
             Keys: arrows navigate | PgUp/PgDn page | Del remove | Esc deselect
           </div>
-          <div className="text-xs text-neutral-500">
+          <div className="text-xs text-fg-subtle">
             {anchors.size} anchor{anchors.size !== 1 ? 's' : ''} set
           </div>
         </div>
       </div>
 
       {/* Page navigation bar */}
-      <div className="flex-shrink-0 bg-black border-b border-neutral-800 px-4 py-2 flex items-center gap-3">
+      <div className="flex-shrink-0 bg-canvas border-b border-line px-4 py-2 flex items-center gap-3">
         <button
           onClick={() => goToPage(currentPage - 1)}
           disabled={currentPage === 0 || pageCount === 0}
@@ -729,7 +729,7 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
         >
           ◀ Prev
         </button>
-        <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+        <div className="flex items-center gap-1.5 text-xs text-fg-muted">
           <span>Page</span>
           <input
             type="text"
@@ -757,7 +757,7 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
         </button>
         <div className="flex-1" />
         {audioUrl && (
-          <label className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs text-fg-muted cursor-pointer select-none">
             <input
               type="checkbox"
               checked={followPlayback}
@@ -784,14 +784,14 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
             />
           )}
           {isLoading && (
-            <div className="text-sm text-neutral-400 p-8 text-center">Rendering score…</div>
+            <div className="text-sm text-fg-muted p-8 text-center">Rendering score…</div>
           )}
         </div>
       </div>
 
       {/* Audio controls - always visible at bottom */}
       {audioUrl && (
-        <div className="flex-shrink-0 bg-black border-t border-neutral-800 px-4 py-3">
+        <div className="flex-shrink-0 bg-canvas border-t border-line px-4 py-3">
           <div className="flex items-center gap-4">
             {/* Play/Pause button */}
             <button
@@ -823,7 +823,7 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
             </button>
 
             {/* Time display — self-updating from ref, no per-frame renders */}
-            <div className="font-mono text-sm text-neutral-300 w-28">
+            <div className="font-mono text-sm text-fg-muted w-28">
               <RefText valueRef={currentTimeRef} format={formatTimePair} />
             </div>
 
@@ -840,7 +840,7 @@ export function SyncEditor({ xml, audioUrl }: SyncEditorProps) {
             </div>
 
             {/* Current event indicator — self-updating from ref */}
-            <div className="text-xs text-neutral-500 w-20 text-right">
+            <div className="text-xs text-fg-subtle w-20 text-right">
               <RefText valueRef={currentEventIndexRef} format={formatEventIndex} />
             </div>
           </div>

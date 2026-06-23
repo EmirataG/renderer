@@ -250,8 +250,8 @@ export function UploadDropZone({
           transition-all duration-200 ease-out
           ${
             isDragOver
-              ? "border-white bg-white/5"
-              : "border-neutral-600 hover:border-neutral-500 hover:bg-neutral-800/30"
+              ? "border-accent bg-surface-muted"
+              : "border-line-strong hover:border-line-strong hover:bg-surface-muted"
           }
           ${isValidating ? "pointer-events-none opacity-60" : ""}
         `}
@@ -269,19 +269,19 @@ export function UploadDropZone({
           {isValidating ? (
             <>
               <LoadingIcon className="mx-auto h-8 w-8 text-blue-400 animate-spin" />
-              <p className="mt-2 text-sm text-neutral-300">
+              <p className="mt-2 text-sm text-fg-muted">
                 Validating MusicXML...
               </p>
             </>
           ) : (
             <>
-              <UploadIcon className="mx-auto h-8 w-8 text-neutral-400" />
-              <p className="mt-2 text-sm text-neutral-300">
+              <UploadIcon className="mx-auto h-8 w-8 text-fg-muted" />
+              <p className="mt-2 text-sm text-fg-muted">
                 {projectId
                   ? "Drop image here or click to browse"
                   : "Drop files here or click to browse"}
               </p>
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-fg-subtle">
                 {projectId ? "" : "MusicXML, Audio, or Image files"}
               </p>
             </>
@@ -349,14 +349,14 @@ function FileStatusCard({
   removable,
 }: FileStatusCardProps) {
   return (
-    <div className="flex items-center gap-2 rounded bg-neutral-800/50 px-3 py-2 text-xs">
-      <span className="text-neutral-400">{icon}</span>
-      <span className="text-neutral-400 w-20">{label}:</span>
+    <div className="flex items-center gap-2 rounded bg-surface-muted px-3 py-2 text-xs">
+      <span className="text-fg-muted">{icon}</span>
+      <span className="text-fg-muted w-20">{label}:</span>
       {file ? (
         <>
-          <span className="flex-1 truncate text-neutral-200">{file.name}</span>
+          <span className="flex-1 truncate text-fg">{file.name}</span>
           {file.detail && (
-            <span className="text-neutral-500">{file.detail}</span>
+            <span className="text-fg-subtle">{file.detail}</span>
           )}
           {removable && (
             <button
@@ -364,15 +364,15 @@ function FileStatusCard({
                 e.stopPropagation();
                 onRemove();
               }}
-              className="p-0.5 hover:bg-neutral-700 rounded transition-colors"
+              className="p-0.5 hover:bg-surface-muted rounded transition-colors"
               aria-label={`Remove ${label}`}
             >
-              <CloseIcon className="h-3 w-3 text-neutral-400 hover:text-neutral-200" />
+              <CloseIcon className="h-3 w-3 text-fg-muted hover:text-fg" />
             </button>
           )}
         </>
       ) : (
-        <span className="flex-1 text-neutral-500 italic">Not uploaded</span>
+        <span className="flex-1 text-fg-subtle italic">Not uploaded</span>
       )}
     </div>
   );

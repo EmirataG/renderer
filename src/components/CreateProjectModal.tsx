@@ -198,22 +198,22 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
+        className="fixed inset-0 bg-overlay backdrop-blur-sm z-50 flex items-center justify-center"
         onClick={(e) => {
           if (e.target === e.currentTarget) handleClose();
         }}
       >
-        <div className="bg-[#0a0a0a] border border-neutral-800 p-6 max-w-lg w-full mx-4">
+        <div className="bg-surface border border-line p-6 max-w-lg w-full mx-4">
           {/* Header */}
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-neutral-200">New Project</h2>
-            <span className="text-[10px] text-neutral-600 tabular-nums">Step {step}/2</span>
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-fg">New Project</h2>
+            <span className="text-[10px] text-fg-subtle tabular-nums">Step {step}/2</span>
           </div>
 
           {step === 1 ? (
             /* Step 1: File Upload */
             <div>
-              <p className="text-[11px] text-neutral-500 mb-4">Upload your score and audio files</p>
+              <p className="text-[11px] text-fg-subtle mb-4">Upload your score and audio files</p>
               <div className="grid grid-cols-2 gap-3">
                 <DropZone
                   label="Score file"
@@ -253,7 +253,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
             <div className="space-y-4">
               {/* Project name */}
               <div>
-                <label className="block text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Project Name</label>
+                <label className="block text-[10px] text-fg-subtle uppercase tracking-wider mb-1.5">Project Name</label>
                 <input
                   type="text"
                   placeholder="My Project"
@@ -269,46 +269,46 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
 
               {/* View mode */}
               <div>
-                <label className="block text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Layout</label>
+                <label className="block text-[10px] text-fg-subtle uppercase tracking-wider mb-1.5">Layout</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setViewMode('page')}
                     className={`border p-2.5 flex items-center gap-2.5 text-left transition-all ${
                       viewMode === 'page'
-                        ? 'border-white bg-white/5'
-                        : 'border-neutral-800 hover:border-neutral-600'
+                        ? 'border-accent bg-surface-muted'
+                        : 'border-line hover:border-line-strong'
                     }`}
                   >
                     <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                      viewMode === 'page' ? 'border-white' : 'border-neutral-600'
+                      viewMode === 'page' ? 'border-accent' : 'border-line-strong'
                     }`}>
-                      {viewMode === 'page' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      {viewMode === 'page' && <div className="w-1.5 h-1.5 rounded-full bg-accent" />}
                     </div>
-                    <span className="text-[11px] font-medium text-neutral-300">Page</span>
+                    <span className="text-[11px] font-medium text-fg-muted">Page</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('single-line')}
                     className={`border p-2.5 flex items-center gap-2.5 text-left transition-all ${
                       viewMode === 'single-line'
-                        ? 'border-white bg-white/5'
-                        : 'border-neutral-800 hover:border-neutral-600'
+                        ? 'border-accent bg-surface-muted'
+                        : 'border-line hover:border-line-strong'
                     }`}
                   >
                     <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                      viewMode === 'single-line' ? 'border-white' : 'border-neutral-600'
+                      viewMode === 'single-line' ? 'border-accent' : 'border-line-strong'
                     }`}>
-                      {viewMode === 'single-line' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      {viewMode === 'single-line' && <div className="w-1.5 h-1.5 rounded-full bg-accent" />}
                     </div>
-                    <span className="text-[11px] font-medium text-neutral-300">Single Line</span>
+                    <span className="text-[11px] font-medium text-fg-muted">Single Line</span>
                   </button>
                 </div>
               </div>
 
               {/* Aspect ratio */}
               <div>
-                <label className="block text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Aspect Ratio</label>
+                <label className="block text-[10px] text-fg-subtle uppercase tracking-wider mb-1.5">Aspect Ratio</label>
                 <div className="flex gap-1.5">
                   {ASPECT_RATIOS.map((r) => (
                     <button
@@ -316,8 +316,8 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                       onClick={() => setAspectRatio(r.value)}
                       className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wide border transition-all cursor-pointer ${
                         Math.abs(r.value - aspectRatio) < 0.01
-                          ? 'bg-white text-black border-white'
-                          : 'bg-transparent text-neutral-500 border-neutral-700 hover:border-neutral-500 hover:text-neutral-300'
+                          ? 'bg-accent text-accent-fg border-accent'
+                          : 'bg-transparent text-fg-subtle border-line-strong hover:border-line-strong hover:text-fg-muted'
                       }`}
                     >
                       {r.label}
@@ -328,15 +328,15 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
 
               {/* Background */}
               <div>
-                <label className="block text-[10px] text-neutral-500 uppercase tracking-wider mb-1.5">Background</label>
+                <label className="block text-[10px] text-fg-subtle uppercase tracking-wider mb-1.5">Background</label>
                 {/* Mode toggle */}
                 <div className="flex gap-1.5 mb-2.5">
                   <button
                     onClick={() => setBgMode('image')}
                     className={`flex-1 py-1.5 text-[10px] font-semibold uppercase tracking-wide border transition-all cursor-pointer ${
                       bgMode === 'image'
-                        ? 'bg-white text-black border-white'
-                        : 'bg-transparent text-neutral-500 border-neutral-700 hover:border-neutral-500 hover:text-neutral-300'
+                        ? 'bg-accent text-accent-fg border-accent'
+                        : 'bg-transparent text-fg-subtle border-line-strong hover:border-line-strong hover:text-fg-muted'
                     }`}
                   >
                     Image
@@ -345,8 +345,8 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                     onClick={() => setBgMode('color')}
                     className={`flex-1 py-1.5 text-[10px] font-semibold uppercase tracking-wide border transition-all cursor-pointer ${
                       bgMode === 'color'
-                        ? 'bg-white text-black border-white'
-                        : 'bg-transparent text-neutral-500 border-neutral-700 hover:border-neutral-500 hover:text-neutral-300'
+                        ? 'bg-accent text-accent-fg border-accent'
+                        : 'bg-transparent text-fg-subtle border-line-strong hover:border-line-strong hover:text-fg-muted'
                     }`}
                   >
                     Color
@@ -356,7 +356,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                 {bgMode === 'image' ? (
                   <div>
                     {bgImagePreview ? (
-                      <div className="border border-neutral-800 p-2 flex items-center gap-3">
+                      <div className="border border-line p-2 flex items-center gap-3">
                         <img
                           src={bgImagePreview}
                           alt="Background preview"
@@ -364,11 +364,11 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                           style={{ borderRadius: 2 }}
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] text-neutral-300 truncate">{bgImageFile?.name}</p>
+                          <p className="text-[11px] text-fg-muted truncate">{bgImageFile?.name}</p>
                           <div className="flex gap-2 mt-1">
                             <button
                               onClick={handleCropRequest}
-                              className="text-[10px] text-neutral-500 hover:text-white transition-colors uppercase tracking-wider font-semibold"
+                              className="text-[10px] text-fg-subtle hover:text-fg transition-colors uppercase tracking-wider font-semibold"
                             >
                               Crop to {selectedRatioLabel}
                             </button>
@@ -379,7 +379,7 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                         </div>
                         <button
                           onClick={clearBgImage}
-                          className="text-neutral-600 hover:text-neutral-300 transition-colors p-1"
+                          className="text-fg-subtle hover:text-fg-muted transition-colors p-1"
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
                         </button>
@@ -387,15 +387,15 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                     ) : (
                       <div
                         onClick={() => bgInputRef.current?.click()}
-                        className="border border-dashed border-neutral-700 hover:border-neutral-500 p-4 flex flex-col items-center gap-1.5 cursor-pointer transition-colors"
+                        className="border border-dashed border-line-strong hover:border-line-strong p-4 flex flex-col items-center gap-1.5 cursor-pointer transition-colors"
                       >
-                        <svg className="w-5 h-5 text-neutral-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <svg className="w-5 h-5 text-fg-subtle" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <rect x="3" y="3" width="18" height="18" rx="2" />
                           <circle cx="8.5" cy="8.5" r="1.5" />
                           <polyline points="21,15 16,10 5,21" />
                         </svg>
-                        <span className="text-[11px] text-neutral-500">Drop image or click to browse</span>
-                        <span className="text-[10px] text-neutral-700">Optional</span>
+                        <span className="text-[11px] text-fg-subtle">Drop image or click to browse</span>
+                        <span className="text-[10px] text-fg-subtle">Optional</span>
                       </div>
                     )}
                     <input
@@ -418,10 +418,10 @@ export function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProject
                       onChange={(e) => setBgColor(e.target.value)}
                       className="grunge-color-picker"
                     />
-                    <span className="text-[11px] text-neutral-600">{bgColor}</span>
+                    <span className="text-[11px] text-fg-subtle">{bgColor}</span>
                     {/* Small preview of what the bg looks like at the chosen ratio */}
                     <div
-                      className="ml-auto border border-neutral-800"
+                      className="ml-auto border border-line"
                       style={{
                         backgroundColor: bgColor,
                         width: aspectRatio >= 1 ? 48 : 48 * aspectRatio,
@@ -562,16 +562,16 @@ function ImageCropModal({ imageSrc, aspectRatio, onCrop, onCancel }: ImageCropMo
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative z-10 bg-[#0a0a0a] border border-neutral-800 p-5 max-w-2xl w-full mx-4">
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-neutral-200 mb-4">
+      <div className="absolute inset-0 bg-overlay backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 bg-surface border border-line p-5 max-w-2xl w-full mx-4">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-fg mb-4">
           Crop Background
         </h3>
 
         {/* Crop area */}
         <div
           ref={containerRef}
-          className="relative select-none overflow-hidden bg-black mb-4"
+          className="relative select-none overflow-hidden bg-canvas mb-4"
           style={{ maxHeight: '60vh' }}
         >
           <img
@@ -586,17 +586,17 @@ function ImageCropModal({ imageSrc, aspectRatio, onCrop, onCancel }: ImageCropMo
           {imgNatW > 0 && (
             <>
               {/* Top */}
-              <div className="absolute left-0 right-0 top-0 bg-black/60" style={{ height: `${cropY * 100}%` }} />
+              <div className="absolute left-0 right-0 top-0 bg-overlay" style={{ height: `${cropY * 100}%` }} />
               {/* Bottom */}
-              <div className="absolute left-0 right-0 bottom-0 bg-black/60" style={{ height: `${(1 - cropY - cropH) * 100}%` }} />
+              <div className="absolute left-0 right-0 bottom-0 bg-overlay" style={{ height: `${(1 - cropY - cropH) * 100}%` }} />
               {/* Left */}
-              <div className="absolute left-0 bg-black/60" style={{ top: `${cropY * 100}%`, height: `${cropH * 100}%`, width: `${cropX * 100}%` }} />
+              <div className="absolute left-0 bg-overlay" style={{ top: `${cropY * 100}%`, height: `${cropH * 100}%`, width: `${cropX * 100}%` }} />
               {/* Right */}
-              <div className="absolute right-0 bg-black/60" style={{ top: `${cropY * 100}%`, height: `${cropH * 100}%`, width: `${(1 - cropX - cropW) * 100}%` }} />
+              <div className="absolute right-0 bg-overlay" style={{ top: `${cropY * 100}%`, height: `${cropH * 100}%`, width: `${(1 - cropX - cropW) * 100}%` }} />
 
               {/* Crop box (draggable) */}
               <div
-                className="absolute border border-white/80"
+                className="absolute border border-accent"
                 style={{
                   left: `${cropX * 100}%`,
                   top: `${cropY * 100}%`,
@@ -610,10 +610,10 @@ function ImageCropModal({ imageSrc, aspectRatio, onCrop, onCancel }: ImageCropMo
               >
                 {/* Rule of thirds grid */}
                 <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/20" />
-                  <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/20" />
-                  <div className="absolute top-1/3 left-0 right-0 h-px bg-white/20" />
-                  <div className="absolute top-2/3 left-0 right-0 h-px bg-white/20" />
+                  <div className="absolute left-1/3 top-0 bottom-0 w-px bg-surface-muted" />
+                  <div className="absolute left-2/3 top-0 bottom-0 w-px bg-surface-muted" />
+                  <div className="absolute top-1/3 left-0 right-0 h-px bg-surface-muted" />
+                  <div className="absolute top-2/3 left-0 right-0 h-px bg-surface-muted" />
                 </div>
               </div>
             </>
@@ -669,12 +669,12 @@ function DropZone({ label, icon, accept, hint, file, onFile, onClear, inputRef }
 
   if (file) {
     return (
-      <div className="border border-neutral-800 bg-neutral-900/50 p-3 flex flex-col items-center gap-2">
+      <div className="border border-line bg-surface-muted p-3 flex flex-col items-center gap-2">
         <CheckIcon className="w-4 h-4 text-green-500" />
-        <span className="text-[11px] text-neutral-300 text-center truncate w-full">{file.name}</span>
+        <span className="text-[11px] text-fg-muted text-center truncate w-full">{file.name}</span>
         <button
           onClick={onClear}
-          className="text-[10px] text-neutral-600 hover:text-neutral-300 uppercase tracking-wider font-semibold transition-colors"
+          className="text-[10px] text-fg-subtle hover:text-fg-muted uppercase tracking-wider font-semibold transition-colors"
         >
           Remove
         </button>
@@ -690,8 +690,8 @@ function DropZone({ label, icon, accept, hint, file, onFile, onClear, inputRef }
       onDrop={handleDrop}
       className={`border border-dashed p-4 flex flex-col items-center gap-1.5 cursor-pointer transition-colors ${
         isDragOver
-          ? 'border-white bg-white/5'
-          : 'border-neutral-700 hover:border-neutral-500'
+          ? 'border-accent bg-surface-muted'
+          : 'border-line-strong hover:border-line-strong'
       }`}
     >
       <input
@@ -705,9 +705,9 @@ function DropZone({ label, icon, accept, hint, file, onFile, onClear, inputRef }
         }}
         className="hidden"
       />
-      <span className="text-neutral-600">{icon}</span>
-      <span className="text-[11px] text-neutral-400">{label}</span>
-      <span className="text-[10px] text-neutral-700">{hint}</span>
+      <span className="text-fg-subtle">{icon}</span>
+      <span className="text-[11px] text-fg-muted">{label}</span>
+      <span className="text-[10px] text-fg-subtle">{hint}</span>
     </div>
   );
 }

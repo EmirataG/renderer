@@ -9,26 +9,25 @@ export function SystemRequirementsButton() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="mt-6 text-neutral-500 hover:text-neutral-300 transition-colors text-xs uppercase tracking-widest border-b border-transparent hover:border-neutral-500 pb-px"
+        className="mt-6 text-fg-subtle hover:text-fg-muted transition-colors text-xs uppercase tracking-widest border-b border-transparent hover:border-line-strong pb-px"
       >
         System Requirements for Video Export
       </button>
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
           onClick={() => setOpen(false)}
         >
           <div
-            className="relative w-full max-w-md border border-neutral-700 bg-black text-white"
+            className="relative w-full max-w-md border border-line bg-elevated text-fg"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="sysreq-title"
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-neutral-700 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-line px-6 py-4">
               <h2
                 id="sysreq-title"
                 className="font-serif text-sm font-bold uppercase tracking-widest"
@@ -38,7 +37,7 @@ export function SystemRequirementsButton() {
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Close"
-                className="text-neutral-500 hover:text-white transition-colors ml-4 flex-shrink-0"
+                className="text-fg-subtle hover:text-fg transition-colors ml-4 flex-shrink-0"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -49,14 +48,14 @@ export function SystemRequirementsButton() {
 
             {/* Body */}
             <div className="px-6 py-5 space-y-5">
-              <p className="text-neutral-400 text-xs uppercase tracking-wider leading-relaxed">
+              <p className="text-fg-muted text-xs uppercase tracking-wider leading-relaxed">
                 Video export runs entirely in your browser using your device's hardware.
                 To use it, make sure you're on a supported browser and operating system.
               </p>
 
               {/* Supported browsers */}
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle mb-3">
                   Supported Browsers
                 </p>
                 <ul className="space-y-2">
@@ -66,10 +65,10 @@ export function SystemRequirementsButton() {
                     { name: 'Safari', version: 'version 16.4 or newer  (macOS & iOS)' },
                   ].map(({ name, version }) => (
                     <li key={name} className="flex items-start gap-3">
-                      <span className="mt-0.5 w-1.5 h-1.5 flex-shrink-0 bg-white rounded-full" />
-                      <span className="text-xs text-white">
+                      <span className="mt-0.5 w-1.5 h-1.5 flex-shrink-0 bg-accent rounded-full" />
+                      <span className="text-xs text-fg">
                         {name}{' '}
-                        <span className="text-neutral-500">&mdash; {version}</span>
+                        <span className="text-fg-subtle">&mdash; {version}</span>
                       </span>
                     </li>
                   ))}
@@ -77,21 +76,21 @@ export function SystemRequirementsButton() {
               </div>
 
               {/* Not supported */}
-              <div className="border-t border-neutral-800 pt-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-3">
+              <div className="border-t border-line pt-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle mb-3">
                   Not Supported
                 </p>
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 w-1.5 h-1.5 flex-shrink-0 bg-neutral-600 rounded-full" />
-                  <span className="text-xs text-neutral-400">
+                  <span className="mt-0.5 w-1.5 h-1.5 flex-shrink-0 bg-fg-subtle rounded-full" />
+                  <span className="text-xs text-fg-muted">
                     Firefox — video export is not available on this browser
                   </span>
                 </div>
               </div>
 
               {/* Additional notes */}
-              <div className="border-t border-neutral-800 pt-4">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-3">
+              <div className="border-t border-line pt-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle mb-3">
                   Additional Notes
                 </p>
                 <ul className="space-y-2">
@@ -101,8 +100,8 @@ export function SystemRequirementsButton() {
                     'Higher resolutions and longer pieces require more memory and processing time.',
                   ].map((note) => (
                     <li key={note} className="flex items-start gap-3">
-                      <span className="mt-0.5 w-1.5 h-1.5 flex-shrink-0 bg-neutral-700 rounded-full" />
-                      <span className="text-xs text-neutral-400 leading-relaxed">{note}</span>
+                      <span className="mt-0.5 w-1.5 h-1.5 flex-shrink-0 bg-surface-muted rounded-full" />
+                      <span className="text-xs text-fg-muted leading-relaxed">{note}</span>
                     </li>
                   ))}
                 </ul>
@@ -110,7 +109,7 @@ export function SystemRequirementsButton() {
             </div>
 
             {/* Footer */}
-            <div className="border-t border-neutral-700 px-6 py-4">
+            <div className="border-t border-line px-6 py-4">
               <button
                 onClick={() => setOpen(false)}
                 className="grunge-btn w-full text-xs"

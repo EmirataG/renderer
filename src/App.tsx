@@ -11,6 +11,7 @@ import { useSyncStore } from "./stores/syncStore";
 import { useProjectStore, DEFAULT_SETTINGS } from "./stores/projectStore";
 import { useEventStore } from "./stores/eventStore";
 import { SaveIndicator } from "./components/SaveIndicator";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
 import { TrebleClefSpinner } from "./components/TrebleClefSpinner";
@@ -553,13 +554,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
   return (
     <ToastProvider>
-      <main className="h-screen flex flex-col bg-black text-neutral-100">
+      <main className="h-screen flex flex-col bg-canvas text-fg">
         {/* Top header bar */}
-        <div className="flex-shrink-0 bg-black border-b border-neutral-800/60 px-3 py-2 flex items-center gap-3">
+        <div className="flex-shrink-0 bg-canvas border-b border-line px-3 py-2 flex items-center gap-3">
           {onNavigateDashboard && (
             <button
               onClick={onNavigateDashboard}
-              className="flex items-center gap-1.5 text-neutral-600 hover:text-neutral-300 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 text-fg-subtle hover:text-fg-muted transition-colors cursor-pointer"
               title="Dashboard"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -568,7 +569,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </button>
           )}
           <img src="/logo.png" alt="Manuscript" className="h-5 w-5 opacity-70" />
-          <div className="w-px h-4 bg-neutral-800" />
+          <div className="w-px h-4 bg-surface-muted" />
           <input
             type="text"
             value={projectName}
@@ -577,12 +578,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             spellCheck={false}
-            className="text-xs font-medium bg-transparent border-none outline-none text-neutral-400 placeholder-neutral-700 focus:text-neutral-200 min-w-0 max-w-[200px] transition-colors"
+            className="text-xs font-medium bg-transparent border-none outline-none text-fg-muted placeholder-fg-subtle focus:text-fg min-w-0 max-w-[200px] transition-colors"
             placeholder="Untitled Project"
           />
           {musicXMLFile && (
             <>
-              <div className="w-px h-4 bg-neutral-800" />
+              <div className="w-px h-4 bg-surface-muted" />
               <div className="flex gap-1">
                 <button
                   onClick={() => setCurrentView("renderer")}
@@ -609,11 +610,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </button>
           )}
           {projectId && <SaveIndicator />}
+          <ThemeToggle className="h-6" />
         </div>
 
         <div className="flex-1 flex min-h-0">
           <aside
-            className="w-72 shrink-0 bg-[#080808] border-r border-neutral-800/50 flex flex-col overflow-hidden"
+            className="w-72 shrink-0 bg-surface border-r border-line flex flex-col overflow-hidden"
             style={{ display: currentView === "sync" ? "none" : undefined }}
           >
             <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-1">
@@ -962,7 +964,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </div>
 
             {/* EXPORT BAR */}
-            <div className="flex-shrink-0 border-t border-neutral-800/50 px-3 py-3 space-y-2 bg-[#060606]">
+            <div className="flex-shrink-0 border-t border-line px-3 py-3 space-y-2 bg-surface">
               {exportState.status === "idle" && (
                 <>
                   <button
@@ -973,7 +975,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     Export Video
                   </button>
                   {(!musicXMLFile || !audioFile || anchors.size === 0) && (
-                    <p className="text-[10px] text-neutral-600 text-center">
+                    <p className="text-[10px] text-fg-subtle text-center">
                       {!musicXMLFile
                         ? "Upload a score to export"
                         : !audioFile
@@ -989,11 +991,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                 exportState.status === "encoding") && (
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-[10px] uppercase tracking-wider font-semibold">
-                    <span className="text-neutral-500">Exporting</span>
-                    <span className="text-neutral-400 tabular-nums">{Math.round(exportState.percent)}%</span>
+                    <span className="text-fg-subtle">Exporting</span>
+                    <span className="text-fg-muted tabular-nums">{Math.round(exportState.percent)}%</span>
                   </div>
-                  <div className="h-1 bg-neutral-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-white rounded-full transition-all duration-300" style={{ width: `${exportState.percent}%` }} />
+                  <div className="h-1 bg-surface-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${exportState.percent}%` }} />
                   </div>
                 </div>
               )}
@@ -1029,7 +1031,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
               {exportState.status === "cancelled" && (
                 <div className="space-y-2">
-                  <p className="text-[10px] text-neutral-500 text-center">Export cancelled</p>
+                  <p className="text-[10px] text-fg-subtle text-center">Export cancelled</p>
                   <button onClick={resetExport} className="grunge-btn w-full">
                     New Export
                   </button>
@@ -1038,13 +1040,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </div>
           </aside>
 
-          <section className="flex-1 flex flex-col bg-black">
+          <section className="flex-1 flex flex-col bg-canvas">
             {/* Main content */}
             {isLoadingProject ? (
               <div className="flex-1 flex flex-col items-center justify-center">
-                <TrebleClefSpinner size={64} className="text-neutral-400" />
+                <TrebleClefSpinner size={64} className="text-fg-muted" />
                 <p
-                  className="mt-5 text-xs text-neutral-500 uppercase tracking-widest"
+                  className="mt-5 text-xs text-fg-subtle uppercase tracking-widest"
                   style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
                 >
                   Loading project
@@ -1176,7 +1178,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                   {/* Transport bar portal target - always visible at bottom of preview */}
                   <div
                     ref={setTransportEl}
-                    className="flex-shrink-0 bg-black border-t border-neutral-800/50 px-3 py-2.5"
+                    className="flex-shrink-0 bg-canvas border-t border-line px-3 py-2.5"
                   />
                 </div>
                 {/* Sync Editor view - only mounted when active to save ~100-200MB */}
@@ -1190,9 +1192,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             ) : (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center p-8">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-neutral-800/50 mb-4">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface-muted mb-4">
                     <svg
-                      className="w-8 h-8 text-neutral-500"
+                      className="w-8 h-8 text-fg-subtle"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -1203,10 +1205,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       <circle cx="18" cy="16" r="3" />
                     </svg>
                   </div>
-                  <h2 className="text-sm font-medium text-neutral-400 mb-1.5">
+                  <h2 className="text-sm font-medium text-fg-muted mb-1.5">
                     No Score Loaded
                   </h2>
-                  <p className="text-xs text-neutral-600 max-w-xs leading-relaxed">
+                  <p className="text-xs text-fg-subtle max-w-xs leading-relaxed">
                     Upload a MusicXML file to begin.
                   </p>
                 </div>
@@ -1238,17 +1240,17 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               padding: "2rem",
             }}
           >
-            <h3 className="text-xs font-semibold text-neutral-300 mb-6 uppercase tracking-widest text-center">
+            <h3 className="text-xs font-semibold text-fg-muted mb-6 uppercase tracking-widest text-center">
               Exporting Video
             </h3>
 
             {/* Progress */}
             <div className="space-y-2 mb-6">
               <div className="flex justify-between text-[11px]">
-                <span className="text-neutral-500 uppercase font-semibold tracking-wide">
+                <span className="text-fg-subtle uppercase font-semibold tracking-wide">
                   {exportState.stage || exportState.status}
                 </span>
-                <span className="text-neutral-300 tabular-nums">
+                <span className="text-fg-muted tabular-nums">
                   {Math.round(exportState.percent)}%
                 </span>
               </div>
@@ -1271,16 +1273,16 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </div>
 
             {/* Fun fact */}
-            <div className="mb-6 border-l border-neutral-700 pl-3">
-              <p className="text-[10px] text-neutral-600 uppercase tracking-widest font-semibold mb-1">
+            <div className="mb-6 border-l border-line-strong pl-3">
+              <p className="text-[10px] text-fg-subtle uppercase tracking-widest font-semibold mb-1">
                 Did you know?
               </p>
-              <p className="text-[11px] text-neutral-500 leading-relaxed">
+              <p className="text-[11px] text-fg-subtle leading-relaxed">
                 Bach loved coffee so much he wrote a comic cantata about it
                 &mdash; the &ldquo;Coffee Cantata&rdquo; (BWV 211), featuring a
                 father trying to cure his daughter&rsquo;s coffee addiction.
               </p>
-              <p className="text-[10px] text-neutral-600 mt-1.5">
+              <p className="text-[10px] text-fg-subtle mt-1.5">
                 Maybe grab a cup while you wait.
               </p>
             </div>
@@ -1299,12 +1301,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       {/* Reset Score Region Confirmation Dialog */}
       {showResetConfirm && (
         <div className="fixed inset-0 flex items-center justify-center z-[70]">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowResetConfirm(false)} />
-          <div className="relative bg-[#0a0a0a] border border-neutral-800 rounded p-5 max-w-sm mx-4">
-            <h3 className="text-xs font-semibold text-neutral-200 mb-2 uppercase tracking-wider">
+          <div className="absolute inset-0 bg-overlay" onClick={() => setShowResetConfirm(false)} />
+          <div className="relative bg-surface border border-line rounded p-5 max-w-sm mx-4">
+            <h3 className="text-xs font-semibold text-fg mb-2 uppercase tracking-wider">
               Reset Score Region?
             </h3>
-            <p className="text-[11px] text-neutral-500 mb-4 leading-relaxed">
+            <p className="text-[11px] text-fg-subtle mb-4 leading-relaxed">
               This will reset the score to use the full background area.
             </p>
             <div className="flex gap-2 justify-end">
