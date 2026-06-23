@@ -896,7 +896,7 @@ function SpeedMenu({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="h-9 flex items-center gap-2 border border-line-strong bg-canvas px-3 text-xs font-bold uppercase tracking-wider text-fg-muted hover:text-fg transition-colors tabular-nums"
+        className="h-12 flex items-center gap-2 border border-line-strong bg-canvas px-3 text-xs font-bold uppercase tracking-wider text-fg-muted hover:text-fg transition-colors tabular-nums"
         title="Playback speed"
       >
         <span>{value}×</span>

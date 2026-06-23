@@ -10,6 +10,27 @@ interface WaveformScrubberProps {
   height?: number;
 }
 
+// Resolve a CSS custom property to its current value (theme-aware). Wavesurfer
+// paints to a canvas with literal colors, so we can't hand it `var(--x)` —
+// read the computed value and re-apply when the theme changes.
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  return v || fallback;
+}
+
+// Monochrome waveform palette, keyed to the app's grunge tokens:
+//   unplayed → faint, played → mid, playhead → bright.
+function waveColors() {
+  return {
+    waveColor: cssVar('--line-strong', '#525252'),
+    progressColor: cssVar('--fg-muted', '#a3a3a3'),
+    cursorColor: cssVar('--fg', '#f5f5f5'),
+  };
+}
+
 /**
  * Waveform with note-onset tick marks.
  *
@@ -39,9 +60,7 @@ export const WaveformScrubber = memo(function WaveformScrubber({
       container: containerRef.current,
       media: audioElement,
       height,
-      waveColor: '#555',
-      progressColor: '#f59e0b',
-      cursorColor: '#fff',
+      ...waveColors(),
       cursorWidth: 2,
       barWidth: 2,
       barGap: 1,
@@ -63,6 +82,19 @@ export const WaveformScrubber = memo(function WaveformScrubber({
     // Only recreate when the audio source changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioUrl, audioElement, height]);
+
+  // Re-apply the palette when the theme (data-theme on <html>) toggles —
+  // the canvas colors are baked in at create time and won't update otherwise.
+  useEffect(() => {
+    const mo = new MutationObserver(() => {
+      wsRef.current?.setOptions(waveColors());
+    });
+    mo.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    return () => mo.disconnect();
+  }, []);
 
   // Draw note-onset tick marks on the overlay canvas. Redraws only when the
   // events/duration change or the container resizes — never per frame.
