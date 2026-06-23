@@ -1,9 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export function SystemRequirementsButton() {
   const [open, setOpen] = useState(false);
+
+  // Lock page scroll while the modal is open and allow Escape to close it.
+  useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
 
   return (
     <>
@@ -14,13 +30,13 @@ export function SystemRequirementsButton() {
         System Requirements for Video Export
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
           onClick={() => setOpen(false)}
         >
           <div
-            className="relative w-full max-w-md border border-line bg-elevated text-fg"
+            className="relative w-full max-w-md max-h-[90vh] overflow-auto border border-line bg-elevated text-fg"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -118,7 +134,8 @@ export function SystemRequirementsButton() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
