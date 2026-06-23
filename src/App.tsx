@@ -616,11 +616,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             className="w-72 shrink-0 bg-[#080808] border-r border-neutral-800/50 flex flex-col overflow-hidden"
             style={{ display: currentView === "sync" ? "none" : undefined }}
           >
-            <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-3 py-3 space-y-0">
+            <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-1">
               {/* UPLOAD SECTION */}
-              <section className="pb-3 mb-3 border-b border-neutral-800/40">
+              <section className="grunge-section">
                 <h2 className="grunge-section-title">{projectId ? "Background Image" : "Project Files"}</h2>
-                <div className="pt-2">
+                <div className="grunge-section-body">
                   <UploadDropZone
                     projectId={projectId}
                     onMusicXMLUpload={handleMusicXMLUpload}
@@ -640,16 +640,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               )}
 
               {/* PLAYBACK SECTION */}
-              <section className="pb-3 mb-3 border-b border-neutral-800/40">
+              <section className="grunge-section">
                 <h2 className="grunge-section-title">Playback</h2>
-                <div className="pt-2.5 space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="flex justify-between text-[11px]">
-                      <span className="text-neutral-500">Frame Rate</span>
-                      <span className="text-neutral-300 tabular-nums">
-                        {fps} fps
-                      </span>
-                    </label>
+                <div className="grunge-section-body">
+                  <div className="grunge-field">
+                    <div className="grunge-field-head">
+                      <span className="grunge-label">Frame Rate</span>
+                      <span className="grunge-field-value">{fps} fps</span>
+                    </div>
                     <input
                       type="range"
                       min={15}
@@ -666,13 +664,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               </section>
 
               {/* SCORE APPEARANCE SECTION */}
-              <section className="pb-3 mb-3 border-b border-neutral-800/40">
+              <section className="grunge-section">
                 <h2 className="grunge-section-title">Score Appearance</h2>
-                <div className="pt-2.5 space-y-3">
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] text-neutral-500">
-                      Layout
-                    </label>
+                <div className="grunge-section-body">
+                  <div className="grunge-field">
+                    <label className="grunge-label">Layout</label>
                     <select
                       value={viewMode}
                       onChange={(e) =>
@@ -688,49 +684,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     </select>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] text-neutral-500">
-                      Color
-                    </label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="color"
-                        value={scoreColor}
-                        onChange={(e) =>
-                          setSetting("scoreColor", e.target.value)
-                        }
-                        className="grunge-color-picker"
-                      />
-                      <span className="text-[11px] text-neutral-600">
-                        {scoreColor}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="flex justify-between text-[11px]">
-                      <span className="text-neutral-500">Size</span>
-                      <span className="text-neutral-300 tabular-nums">
-                        {Math.round(scoreScale * 100)}%
-                      </span>
-                    </label>
-                    <input
-                      type="range"
-                      min={0.5}
-                      max={1.5}
-                      step={0.05}
-                      value={scoreScale}
-                      onChange={(e) =>
-                        setSetting("scoreScale", Number(e.target.value))
-                      }
-                      className="grunge-range"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] text-neutral-500">
-                      Music Font
-                    </label>
+                  <div className="grunge-field">
+                    <label className="grunge-label">Music Font</label>
                     <select
                       value={musicFont}
                       onChange={(e) => setSetting("musicFont", e.target.value)}
@@ -744,7 +699,48 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     </select>
                   </div>
 
-                  <label className="flex items-center gap-2 text-[11px] cursor-pointer group">
+                  <div className="grunge-field">
+                    <div className="grunge-field-head">
+                      <span className="grunge-label">Size</span>
+                      <span className="grunge-field-value">
+                        {Math.round(scoreScale * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={1.5}
+                      step={0.05}
+                      value={scoreScale}
+                      onChange={(e) =>
+                        setSetting("scoreScale", Number(e.target.value))
+                      }
+                      className="grunge-range"
+                    />
+                  </div>
+
+                  <div className="grunge-field">
+                    <label className="grunge-label">Color</label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="color"
+                        value={scoreColor}
+                        onChange={(e) =>
+                          setSetting("scoreColor", e.target.value)
+                        }
+                        className="grunge-color-picker"
+                      />
+                      <span className="grunge-color-value">{scoreColor}</span>
+                    </div>
+                  </div>
+
+                  <BorderPicker
+                    value={scoreBorder}
+                    onChange={(style) => setSetting("scoreBorder", style)}
+                    color={scoreColor}
+                  />
+
+                  <label className="grunge-toggle-row">
                     <input
                       type="checkbox"
                       checked={hideLabels}
@@ -753,64 +749,53 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       }
                       className="grunge-checkbox"
                     />
-                    <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
-                      Hide Instrument Labels
-                    </span>
+                    <span>Hide Instrument Labels</span>
                   </label>
 
-                  {/* Border Picker */}
-                  <BorderPicker
-                    value={scoreBorder}
-                    onChange={(style) => setSetting("scoreBorder", style)}
-                    color={scoreColor}
-                  />
-
-                  {/* Score Region Editor Button */}
-                  <div className="pt-2.5 mt-1 border-t border-neutral-800/40">
-                    {isEditingRegion ? (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setShowResetConfirm(true)}
-                          className="grunge-btn grunge-btn-sm flex-1"
-                        >
-                          Use Full Background
-                        </button>
-                        <button
-                          onClick={() => {
-                            setIsEditingRegion(false);
-                            setShowResetConfirm(false);
-                          }}
-                          className="grunge-btn-primary grunge-btn-sm flex-1"
-                        >
-                          Done
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => setIsEditingRegion(true)}
-                          disabled={!bgUrl}
-                          className="grunge-btn grunge-btn-sm w-full"
-                        >
-                          Edit Score Region
-                        </button>
-                        {scoreRegion && (
-                          <p className="text-xs text-neutral-500 mt-2">
-                            Custom region: {Math.round(scoreRegion.width)}x
-                            {Math.round(scoreRegion.height)}
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
+                  {/* Score Region Editor */}
+                  {isEditingRegion ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowResetConfirm(true)}
+                        className="grunge-btn grunge-btn-sm flex-1"
+                      >
+                        Use Full Background
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingRegion(false);
+                          setShowResetConfirm(false);
+                        }}
+                        className="grunge-btn-primary grunge-btn-sm flex-1"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grunge-field">
+                      <button
+                        onClick={() => setIsEditingRegion(true)}
+                        disabled={!bgUrl}
+                        className="grunge-btn grunge-btn-sm w-full"
+                      >
+                        Edit Score Region
+                      </button>
+                      {scoreRegion && (
+                        <span className="grunge-label">
+                          Custom region: {Math.round(scoreRegion.width)}x
+                          {Math.round(scoreRegion.height)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </section>
 
               {/* NOTE ANIMATION SECTION */}
-              <section className="pb-3 mb-3">
+              <section className="grunge-section">
                 <h2 className="grunge-section-title">Note Animation</h2>
-                <div className="pt-2.5 space-y-3">
-                  <label className="flex items-center gap-2 text-[11px] cursor-pointer group">
+                <div className="grunge-section-body">
+                  <label className="grunge-toggle-row">
                     <input
                       type="checkbox"
                       checked={activeNoteheadColor !== null}
@@ -822,17 +807,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       }
                       className="grunge-checkbox"
                     />
-                    <span className="text-neutral-400 group-hover:text-neutral-200 transition-colors">
-                      Highlight Active Notes
-                    </span>
+                    <span>Highlight Active Notes</span>
                   </label>
 
                   {activeNoteheadColor !== null && (
                     <>
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] text-neutral-500">
-                          Highlight Color
-                        </label>
+                      <div className="grunge-field">
+                        <label className="grunge-label">Highlight Color</label>
                         <div className="flex gap-2 items-center">
                           <input
                             type="color"
@@ -842,14 +823,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                             }
                             className="grunge-color-picker"
                           />
-                          <span className="text-[11px] text-neutral-600">
+                          <span className="grunge-color-value">
                             {activeNoteheadColor}
                           </span>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <span className="block text-[11px] text-neutral-500">Also color</span>
+                      <div className="grunge-field">
+                        <span className="grunge-label">Also color</span>
                         <div className="flex gap-1.5">
                           {([
                             ['colorAccidentals', 'Accidentals', colorAccidentals],
@@ -859,11 +840,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                             <button
                               key={key}
                               onClick={() => setSetting(key, !value)}
-                              className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wide border transition-all cursor-pointer ${
-                                value
-                                  ? 'bg-white text-black border-white'
-                                  : 'bg-transparent text-neutral-500 border-neutral-700 hover:border-neutral-500 hover:text-neutral-300'
-                              }`}
+                              className={value ? 'grunge-chip grunge-chip-active' : 'grunge-chip'}
                             >
                               {label}
                             </button>
@@ -873,13 +850,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     </>
                   )}
 
-                  <div className="space-y-1.5">
-                    <label className="flex justify-between text-[11px]">
-                      <span className="text-neutral-500">Scale</span>
-                      <span className="text-neutral-300 tabular-nums">
+                  <div className="grunge-field">
+                    <div className="grunge-field-head">
+                      <span className="grunge-label">Scale</span>
+                      <span className="grunge-field-value">
                         {activeNoteheadScale.toFixed(2)}x
                       </span>
-                    </label>
+                    </div>
                     <input
                       type="range"
                       min={1}
@@ -896,13 +873,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="flex justify-between text-[11px]">
-                      <span className="text-neutral-500">Entry</span>
-                      <span className="text-neutral-300 tabular-nums">
+                  <div className="grunge-field">
+                    <div className="grunge-field-head">
+                      <span className="grunge-label">Entry</span>
+                      <span className="grunge-field-value">
                         {activeNoteheadEntryMs}ms
                       </span>
-                    </label>
+                    </div>
                     <input
                       type="range"
                       min={0}
@@ -919,14 +896,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="flex justify-between text-[11px]">
-                      <span className="text-neutral-500">Hold</span>
-                      <span className="text-neutral-300 tabular-nums">
+                  <div className="grunge-field">
+                    <div className="grunge-field-head">
+                      <span className="grunge-label">Hold</span>
+                      <span className="grunge-field-value">
                         {activeNoteheadUseNoteDuration ? 'auto' : `${activeNoteheadHoldMs}ms`}
                       </span>
-                    </label>
-                    <label className="flex items-center gap-2 text-[11px] text-neutral-500 cursor-pointer select-none group">
+                    </div>
+                    <label className="grunge-toggle-row">
                       <input
                         type="checkbox"
                         checked={activeNoteheadUseNoteDuration}
@@ -938,7 +915,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                         }
                         className="grunge-checkbox"
                       />
-                      <span className="group-hover:text-neutral-300 transition-colors">Use note duration</span>
+                      <span>Use note duration</span>
                     </label>
                     {!activeNoteheadUseNoteDuration && (
                       <input
@@ -958,13 +935,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="flex justify-between text-[11px]">
-                      <span className="text-neutral-500">Exit</span>
-                      <span className="text-neutral-300 tabular-nums">
+                  <div className="grunge-field">
+                    <div className="grunge-field-head">
+                      <span className="grunge-label">Exit</span>
+                      <span className="grunge-field-value">
                         {activeNoteheadExitMs}ms
                       </span>
-                    </label>
+                    </div>
                     <input
                       type="range"
                       min={0}

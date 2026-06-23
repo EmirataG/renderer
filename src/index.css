@@ -286,11 +286,109 @@ button, input, select, textarea {
   font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: #666;
-  padding: 0 0 0.5rem 0;
-  margin-bottom: 0;
-  border-bottom: 1px solid #1a1a1a;
+  letter-spacing: 0.14em;
+  color: #6b6b6b;
+  padding: 0;
+  margin: 0;
+}
+
+/* --- Control panel layout primitives --- */
+
+/* One settings group. Sections are separated by a single subtle rule,
+   replacing the previous double-border (title underline + section border). */
+.grunge-section {
+  padding: 0.875rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.grunge-section:first-child {
+  border-top: none;
+}
+
+/* Consistent vertical rhythm between controls within a section. */
+.grunge-section-body {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* A single control (label stacked over its input). */
+.grunge-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4375rem;
+}
+
+/* Unified control label. */
+.grunge-label {
+  font-size: 0.6875rem;
+  color: #8a8a8a;
+  line-height: 1.2;
+}
+
+/* Label row with a right-aligned live value (for sliders). */
+.grunge-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.grunge-field-value {
+  font-size: 0.6875rem;
+  color: #d4d4d4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Inline toggle row: switch + label on one line. */
+.grunge-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  color: #9a9a9a;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.grunge-toggle-row:hover {
+  color: #d4d4d4;
+}
+
+/* Small segmented chips (e.g. "Also color" options) — outline style that
+   matches the rest of the grunge token language instead of a solid white fill. */
+.grunge-chip {
+  flex: 1 1 0;
+  padding: 0.4375rem 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid #2f2f2f;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.grunge-chip:hover {
+  border-color: #555;
+  color: #ccc;
+}
+
+.grunge-chip-active {
+  border-color: #d4d4d4;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* Read-out of the current color value next to a color picker. */
+.grunge-color-value {
+  font-size: 0.6875rem;
+  color: #9a9a9a;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 /* --- Input --- */
@@ -344,13 +442,18 @@ button, input, select, textarea {
 
 /* --- Color Picker --- */
 .grunge-color-picker {
-  height: 2rem;
-  width: 3.5rem;
+  height: 1.875rem;
+  width: 2.5rem;
   background: #0a0a0a;
-  border: 1px solid #333;
+  border: 1px solid #2a2a2a;
   border-radius: 0;
   cursor: pointer;
   padding: 0;
+  transition: border-color 150ms ease;
+}
+
+.grunge-color-picker:hover {
+  border-color: #444;
 }
 
 .grunge-color-picker::-webkit-color-swatch-wrapper {
