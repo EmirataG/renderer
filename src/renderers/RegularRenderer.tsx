@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useVerovio } from "../hooks/useVerovio";
@@ -23,8 +23,20 @@ import {
   cancelPendingNoteheadTimers,
   type ElementCache,
 } from "../lib/noteAnimation";
+import {
+  setupReveal,
+  teardownReveal,
+  isRevealInit,
+  computeSystems,
+  revealFull,
+  revealNone,
+  revealAt,
+  type RevealHandle,
+} from "../lib/revealMask";
 
 const WIDTH = 980;
+/** Gradient reveal band width, in Verovio inner coordinate units. */
+const REVEAL_BAND = 900;
 
 /** Contiguous window of mounted pages, inclusive on both ends. */
 interface VisibleRange {
@@ -97,6 +109,10 @@ interface Props {
   colorArticulations?: boolean;
   // hide instrument labels (Verovio .label elements)
   hideLabels?: boolean;
+  // progressive reveal: hide notes/content until the playhead reaches them
+  hideUnplayedNotes?: boolean;
+  // soft gradient reveal edge (vs. hard cut) when hideUnplayedNotes is on
+  smoothReveal?: boolean;
   // render mode for headless frame capture (disables virtualization + transitions)
   renderMode?: boolean;
   // audio duration override for render mode (no audio element needed)
@@ -127,6 +143,8 @@ export default memo(function RegularRenderer({
   colorDots = false,
   colorArticulations = false,
   hideLabels = false,
+  hideUnplayedNotes = false,
+  smoothReveal = false,
   // render mode for headless frame capture
   renderMode = false,
   audioDuration: propAudioDuration,
@@ -141,6 +159,9 @@ export default memo(function RegularRenderer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pageContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const elementCacheRef = useRef<ElementCache>(new Map());
+  // Progressive reveal: per-page mask handles + cached event inner positions.
+  const revealHandlesRef = useRef<Map<number, RevealHandle>>(new Map());
+  const revealPosRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   // Event cache from Zustand store (useShallow prevents re-renders on unrelated state changes)
   const { events, svgPagesRef, setEvents: setEventsInStore } = useEventStore(
@@ -428,6 +449,21 @@ export default memo(function RegularRenderer({
     return () => cancelAnimationFrame(id);
   }, [visiblePages]);
 
+  // Build/refresh the reveal mask SYNCHRONOUSLY before paint — on the score,
+  // the visible-page window, and the toggles. A layout effect (not rAF) is
+  // essential: during playback the camera scrolls and `visiblePages` changes
+  // rapidly, and a rAF would be cancelled-and-rescheduled every change before
+  // it ever fires, leaving freshly-mounted pages unmasked (showing full score).
+  const prevSvgPagesRef = useRef(svgPages);
+  useLayoutEffect(() => {
+    if (prevSvgPagesRef.current !== svgPages) {
+      revealPosRef.current.clear(); // new layout — cached inner positions stale
+      prevSvgPagesRef.current = svgPages;
+    }
+    syncRevealStructure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svgPages, visiblePages, hideUnplayedNotes, smoothReveal]);
+
   /* ---------------- score color and styling ---------------- */
 
   // Score color CSS is rendered as React-managed JSX <style> to avoid
@@ -569,6 +605,82 @@ export default memo(function RegularRenderer({
     return { event: interpolatedEvents[result], index: result };
   }
 
+  /* ---------------- progressive reveal (hide unplayed notes) ---------------- */
+
+  // Inner-space position of an event's notehead (cached). Returns null if the
+  // element isn't mounted/laid out (e.g. its page is virtualized away).
+  function getEventInnerPos(event: typeof interpolatedEvents[number]): { x: number; y: number } | null {
+    const cached = revealPosRef.current.get(event.id);
+    if (cached) return cached;
+    const root = scoreRef.current;
+    if (!root) return null;
+    const id = event.positionSvgId ?? event.svgIds[0];
+    if (!id) return null;
+    const el = root.querySelector<SVGGraphicsElement>(`#${CSS.escape(id)}`);
+    if (!el) return null;
+    try {
+      const bb = el.getBBox();
+      if (bb.width === 0 && bb.height === 0) return null; // not laid out yet
+      const pos = { x: bb.x + bb.width, y: bb.y + bb.height / 2 };
+      revealPosRef.current.set(event.id, pos);
+      return pos;
+    } catch {
+      return null;
+    }
+  }
+
+  // Build/refresh reveal for every mounted page (or tear it all down when the
+  // setting is off). Cheap + idempotent; safe to call after each render and
+  // whenever the visible-page window changes.
+  function syncRevealStructure() {
+    const handles = revealHandlesRef.current;
+    if (!hideUnplayedNotes || renderMode) {
+      handles.forEach((h) => { try { teardownReveal(h.svg); } catch { /* detached */ } });
+      handles.clear();
+      return;
+    }
+    pageContainerRefs.current.forEach((container, page) => {
+      if (!container) return;
+      const svg = container.querySelector<SVGSVGElement>('svg.definition-scale');
+      if (!svg) { handles.delete(page); return; }
+      const existing = handles.get(page);
+      if (existing && existing.svg === svg && svg.isConnected && isRevealInit(svg)) return;
+      const h = setupReveal(svg);
+      if (h) handles.set(page, h); else handles.delete(page);
+    });
+    // Drop handles for pages whose SVG is gone (unmounted by virtualization).
+    for (const page of Array.from(handles.keys())) {
+      const svg = pageContainerRefs.current[page]?.querySelector('svg.definition-scale');
+      if (!svg || !svg.isConnected) handles.delete(page);
+    }
+    applyRevealFrontier(eventIndexRef.current);
+  }
+
+  // Drive each page's reveal from the current event: pages before the current
+  // one fully revealed, after it hidden, the current page revealed up to the
+  // playhead (top systems first, then left→right within the current system).
+  function applyRevealFrontier(index: number) {
+    if (!hideUnplayedNotes || renderMode) return;
+    const handles = revealHandlesRef.current;
+    if (handles.size === 0) return;
+    const band = smoothReveal ? REVEAL_BAND : 0;
+    const cur = index >= 0 ? interpolatedEvents[index] : null;
+    const curPage = cur ? cur.pageIndex : -1;
+    let pos: { x: number; y: number } | null = null;
+    if (cur) {
+      const h = handles.get(curPage);
+      if (h && h.systems.length === 0) computeSystems(h);
+      pos = getEventInnerPos(cur);
+    }
+    handles.forEach((h, page) => {
+      if (curPage < 0) { revealNone(h); return; }
+      if (page < curPage) revealFull(h);
+      else if (page > curPage) revealNone(h);
+      else if (pos) revealAt(h, pos.x, pos.y, band, 'page');
+      else revealNone(h);
+    });
+  }
+
   // Sync-based animation: driven by audio currentTime
   function animateSync() {
     if (!audioRef.current) return;
@@ -662,6 +774,7 @@ export default memo(function RegularRenderer({
     currentYRef.current = event.y;
 
     applyCamera(currentYRef.current);
+    applyRevealFrontier(index);
 
     // Check if audio ended
     if (audioRef.current.ended) {
@@ -713,6 +826,7 @@ export default memo(function RegularRenderer({
     // Update refs
     currentYRef.current = event.y;
     eventIndexRef.current = closestIdx;
+    applyRevealFrontier(closestIdx);
 
     // Disable CSS transition for instant feedback
     if (cameraRef.current) {
@@ -773,6 +887,7 @@ export default memo(function RegularRenderer({
     eventIndexRef.current = -1; // -1 so first event triggers animation on next play
     currentYRef.current = events[0]?.globalY ?? 0;
     applyCamera(currentYRef.current);
+    applyRevealFrontier(-1);
 
     // Reset audio to beginning
     if (audioRef.current) {
@@ -1242,7 +1357,13 @@ export default memo(function RegularRenderer({
                               // of a skipped content-visibility subtree
                               // returns empty rects, which corrupts event
                               // position extraction on offscreen pages.
-                              ...(isVirtualized
+                              //
+                              // Also disabled while the reveal mask is on: a
+                              // skipped subtree returns empty getBBox (breaking
+                              // the per-frame frontier) and can skip painting
+                              // the mask. The ±1 buffer is tiny, so the lost
+                              // skip-rendering is negligible.
+                              ...(isVirtualized && !hideUnplayedNotes
                                 ? {
                                     contentVisibility: 'auto' as const,
                                     containIntrinsicSize: `${regionWidth}px ${pageHeights[i]}px`,

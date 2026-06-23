@@ -47,7 +47,8 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   colorArticulations: false,
   fps: 30,
   scoreShadowDistance: 0,
-  hideUnplayedNotes: true,
+  // Opt-in progressive reveal: off by default so scores show fully on load.
+  hideUnplayedNotes: false,
   smoothReveal: true,
 };
 

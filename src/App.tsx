@@ -23,9 +23,39 @@ import { validateMxl, isMxlFile } from "./lib/musicxmlValidation";
 interface AppProps {
   projectId?: string;
   onNavigateDashboard?: () => void;
+  /** TEST ONLY: render the preview WITHOUT react-zoom-pan-pinch (no GPU-
+   *  composited TransformWrapper) to verify the reveal mask works there. */
+  noZoom?: boolean;
 }
 
-export default function App({ projectId, onNavigateDashboard }: AppProps) {
+/** Wraps the preview in react-zoom-pan-pinch, OR (when disabled) renders it
+ *  plain so the score subtree isn't GPU-composited. */
+function MaybeTransform({
+  disabled,
+  wrapperProps,
+  children,
+}: {
+  disabled: boolean;
+  wrapperProps: Record<string, unknown>;
+  children: React.ReactNode;
+}) {
+  if (disabled) {
+    return (
+      <div style={{ width: "100%", height: "100%", overflow: "auto", display: "flex" }}>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <TransformWrapper {...wrapperProps}>
+      <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
+        {children}
+      </TransformComponent>
+    </TransformWrapper>
+  );
+}
+
+export default function App({ projectId, onNavigateDashboard, noZoom = false }: AppProps) {
   // Get sync anchors from store (use selector for proper reactivity)
   const anchors = useSyncStore((state) => state.anchors);
 
@@ -960,6 +990,32 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       className="grunge-range"
                     />
                   </div>
+
+                  <label className="grunge-toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={hideUnplayedNotes}
+                      onChange={(e) =>
+                        setSetting("hideUnplayedNotes", e.target.checked)
+                      }
+                      className="grunge-checkbox"
+                    />
+                    <span>Hide Unplayed Notes</span>
+                  </label>
+
+                  {hideUnplayedNotes && (
+                    <label className="grunge-toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={smoothReveal}
+                        onChange={(e) =>
+                          setSetting("smoothReveal", e.target.checked)
+                        }
+                        className="grunge-checkbox"
+                      />
+                      <span>Smooth Reveal</span>
+                    </label>
+                  )}
                 </div>
               </section>
             </div>
@@ -1064,18 +1120,18 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                 >
                   {/* Renderer content */}
                   <div className="flex-1 min-h-0 overflow-auto">
-                    <TransformWrapper
-                      onTransformed={(_, state) => setZoomScale(state.scale)}
-                      minScale={0.25}
-                      maxScale={5}
-                      panning={{ activationKeys: [], disabled: isEditingRegion }}
-                      wheel={{ disabled: !zoomEnabled }}
-                      pinch={{ disabled: !zoomEnabled }}
-                      doubleClick={{ disabled: !zoomEnabled, mode: "reset" }}
+                    <MaybeTransform
+                      disabled={noZoom}
+                      wrapperProps={{
+                        onTransformed: (_: unknown, state: { scale: number }) => setZoomScale(state.scale),
+                        minScale: 0.25,
+                        maxScale: 5,
+                        panning: { activationKeys: [], disabled: isEditingRegion },
+                        wheel: { disabled: !zoomEnabled },
+                        pinch: { disabled: !zoomEnabled },
+                        doubleClick: { disabled: !zoomEnabled, mode: "reset" },
+                      }}
                     >
-                      <TransformComponent
-                        wrapperStyle={{ width: "100%", height: "100%" }}
-                      >
                         {/* Wrapper for RegularRenderer + overlay */}
                         <div className="relative m-auto w-fit">
                           {viewMode === 'single-line' ? (
@@ -1110,6 +1166,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               colorDots={colorDots}
                               colorArticulations={colorArticulations}
                               hideLabels={hideLabels}
+                              hideUnplayedNotes={hideUnplayedNotes}
+                              smoothReveal={smoothReveal}
                               transportPortalEl={transportEl}
                             />
                           ) : (
@@ -1145,6 +1203,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               colorDots={colorDots}
                               colorArticulations={colorArticulations}
                               hideLabels={hideLabels}
+                              hideUnplayedNotes={hideUnplayedNotes}
+                              smoothReveal={smoothReveal}
                               transportPortalEl={transportEl}
                             />
                           )}
@@ -1173,8 +1233,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               </div>
                             )}
                         </div>
-                      </TransformComponent>
-                    </TransformWrapper>
+                    </MaybeTransform>
                   </div>
                   {/* Transport bar portal target - always visible at bottom of preview */}
                   <div

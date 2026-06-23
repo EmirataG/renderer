@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useSingleLineVerovio } from "../hooks/useSingleLineVerovio";
@@ -23,8 +23,11 @@ import {
   cancelPendingNoteheadTimers,
   type ElementCache,
 } from "../lib/noteAnimation";
+import { ensureRevealSplit, revealEdge, clearRevealSplit } from "../lib/revealMask";
 
 const WIDTH = 980;
+/** Soft-reveal fade width, in screen px (the gradient band ahead of the playhead). */
+const REVEAL_BAND_PX = 64;
 
 /** Contiguous window of mounted sections, inclusive on both ends. */
 interface VisibleRange {
@@ -67,6 +70,10 @@ interface Props {
   colorArticulations?: boolean;
   // hide instrument labels (Verovio .label elements)
   hideLabels?: boolean;
+  // progressive reveal: hide notes/content until the playhead reaches them
+  hideUnplayedNotes?: boolean;
+  // soft gradient reveal edge (vs. hard cut) when hideUnplayedNotes is on
+  smoothReveal?: boolean;
   // portal target for transport bar (play/pause/reset) — renders there instead of inline
   transportPortalEl?: HTMLDivElement | null;
 }
@@ -96,6 +103,8 @@ export default memo(function SingleLineRenderer({
   colorDots = false,
   colorArticulations = false,
   hideLabels = false,
+  hideUnplayedNotes = false,
+  smoothReveal = false,
   transportPortalEl,
 }: Props) {
   const colorExtrasSelector = useMemo(() => buildColorExtrasSelector({
@@ -107,6 +116,11 @@ export default memo(function SingleLineRenderer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sectionContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const elementCacheRef = useRef<ElementCache>(new Map());
+  // Progressive reveal: last playhead screen X, held across events that can't
+  // be measured so the reveal frontier never snaps backward. No cached SVG
+  // nodes — page-margins are re-resolved from the live DOM every frame, because
+  // virtualization remounts sections and a cached node would be stale.
+  const lastRevealRef = useRef<number | null>(null); // last playhead screen X
   // Visibility is always contiguous (+ symmetric buffer), so a plain range
   // replaces the old Set<number> — getVisibleSectionRange runs once per
   // animation frame and must not allocate.
@@ -448,6 +462,16 @@ export default memo(function SingleLineRenderer({
     return () => cancelAnimationFrame(id);
   }, [visibleSections]);
 
+  // Build/refresh the reveal mask SYNCHRONOUSLY before paint — on the score,
+  // the visible-section window, and the toggles. A layout effect (not rAF) is
+  // essential: during playback the camera pans and `visibleSections` changes
+  // rapidly, and a rAF would be cancelled-and-rescheduled before it fires,
+  // leaving freshly-mounted sections unmasked (showing full score).
+  useLayoutEffect(() => {
+    syncRevealStructure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, visibleSections, hideUnplayedNotes, smoothReveal]);
+
   /* ---------------- score color and styling ---------------- */
 
   // Score color CSS is rendered as React-managed JSX <style> to avoid
@@ -596,6 +620,68 @@ export default memo(function SingleLineRenderer({
     return { event: interpolatedEvents[result], index: result };
   }
 
+  /* ---------------- progressive reveal (hide unplayed notes) ---------------- */
+
+  // Build/refresh reveal for every mounted section (or tear it all down when
+  // the setting is off). Idempotent; safe to call repeatedly. No persistent
+  // handles — applyRevealFrontier re-ensures the split from the live DOM.
+  function syncRevealStructure() {
+    if (!hideUnplayedNotes || isRenderMode) {
+      for (const container of sectionContainerRefs.current) {
+        const svg = container?.querySelector<SVGSVGElement>('svg.definition-scale');
+        if (svg) clearRevealSplit(svg);
+      }
+      return;
+    }
+    applyRevealFrontier(eventIndexRef.current);
+  }
+
+  // Reveal each mounted section's content up to the playhead. Sections entirely
+  // behind the playhead are fully revealed, sections ahead are hidden, the
+  // straddling section is clipped (and, with smoothReveal, soft-faded) at the
+  // playhead. Staff lines + barlines live in the unclipped skeleton, so they
+  // stay visible throughout.
+  //
+  // Both the playhead's screen X and each section's screen rect move together
+  // with the camera (and any zoom/pan transform), so the playhead's FRACTION
+  // through a section is camera-invariant and equals the clip fraction — no
+  // per-section coordinate-space math. The split is re-ensured from the live
+  // DOM every call so a virtualization remount can never leave a section
+  // unsplit/unclipped for a frame (the bug that revealed everything on play).
+  function applyRevealFrontier(index: number) {
+    if (!hideUnplayedNotes || isRenderMode) return;
+    const refs = sectionContainerRefs.current;
+
+    const cur = index >= 0 ? interpolatedEvents[index] : null;
+    let playX: number | null;
+    if (!cur) {
+      lastRevealRef.current = null;
+      playX = null;
+    } else {
+      const id = cur.positionSvgId ?? cur.svgIds[0];
+      const el = id ? scoreRef.current?.querySelector<SVGGraphicsElement>(`#${CSS.escape(id)}`) : null;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        if (r.width || r.height) lastRevealRef.current = r.right;
+      }
+      playX = lastRevealRef.current;
+    }
+
+    for (const container of refs) {
+      const svg = container?.querySelector<SVGSVGElement>('svg.definition-scale');
+      if (!svg) continue;
+      const content = ensureRevealSplit(svg);
+      if (!content) continue;
+      if (playX == null) { revealEdge(content, 100, 0); continue; } // nothing played yet
+      const r = content.getBoundingClientRect();
+      if (r.width <= 0) { revealEdge(content, 100, 0); continue; }
+      if (playX >= r.right) { revealEdge(content, 0, 0); continue; }   // fully revealed
+      if (playX <= r.left) { revealEdge(content, 100, 0); continue; }  // fully hidden
+      const bandPct = smoothReveal ? (REVEAL_BAND_PX / r.width) * 100 : 0;
+      revealEdge(content, ((r.right - playX) / r.width) * 100, bandPct);
+    }
+  }
+
   // Sync-based animation: driven by audio currentTime
   function animateSync() {
     if (!audioRef.current) return;
@@ -716,6 +802,7 @@ export default memo(function SingleLineRenderer({
     currentXRef.current = targetX;
 
     applyCamera(currentXRef.current);
+    applyRevealFrontier(index);
 
     // Check if audio ended
     if (audioRef.current.ended) {
@@ -764,6 +851,7 @@ export default memo(function SingleLineRenderer({
 
     currentXRef.current = event.x;
     eventIndexRef.current = closestIdx;
+    applyRevealFrontier(closestIdx);
 
     // Disable transition for instant feedback
     if (cameraRef.current) {
@@ -823,6 +911,7 @@ export default memo(function SingleLineRenderer({
     eventIndexRef.current = -1; // -1 so first event triggers animation on next play
     currentXRef.current = events[0]?.globalX ?? 0;
     applyCamera(currentXRef.current);
+    applyRevealFrontier(-1);
 
     // Reset audio to beginning
     if (audioRef.current) {
