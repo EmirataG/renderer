@@ -20,6 +20,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<'updated' | 'created' | 'name'>('updated');
   const [deleteConfirm, setDeleteConfirm] = useState<{
     id: string;
     name: string;
@@ -124,6 +125,18 @@ export function Dashboard({ initialProjects }: DashboardProps) {
     router.push("/login");
   }, [router]);
 
+  const sortedProjects = [...projects].sort((a, b) => {
+    switch (sortBy) {
+      case "name":
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      case "created":
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      case "updated":
+      default:
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    }
+  });
+
   return (
     <main className="min-h-screen bg-black text-neutral-100">
       {/* Header */}
@@ -146,6 +159,10 @@ export function Dashboard({ initialProjects }: DashboardProps) {
             Manuscript
           </h1>
           <div className="flex items-stretch gap-2">
+            {/* Sort control */}
+            {projects.length > 0 && (
+              <SortMenu value={sortBy} onChange={setSortBy} />
+            )}
             {/* Layout toggle */}
             {projects.length > 0 && (
               <div className="flex border border-neutral-700 overflow-hidden mr-1">
@@ -223,7 +240,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
           layoutMode === 'grid' ? (
             /* Grid view */
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {projects.map((project) => (
+              {sortedProjects.map((project) => (
                 <ProjectCard
                   key={project.id}
                   project={project}
@@ -231,11 +248,12 @@ export function Dashboard({ initialProjects }: DashboardProps) {
                   onDuplicate={handleDuplicate}
                 />
               ))}
+              <NewProjectCard onClick={() => setIsCreateModalOpen(true)} />
             </div>
           ) : (
             /* List view */
             <div className="border border-neutral-800 divide-y divide-neutral-800/60">
-              {projects.map((project) => (
+              {sortedProjects.map((project) => (
                 <ProjectListRow
                   key={project.id}
                   project={project}
@@ -243,6 +261,7 @@ export function Dashboard({ initialProjects }: DashboardProps) {
                   onDuplicate={handleDuplicate}
                 />
               ))}
+              <NewProjectListRow onClick={() => setIsCreateModalOpen(true)} />
             </div>
           )
         )}
@@ -351,6 +370,122 @@ function ProjectListRow({
         </button>
       </div>
     </div>
+  );
+}
+
+type SortOption = 'updated' | 'created' | 'name';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'updated', label: 'Last updated' },
+  { value: 'created', label: 'Date added' },
+  { value: 'name', label: 'Name (A–Z)' },
+];
+
+function SortMenu({
+  value,
+  onChange,
+}: {
+  value: SortOption;
+  onChange: (value: SortOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const activeLabel =
+    SORT_OPTIONS.find((o) => o.value === value)?.label ?? 'Sort';
+
+  return (
+    <div ref={ref} className="relative mr-1">
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        className="h-full flex items-center gap-2 border border-neutral-700 bg-black px-3 text-xs font-bold uppercase tracking-wider text-neutral-300 hover:text-neutral-100 hover:border-neutral-500 transition-colors"
+        title="Sort projects"
+      >
+        <span>{activeLabel}</span>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <polyline points="2,4 6,8 10,4" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1 w-44 bg-black border-2 border-neutral-700 shadow-xl overflow-hidden z-20">
+          {SORT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider transition-colors hover:bg-neutral-800 ${
+                option.value === value
+                  ? 'text-white bg-neutral-900'
+                  : 'text-neutral-400'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewProjectCard({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex flex-col items-center justify-center bg-black border-2 border-dashed border-neutral-800 hover:border-neutral-500 transition-colors cursor-pointer min-h-full"
+    >
+      <div className="aspect-[4/3] w-full flex flex-col items-center justify-center gap-3 text-neutral-600 group-hover:text-neutral-300 transition-colors">
+        <PlusIcon className="w-10 h-10" />
+        <span className="text-xs font-bold uppercase tracking-wider">New Project</span>
+      </div>
+    </button>
+  );
+}
+
+function NewProjectListRow({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group w-full flex items-center gap-3 px-4 py-3 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-900/60 transition-colors cursor-pointer"
+    >
+      <PlusIcon className="w-4 h-4" />
+      <span className="text-xs font-semibold uppercase tracking-wider">New Project</span>
+    </button>
+  );
+}
+
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
   );
 }
 
