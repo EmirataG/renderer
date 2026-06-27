@@ -41,6 +41,10 @@ interface Props {
   // core
   xml: string;
   bgUrl?: string;
+  /** Frame aspect ratio (width / height). Drives the frame dimensions. */
+  aspectRatio?: number;
+  /** Solid frame background color when there's no image. Null/undefined = white. */
+  bgColor?: string | null;
   fps?: number;
   scoreColor?: string;
   // sync anchors for timing
@@ -77,6 +81,8 @@ interface Props {
 export default memo(function SingleLineRenderer({
   xml,
   bgUrl,
+  aspectRatio,
+  bgColor,
   fps = 60,
   scoreColor = "#000000",
   syncAnchors,
@@ -154,11 +160,6 @@ export default memo(function SingleLineRenderer({
   const currentXRef = useRef(0);
   const prevActiveRangeRef = useRef<{ start: number; end: number } | null>(null);
 
-  function setDims(w: number, h: number) {
-    const f = WIDTH / w;
-    setContainerWidth(Math.floor(w * f));
-    setContainerHeight(Math.floor(h * f));
-  }
 
   /* ---------------- audio element ---------------- */
 
@@ -280,63 +281,35 @@ export default memo(function SingleLineRenderer({
   /* ---------------- background / dimensions ---------------- */
 
   useEffect(() => {
-    if (isRenderMode) {
-      // In render mode: render at preview size, then scale to fill viewport
-      // This preserves the score-to-background ratio across all resolutions
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      // Calculate base dimensions same as preview mode
-      let baseWidth: number;
-      let baseHeight: number;
-
-      if (bgUrl) {
-        // Load background image to get its aspect ratio
-        const img = new Image();
-        img.src = bgUrl;
-        img.onload = () => {
-          const f = WIDTH / img.naturalWidth;
-          baseWidth = Math.floor(img.naturalWidth * f);
-          baseHeight = Math.floor(img.naturalHeight * f);
-
-          // Calculate scale to fill viewport
-          const scale = Math.min(
-            viewportWidth / baseWidth,
-            viewportHeight / baseHeight,
-          );
-
-          setContainerWidth(baseWidth);
-          setContainerHeight(baseHeight);
-          setRenderScale(scale);
-        };
-      } else {
-        // Default 16:9 dimensions
-        const f = WIDTH / 1920;
-        baseWidth = Math.floor(1920 * f);
-        baseHeight = Math.floor(1080 * f);
-
-        // Calculate scale to fill viewport
-        const scale = Math.min(
-          viewportWidth / baseWidth,
-          viewportHeight / baseHeight,
+    // Frame dims come from the aspect ratio (always-present source of truth).
+    // Fallback chain for legacy projects: aspectRatio → bg image AR → 16:9.
+    // In render mode we render at preview size then scale to fill the viewport,
+    // preserving the score-to-background ratio across all resolutions.
+    const applyBase = (w: number, h: number) => {
+      const f = WIDTH / w;
+      const baseWidth = Math.floor(w * f);
+      const baseHeight = Math.floor(h * f);
+      setContainerWidth(baseWidth);
+      setContainerHeight(baseHeight);
+      if (isRenderMode) {
+        setRenderScale(
+          Math.min(window.innerWidth / baseWidth, window.innerHeight / baseHeight),
         );
-
-        setContainerWidth(baseWidth);
-        setContainerHeight(baseHeight);
-        setRenderScale(scale);
+      } else {
+        setRenderScale(1);
       }
+    };
+
+    if (aspectRatio && aspectRatio > 0) {
+      applyBase(aspectRatio, 1);
     } else if (bgUrl) {
-      // Preview mode with background image
       const img = new Image();
       img.src = bgUrl;
-      img.onload = () => setDims(img.naturalWidth, img.naturalHeight);
-      setRenderScale(1);
+      img.onload = () => applyBase(img.naturalWidth, img.naturalHeight);
     } else {
-      // Preview mode default dimensions
-      setDims(1920, 1080);
-      setRenderScale(1);
+      applyBase(1920, 1080);
     }
-  }, [bgUrl, isRenderMode]);
+  }, [bgUrl, aspectRatio, isRenderMode]);
 
   /* ---------------- Verovio section rendering ---------------- */
 
@@ -1161,7 +1134,7 @@ export default memo(function SingleLineRenderer({
   ]);
 
   if (!containerWidth || !containerHeight) {
-    return <div className="text-fg-muted">Select background</div>;
+    return <div className="text-fg-muted">Loading…</div>;
   }
 
   return (
@@ -1186,6 +1159,9 @@ export default memo(function SingleLineRenderer({
             height: containerHeight,
             display: "flex",
             alignItems: "center", // Vertical centering for horizontal layout
+            // White by default; solid color fills the frame when set and there's
+            // no image; an image (cropped to the frame AR) covers on top.
+            backgroundColor: bgUrl ? undefined : (bgColor || "#ffffff"),
             backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
             backgroundSize: "cover",
           }}

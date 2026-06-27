@@ -71,6 +71,10 @@ interface Props {
   // core
   xml: string;
   bgUrl?: string;
+  /** Frame aspect ratio (width / height). Drives the frame dimensions. */
+  aspectRatio?: number;
+  /** Solid frame background color when there's no image. Null/undefined = white. */
+  bgColor?: string | null;
   fps?: number;
   scoreColor?: string;
   // sync anchors for timing
@@ -108,6 +112,8 @@ interface Props {
 export default memo(function RegularRenderer({
   xml,
   bgUrl,
+  aspectRatio,
+  bgColor,
   fps = 60,
   scoreColor = "#000000",
   syncAnchors,
@@ -308,15 +314,19 @@ export default memo(function RegularRenderer({
 
   /* ---------------- background / dimensions ---------------- */
 
+  // Frame dimensions come from the aspect ratio (always-present source of truth).
+  // Fallback chain for legacy projects: aspectRatio → bg image's natural AR → 16:9.
   useEffect(() => {
-    if (bgUrl) {
+    if (aspectRatio && aspectRatio > 0) {
+      setDims(aspectRatio, 1);
+    } else if (bgUrl) {
       const img = new Image();
       img.src = bgUrl;
       img.onload = () => setDims(img.naturalWidth, img.naturalHeight);
     } else {
       setDims(1920, 1080);
     }
-  }, [bgUrl]);
+  }, [bgUrl, aspectRatio]);
 
   /* ---------------- Verovio SVG rendering ---------------- */
 
@@ -1126,7 +1136,7 @@ export default memo(function RegularRenderer({
   ]);
 
   if (!containerWidth || !containerHeight) {
-    return <div className="text-fg-muted">Select background</div>;
+    return <div className="text-fg-muted">Loading…</div>;
   }
 
   return (
@@ -1148,6 +1158,9 @@ export default memo(function RegularRenderer({
             height: containerHeight,
             display: "flex",
             alignItems: "flex-start", // Align to top for vertical layout
+            // White by default; a solid color fills the frame when set and there's
+            // no image; an image (already cropped to the frame AR) covers on top.
+            backgroundColor: bgUrl ? undefined : (bgColor || "#ffffff"),
             backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
             backgroundSize: "cover",
           }}

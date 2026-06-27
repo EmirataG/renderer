@@ -71,7 +71,7 @@ export async function POST(request: Request) {
 
   const name = formData.get('name');
   const viewModeRaw = formData.get('viewMode');
-  const viewMode = viewModeRaw === 'single-line' ? 'single-line' : 'page';
+  const viewMode = viewModeRaw === 'page' ? 'page' : 'single-line';
   const scoreFile = formData.get('score') as File | null;
   const audioFile = formData.get('audio') as File | null;
   const aspectRatioRaw = formData.get('aspectRatio');

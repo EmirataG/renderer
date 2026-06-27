@@ -10,8 +10,12 @@ export interface Project {
   audioFileName?: string;
   backgroundUrl?: string;
   backgroundFileName?: string;
+  /** Uncropped source image, retained so the placement crop can be redone. */
+  originalBackgroundUrl?: string;
+  originalBackgroundFileName?: string;
   aspectRatio?: number;
   bgColor?: string;
+  bgMode?: 'color' | 'image';
 
   // Settings (all optional -- missing = use defaults)
   scoreColor?: string;

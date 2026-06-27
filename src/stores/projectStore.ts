@@ -24,12 +24,16 @@ export interface ProjectSettings {
   scoreShadowDistance: number;
   hideUnplayedNotes: boolean;
   smoothReveal: boolean;
+  /** Solid background color for the frame. Defaults to white. */
+  bgColor: string | null;
+  /** Which background to show: a solid color or the uploaded image. */
+  bgMode: 'color' | 'image';
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
-  viewMode: 'page',
+  viewMode: 'single-line',
   scoreColor: '#000000',
   scoreScale: 1.0,
   musicFont: 'Bravura',
@@ -49,6 +53,8 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   scoreShadowDistance: 0,
   hideUnplayedNotes: true,
   smoothReveal: true,
+  bgColor: '#ffffff',
+  bgMode: 'color',
 };
 
 interface ProjectStore extends ProjectSettings {

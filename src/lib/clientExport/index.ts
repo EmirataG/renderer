@@ -598,8 +598,8 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   if (bgImageUrl) {
     bgEl.style.backgroundImage = `url(${bgImageUrl})`;
     bgEl.style.backgroundSize = 'cover';
-  } else if (bgColor) {
-    bgEl.style.backgroundColor = bgColor;
+  } else {
+    bgEl.style.backgroundColor = bgColor || '#ffffff';
   }
   mainEl.appendChild(bgEl);
 
@@ -985,14 +985,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       }
     }
 
-    // Clear canvas and draw background
+    // Draw background: image (cover), else solid color, else plain white.
     if (bgImage) {
       ctx.drawImage(bgImage, 0, 0, viewportWidth, viewportHeight);
-    } else if (bgColor) {
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(0, 0, viewportWidth, viewportHeight);
     } else {
-      ctx.clearRect(0, 0, viewportWidth, viewportHeight);
+      ctx.fillStyle = bgColor || '#ffffff';
+      ctx.fillRect(0, 0, viewportWidth, viewportHeight);
     }
 
     // Rasterize each SVG page and draw to canvas with camera offset

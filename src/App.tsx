@@ -4,6 +4,7 @@ import SingleLineRenderer from "./renderers/SingleLineRenderer";
 import { SyncEditor } from "./components/SyncEditor";
 import { ToastProvider } from "./components/Toast";
 import { UploadDropZone } from "./components/UploadDropZone";
+import { BackgroundControl } from "./components/BackgroundControl";
 import { ScoreRegionEditor } from "./components/ScoreRegionEditor";
 import { BorderPicker } from "./components/BorderPicker";
 import { BorderStyle } from "./borders";
@@ -49,6 +50,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const colorAccidentals = useProjectStore((s) => s.colorAccidentals);
   const colorDots = useProjectStore((s) => s.colorDots);
   const colorArticulations = useProjectStore((s) => s.colorArticulations);
+  const bgColor = useProjectStore((s) => s.bgColor);
+  const bgMode = useProjectStore((s) => s.bgMode);
   const setSetting = useProjectStore((s) => s.setSetting);
   const projectName = useProjectStore((s) => s.projectName);
   const setProjectName = useProjectStore((s) => s.setProjectName);
@@ -69,8 +72,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   } | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgFileName, setBgFileName] = useState<string | null>(null);
-  const [projectBgColor, setProjectBgColor] = useState<string | null>(null);
+  // Server URL of the uncropped original image (for Re-crop after reload).
+  const [originalBgUrl, setOriginalBgUrl] = useState<string | null>(null);
   const [projectAspectRatio, setProjectAspectRatio] = useState<number | null>(null);
+
+  // Show the uploaded image only in image mode; otherwise the solid color (or
+  // white) is shown. The image is kept on disk even while color is active.
+  const showImageBg = bgMode === "image" && !!bgUrl;
 
   // Project loading state
   const [isLoadingProject, setIsLoadingProject] = useState(false);
@@ -137,7 +145,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           });
         }
 
-        // Set background: either a server-hosted image or a solid color
+        // Background image (if any). A solid color is held as a setting
+        // (bgColor) and drawn natively by the renderers — no synthesized image.
         if (project.backgroundUrl) {
           // Revoke any user-uploaded blob URL from the previous project.
           if (bgUrl?.startsWith('blob:')) {
@@ -145,29 +154,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           }
           setBgUrl(`/api/projects/${projectId}/background`);
           setBgFileName(project.backgroundFileName || null);
-        } else if (project.bgColor) {
-          // Generate a solid-color image at the project's aspect ratio so the
-          // preview renderers derive correct dimensions from naturalWidth/naturalHeight.
-          const ar = project.aspectRatio || 16 / 9;
-          const w = 1920;
-          const h = Math.round(w / ar);
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d')!;
-          ctx.fillStyle = project.bgColor;
-          ctx.fillRect(0, 0, w, h);
-          // Revoke any user-uploaded blob URL from the previous project.
-          if (bgUrl?.startsWith('blob:')) {
-            URL.revokeObjectURL(bgUrl);
-          }
-          setBgUrl(canvas.toDataURL('image/jpeg', 0.5));
-          setBgFileName(null);
         }
+        setOriginalBgUrl(
+          project.originalBackgroundUrl
+            ? `/api/projects/${projectId}/background-original`
+            : null,
+        );
 
-        // Store bgColor and aspectRatio for export (export handles these natively
-        // at full resolution instead of using the preview data URL)
-        setProjectBgColor(project.bgColor || null);
+        // aspectRatio is the source of truth for frame dimensions.
         setProjectAspectRatio(project.aspectRatio || null);
 
         // Load settings from API response into projectStore
@@ -212,6 +206,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           hideUnplayedNotes:
             project.hideUnplayedNotes ?? DEFAULT_SETTINGS.hideUnplayedNotes,
           smoothReveal: project.smoothReveal ?? DEFAULT_SETTINGS.smoothReveal,
+          bgColor: project.bgColor ?? DEFAULT_SETTINGS.bgColor,
+          // Back-compat: legacy projects with an image but no stored mode show it.
+          bgMode: project.bgMode ?? (project.backgroundUrl ? 'image' : 'color'),
         });
 
         // Load sync anchors from API response in one batch — clears stale
@@ -323,11 +320,20 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     return () => clearTimeout(timer);
   }, [scoreRegion, isEditingRegion]);
 
-  // Calculate container dimensions for score region editing
+  // Calculate container dimensions for score region editing. These must match
+  // the renderer's frame, which is sized from the aspect ratio (fallback chain:
+  // aspectRatio → bg image AR → 16:9).
   const WIDTH = 980; // Same as RegularRenderer WIDTH constant
   useEffect(() => {
+    if (projectAspectRatio && projectAspectRatio > 0) {
+      setRegionContainerDims({
+        width: WIDTH,
+        height: Math.floor(WIDTH / projectAspectRatio),
+      });
+      return;
+    }
     if (!bgUrl) {
-      // Default 16:9 dimensions when no background
+      // Default 16:9 dimensions when no background and no aspect ratio
       const f = WIDTH / 1920;
       setRegionContainerDims({
         width: Math.floor(1920 * f),
@@ -345,7 +351,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         height: Math.floor(img.naturalHeight * f),
       });
     };
-  }, [bgUrl]);
+  }, [bgUrl, projectAspectRatio]);
 
   // Export state
   const [exportState, setExportState] = useState<{
@@ -473,16 +479,15 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       }
 
       // Client-side export: render + encode entirely in the browser.
-      // For color backgrounds, pass bgColor + aspectRatio directly so the export
-      // renders at full 4K resolution (instead of using the preview data URL).
-      const isColorBg = projectBgColor && !bgFileName;
+      // Background priority mirrors the renderers: an image wins; otherwise a
+      // solid color; otherwise plain white. Frame dims come from aspectRatio.
       const mp4Blob = await clientExport({
         musicXml: musicXMLFile.xml,
         syncAnchors: anchors,
         settings,
         audioFile: audioFileForExport!,
-        bgImageUrl: isColorBg ? undefined : (bgUrl || undefined),
-        bgColor: isColorBg ? projectBgColor : undefined,
+        bgImageUrl: showImageBg ? bgUrl! : undefined,
+        bgColor: showImageBg ? undefined : (bgColor || undefined),
         aspectRatio: projectAspectRatio || undefined,
         signal: abortController.signal,
         onProgress: (percent, stage) => {
@@ -620,17 +625,32 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             style={{ display: currentView === "sync" ? "none" : undefined }}
           >
             <div className="flex-1 min-h-0 overflow-auto grunge-scrollbar px-4 py-1">
-              {/* UPLOAD SECTION */}
+              {/* BACKGROUND SECTION */}
               <section className="grunge-section">
-                <h2 className="grunge-section-title">{projectId ? "Background Image" : "Project Files"}</h2>
+                <h2 className="grunge-section-title">Background</h2>
                 <div className="grunge-section-body">
-                  <UploadDropZone
-                    projectId={projectId}
-                    onMusicXMLUpload={handleMusicXMLUpload}
-                    onAudioUpload={handleAudioUpload}
-                    onImageUpload={handleImageUpload}
-                    currentFiles={currentFiles}
-                  />
+                  {projectId ? (
+                    <BackgroundControl
+                      projectId={projectId}
+                      aspectRatio={projectAspectRatio || 16 / 9}
+                      bgUrl={bgUrl}
+                      bgFileName={bgFileName}
+                      originalUrl={originalBgUrl}
+                      bgColor={bgColor}
+                      bgMode={bgMode}
+                      onImageUpload={handleImageUpload}
+                      onColorChange={(color) => setSetting("bgColor", color)}
+                      onModeChange={(m) => setSetting("bgMode", m)}
+                    />
+                  ) : (
+                    <UploadDropZone
+                      projectId={projectId}
+                      onMusicXMLUpload={handleMusicXMLUpload}
+                      onAudioUpload={handleAudioUpload}
+                      onImageUpload={handleImageUpload}
+                      currentFiles={currentFiles}
+                    />
+                  )}
                 </div>
               </section>
 
@@ -1081,7 +1101,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                           {viewMode === 'single-line' ? (
                             <SingleLineRenderer
                               xml={musicXMLFile.xml}
-                              bgUrl={bgUrl || undefined}
+                              bgUrl={showImageBg ? bgUrl! : undefined}
+                              aspectRatio={projectAspectRatio || undefined}
+                              bgColor={bgColor}
                               fps={fps}
                               scoreColor={scoreColor}
                               syncAnchors={
@@ -1115,7 +1137,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                           ) : (
                             <RegularRenderer
                               xml={musicXMLFile.xml}
-                              bgUrl={bgUrl || undefined}
+                              bgUrl={showImageBg ? bgUrl! : undefined}
+                              aspectRatio={projectAspectRatio || undefined}
+                              bgColor={bgColor}
                               fps={fps}
                               scoreColor={scoreColor}
                               syncAnchors={

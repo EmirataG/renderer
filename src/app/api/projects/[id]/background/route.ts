@@ -84,41 +84,107 @@ export async function PUT(
   }
 
   const formData = await request.formData();
+  // `background` = the displayed/cropped image (required).
+  // `original`   = the uncropped source (optional), retained so the placement
+  //               crop can be redone later without re-selecting the file.
   const bgFile = formData.get('background') as File | null;
+  const originalFile = formData.get('original') as File | null;
   if (!bgFile) {
     return Response.json({ error: 'No background file provided' }, { status: 400 });
   }
 
-  // Validate extension
+  const validateImage = (file: File): string | null => {
+    const e = getExtension(file.name);
+    if (!ALLOWED_IMAGE_EXTENSIONS.includes(e)) {
+      return `Invalid image type. Allowed: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}`;
+    }
+    if (file.size > MAX_IMAGE_SIZE) return 'Image too large. Maximum 20MB.';
+    return null;
+  };
+
+  const bgErr = validateImage(bgFile);
+  if (bgErr) return Response.json({ error: bgErr }, { status: 400 });
+  if (originalFile) {
+    const oErr = validateImage(originalFile);
+    if (oErr) return Response.json({ error: oErr }, { status: 400 });
+  }
+
   const ext = getExtension(bgFile.name);
-  if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
-    return Response.json(
-      { error: `Invalid image type. Allowed: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}` },
-      { status: 400 }
-    );
-  }
-
-  // Validate size
-  if (bgFile.size > MAX_IMAGE_SIZE) {
-    return Response.json({ error: 'Image too large. Maximum 20MB.' }, { status: 400 });
-  }
-
   const basePath = `users/${user.uid}/projects/${id}`;
 
-  // Delete old files and upload new one in parallel
-  const [, backgroundUrl] = await Promise.all([
+  // Delete the previous cropped image and upload the new one. The "original"
+  // is stored under a distinct prefix so this never clobbers it.
+  const ops: Promise<unknown>[] = [
     getBucket().getFiles({ prefix: `${basePath}/background` })
       .then(([files]) => Promise.all(files.map(f => f.delete()))),
     bgFile.arrayBuffer()
       .then(ab => uploadFile(`${basePath}/background${ext}`, Buffer.from(ab), bgFile.type || 'image/jpeg')),
-  ]);
+  ];
+  if (originalFile) {
+    const oext = getExtension(originalFile.name);
+    ops.push(
+      getBucket().getFiles({ prefix: `${basePath}/original` })
+        .then(([files]) => Promise.all(files.map(f => f.delete()))),
+      originalFile.arrayBuffer()
+        .then(ab => uploadFile(`${basePath}/original${oext}`, Buffer.from(ab), originalFile.type || 'image/jpeg')),
+    );
+  }
+
+  const results = await Promise.all(ops);
+  const backgroundUrl = results[1] as string;
+  const originalBackgroundUrl = originalFile ? (results[3] as string) : undefined;
 
   // Update Firestore document
   await docRef.update({
     backgroundUrl,
     backgroundFileName: bgFile.name,
+    ...(originalFile
+      ? { originalBackgroundUrl, originalBackgroundFileName: originalFile.name }
+      : {}),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return Response.json({ backgroundUrl: `/api/projects/${id}/background` });
+  return Response.json({
+    backgroundUrl: `/api/projects/${id}/background`,
+    ...(originalFile ? { originalBackgroundUrl: `/api/projects/${id}/background-original` } : {}),
+  });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getAuthenticatedUser();
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { id } = await params;
+
+  const db = getDb();
+  const docRef = db.collection('users').doc(user.uid).collection('projects').doc(id);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    return Response.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  const basePath = `users/${user.uid}/projects/${id}`;
+
+  // Remove the cropped + original stored files and clear the Firestore fields.
+  await Promise.all(
+    ['background', 'original'].map((prefix) =>
+      getBucket()
+        .getFiles({ prefix: `${basePath}/${prefix}` })
+        .then(([files]) => Promise.all(files.map((f) => f.delete())))
+        .catch(() => { /* tolerate already-missing files */ }),
+    ),
+  );
+
+  await docRef.update({
+    backgroundUrl: FieldValue.delete(),
+    backgroundFileName: FieldValue.delete(),
+    originalBackgroundUrl: FieldValue.delete(),
+    originalBackgroundFileName: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return Response.json({ status: 'deleted' });
 }

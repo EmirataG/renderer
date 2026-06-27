@@ -31,6 +31,8 @@ function getSaveableSettings(state: ReturnType<typeof useProjectStore.getState>)
     scoreShadowDistance: state.scoreShadowDistance,
     hideUnplayedNotes: state.hideUnplayedNotes,
     smoothReveal: state.smoothReveal,
+    bgColor: state.bgColor,
+    bgMode: state.bgMode,
   };
 }
 
