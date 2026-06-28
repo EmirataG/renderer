@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useState, useEffect } from "react";
 import { ToastContext, useToastProvider } from "../hooks/useToast";
 import type { Toast as ToastType } from "../hooks/useToast";
@@ -137,9 +137,9 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 }
 
 // Simple SVG icons
-function XIcon({ className }: { className?: string }) {
+function XIcon({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
       <line x1="15" y1="9" x2="9" y2="15" />
       <line x1="9" y1="9" x2="15" y2="15" />
@@ -147,18 +147,18 @@ function XIcon({ className }: { className?: string }) {
   );
 }
 
-function CheckIcon({ className }: { className?: string }) {
+function CheckIcon({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
       <polyline points="9,12 11,14 15,10" />
     </svg>
   );
 }
 
-function InfoIcon({ className }: { className?: string }) {
+function InfoIcon({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="16" x2="12" y2="12" />
       <line x1="12" y1="8" x2="12.01" y2="8" />
@@ -166,9 +166,9 @@ function InfoIcon({ className }: { className?: string }) {
   );
 }
 
-function CloseIcon({ className }: { className?: string }) {
+function CloseIcon({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
