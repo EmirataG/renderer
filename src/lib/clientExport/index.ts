@@ -375,44 +375,42 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   onProgress(0, 'Preparing score...');
 
   // ── 1. Compute layout constants ───────────────────────────────────
-  // Derive viewport dimensions from background image, or from aspectRatio + bgColor
-  let viewportWidth = 3840;
-  let viewportHeight = 2160;
-  if (bgImageUrl) {
+  // The frame is sized from the aspect ratio — the SAME source of truth the
+  // editor and renderers use — so the score region (x/y/width/height/rotation),
+  // authored in 980×(980/AR) space, maps to the export 1:1. The background image
+  // is drawn to cover this frame; it does NOT define the frame (it's cropped to
+  // the frame AR upstream). Fallback chain mirrors the renderers: AR → image
+  // AR → 16:9.
+  let frameAR = aspectRatio && aspectRatio > 0 ? aspectRatio : 0;
+  if (!frameAR && bgImageUrl) {
     const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
       img.onerror = () => reject(new Error('Failed to load background image for dimensions'));
       img.src = bgImageUrl;
     });
-    // Cap longest side to 3840 for 4K (preserving aspect ratio)
-    const MAX_DIM = 3840;
-    if (dims.w > MAX_DIM || dims.h > MAX_DIM) {
-      const scale = MAX_DIM / Math.max(dims.w, dims.h);
-      dims.w = Math.round(dims.w * scale);
-      dims.h = Math.round(dims.h * scale);
-    }
-    // H.264 requires even dimensions
-    viewportWidth = dims.w & ~1;
-    viewportHeight = dims.h & ~1;
-  } else if (aspectRatio && aspectRatio > 0) {
-    // No image — derive 4K dimensions from aspect ratio
-    if (aspectRatio >= 1) {
-      viewportWidth = 3840;
-      viewportHeight = Math.round(3840 / aspectRatio);
-    } else {
-      viewportHeight = 3840;
-      viewportWidth = Math.round(3840 * aspectRatio);
-    }
-    // H.264 requires even dimensions
-    viewportWidth = viewportWidth & ~1;
-    viewportHeight = viewportHeight & ~1;
+    if (dims.w > 0 && dims.h > 0) frameAR = dims.w / dims.h;
   }
+  if (!frameAR) frameAR = 16 / 9;
+
+  // 4K-ish frame derived from the aspect ratio (longest side 3840, even dims).
+  let viewportWidth: number;
+  let viewportHeight: number;
+  if (frameAR >= 1) {
+    viewportWidth = 3840;
+    viewportHeight = Math.round(3840 / frameAR);
+  } else {
+    viewportHeight = 3840;
+    viewportWidth = Math.round(3840 * frameAR);
+  }
+  viewportWidth = viewportWidth & ~1;
+  viewportHeight = viewportHeight & ~1;
   const scaleFactor = viewportWidth / EDITOR_WIDTH;
   const containerWidth = EDITOR_WIDTH;
   const containerHeight = Math.floor(viewportHeight / scaleFactor);
   const regionWidth = settings.scoreRegion?.width ?? containerWidth;
-  const regionHeight = settings.scoreRegion?.height ?? containerHeight;
+  // regionHeight is derived after rendering so single-line can default to the
+  // score's own height (see "Score region" below).
 
   // ── 2. Initialize Verovio ─────────────────────────────────────────
   const toolkit = await createToolkit();
@@ -603,9 +601,14 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   }
   mainEl.appendChild(bgEl);
 
-  // Score region
+  // Score region. The single-line default frames the score to its own height
+  // (totalHeight = max section height), vertically centered — matching the
+  // renderer. Page mode / explicit regions are unchanged.
   const regionX = settings.scoreRegion?.x ?? 0;
-  const regionY = settings.scoreRegion?.y ?? 0;
+  const regionHeight =
+    settings.scoreRegion?.height ??
+    (isSingleLine && totalHeight > 0 ? Math.min(totalHeight, containerHeight) : containerHeight);
+  const regionY = settings.scoreRegion?.y ?? (containerHeight - regionHeight) / 2;
   const regionRotation = settings.scoreRegion?.rotation ?? 0;
 
   const rotationWrapperEl = document.createElement('div');
@@ -614,10 +617,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   rotationWrapperEl.style.top = `${regionY}px`;
   rotationWrapperEl.style.width = `${regionWidth}px`;
   rotationWrapperEl.style.height = `${regionHeight}px`;
-  if (regionRotation !== 0) {
-    rotationWrapperEl.style.transform = `rotate(${regionRotation}deg)`;
-    rotationWrapperEl.style.transformOrigin = 'center center';
-  }
+  // NOTE: the region rotation is deliberately NOT applied to this offscreen DOM.
+  // The final frames get their rotation from ctx.rotate() during compositing;
+  // this DOM exists only to host SVGs for rasterization and to measure note
+  // x-positions via getBoundingClientRect(). A CSS rotation here corrupts those
+  // measurements (the rect becomes the rotated bounding box), which broke
+  // single-line scrolling for rotated regions.
   bgEl.appendChild(rotationWrapperEl);
 
   const regionEl = document.createElement('div');
@@ -672,28 +677,10 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     pageContainers.push(pageDiv);
   }
 
-  // Borders
+  // Borders are composited later via ctx.drawImage (see topBorderImg /
+  // bottomBorderImg). They are intentionally NOT added to this offscreen DOM:
+  // it serves only to host SVGs for rasterization and to measure note positions.
   const borderStyle = (settings.scoreBorder ?? 'none') as BorderStyle;
-  if (borderStyle !== 'none') {
-    const borderHeight = getBorderHeight(borderStyle);
-    const topBorderDiv = document.createElement('div');
-    topBorderDiv.style.position = 'absolute';
-    topBorderDiv.style.top = `${-borderHeight}px`;
-    topBorderDiv.style.left = '0';
-    topBorderDiv.style.width = `${regionWidth}px`;
-    topBorderDiv.style.zIndex = '3';
-    topBorderDiv.innerHTML = generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'top');
-    rotationWrapperEl.appendChild(topBorderDiv);
-
-    const bottomBorderDiv = document.createElement('div');
-    bottomBorderDiv.style.position = 'absolute';
-    bottomBorderDiv.style.top = `${regionHeight}px`;
-    bottomBorderDiv.style.left = '0';
-    bottomBorderDiv.style.width = `${regionWidth}px`;
-    bottomBorderDiv.style.zIndex = '3';
-    bottomBorderDiv.innerHTML = generateBorderSvg(borderStyle, regionWidth, settings.scoreColor, 'bottom');
-    rotationWrapperEl.appendChild(bottomBorderDiv);
-  }
 
   // ── 5. Extract events and compute positions ───────────────────────
   // Force layout so getBoundingClientRect works
@@ -838,7 +825,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     activeNoteheadExitMs: settings.activeNoteheadExitMs ?? 200,
     activeNoteheadUseNoteDuration: useNoteDur,
     colorExtrasSelector: buildColorExtrasSelector(settings),
-    scoreRegionHeight: settings.scoreRegion?.height ?? null,
+    scoreRegionHeight: regionHeight,
     containerHeight,
     totalHeight,
     totalWidth,
@@ -985,9 +972,13 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       }
     }
 
-    // Draw background: image (cover), else solid color, else plain white.
+    // Draw background: image (CSS `background-size: cover` — scale to cover the
+    // frame, centered), else solid color, else plain white.
     if (bgImage) {
-      ctx.drawImage(bgImage, 0, 0, viewportWidth, viewportHeight);
+      const s = Math.max(viewportWidth / bgImage.width, viewportHeight / bgImage.height);
+      const dw = bgImage.width * s;
+      const dh = bgImage.height * s;
+      ctx.drawImage(bgImage, (viewportWidth - dw) / 2, (viewportHeight - dh) / 2, dw, dh);
     } else {
       ctx.fillStyle = bgColor || '#ffffff';
       ctx.fillRect(0, 0, viewportWidth, viewportHeight);

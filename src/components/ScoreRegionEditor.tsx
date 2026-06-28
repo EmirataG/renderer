@@ -1,184 +1,283 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Rnd } from 'react-rnd';
 import type { ScoreRegion } from '../types/score';
 
 interface Props {
   containerWidth: number;
   containerHeight: number;
   initialRegion: ScoreRegion | null;
+  /** Region used when there is no saved region yet. */
+  defaultRegion?: ScoreRegion | null;
+  minWidth?: number;
+  minHeight?: number;
   onRegionChange: (region: ScoreRegion | null) => void;
+  /** Zoom scale applied to the preview (pointer deltas are divided by it). */
   scale?: number;
+}
+
+type Region = Required<Pick<ScoreRegion, 'x' | 'y' | 'width' | 'height'>> & { rotation: number };
+
+// Snap thresholds (editor px / degrees).
+const EDGE_SNAP = 6;
+const ANGLE_SNAP = 3;
+
+const deg2rad = (d: number) => (d * Math.PI) / 180;
+// Rotate a vector by the region angle (CSS rotate, y-down screen space).
+function rot(x: number, y: number, theta: number): [number, number] {
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  return [x * c - y * s, x * s + y * c];
 }
 
 export function ScoreRegionEditor({
   containerWidth,
   containerHeight,
   initialRegion,
+  defaultRegion,
+  minWidth = 200,
+  minHeight = 150,
   onRegionChange,
   scale = 1,
 }: Props) {
-  const [currentRegion, setCurrentRegion] = useState<ScoreRegion>(() => {
-    return initialRegion || {
-      x: 0,
-      y: 0,
-      width: containerWidth,
-      height: containerHeight,
-    };
+  const [region, setRegion] = useState<Region>(() => {
+    const base = initialRegion ?? defaultRegion;
+    return base
+      ? { x: base.x, y: base.y, width: base.width, height: base.height, rotation: base.rotation ?? 0 }
+      : { x: 0, y: 0, width: containerWidth, height: containerHeight, rotation: 0 };
   });
 
-  const [rotation, setRotation] = useState(() => initialRegion?.rotation ?? 0);
+  const regionRef = useRef(region);
+  useEffect(() => { regionRef.current = region; }, [region]);
+
   const [isRotating, setIsRotating] = useState(false);
-  const rotationRef = useRef(rotation);
-  const initialAngleRef = useRef(0);
-  const startRotationRef = useRef(0);
-  const regionRef = useRef(currentRegion);
+  const boxRef = useRef<HTMLDivElement>(null);
 
-  // Keep refs in sync
-  useEffect(() => {
-    rotationRef.current = rotation;
-  }, [rotation]);
-  useEffect(() => {
-    regionRef.current = currentRegion;
-  }, [currentRegion]);
+  const commit = useCallback(() => {
+    onRegionChange(regionRef.current);
+  }, [onRegionChange]);
 
-  const handleDragStop = (_e: unknown, d: { x: number; y: number }) => {
-    const newRegion: ScoreRegion = {
-      x: d.x,
-      y: d.y,
-      width: currentRegion.width,
-      height: currentRegion.height,
-      rotation,
-    };
-    setCurrentRegion(newRegion);
-    onRegionChange(newRegion);
-  };
+  // Snap the unrotated rect's edges to the frame borders. Applied to whichever
+  // edges a gesture moved (`movedX`/`movedY` describe which side, -1/0/1).
+  const snapEdges = useCallback((r: Region, movedX: 0 | 1 | -1, movedY: 0 | 1 | -1): Region => {
+    let { x, y, width, height } = r;
+    if (movedX <= 0 && Math.abs(x) < EDGE_SNAP) { width += x; x = 0; }
+    if (movedX >= 0 && Math.abs(x + width - containerWidth) < EDGE_SNAP) { width = containerWidth - x; }
+    if (movedY <= 0 && Math.abs(y) < EDGE_SNAP) { height += y; y = 0; }
+    if (movedY >= 0 && Math.abs(y + height - containerHeight) < EDGE_SNAP) { height = containerHeight - y; }
+    return { ...r, x, y, width: Math.max(minWidth, width), height: Math.max(minHeight, height) };
+  }, [containerWidth, containerHeight, minWidth, minHeight]);
 
-  const handleResizeStop = (
-    _e: unknown,
-    _direction: unknown,
-    ref: HTMLElement,
-    _delta: unknown,
-    position: { x: number; y: number }
-  ) => {
-    const newRegion: ScoreRegion = {
-      x: position.x,
-      y: position.y,
-      width: ref.offsetWidth,
-      height: ref.offsetHeight,
-      rotation,
-    };
-    setCurrentRegion(newRegion);
-    onRegionChange(newRegion);
-  };
-
-  const handleRotateMouseDown = useCallback((e: React.MouseEvent) => {
+  /* ---------------- drag to move ---------------- */
+  const startDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const start = regionRef.current;
+    const sx = e.clientX, sy = e.clientY;
 
-    const region = regionRef.current;
-    // Center of the region in page coordinates, accounting for scale
-    const centerX = (region.x + region.width / 2) * scale;
-    const centerY = (region.y + region.height / 2) * scale;
+    const onMove = (ev: MouseEvent) => {
+      const dx = (ev.clientX - sx) / scale;
+      const dy = (ev.clientY - sy) / scale;
+      const next: Region = { ...start, x: start.x + dx, y: start.y + dy };
+      // Snap edges to the frame while moving — only when axis-aligned, where the
+      // unrotated edges coincide with the visual edges (matches resize snapping).
+      if (Math.abs(start.rotation) < 0.5) {
+        if (Math.abs(next.x) < EDGE_SNAP) next.x = 0;
+        else if (Math.abs(next.x + next.width - containerWidth) < EDGE_SNAP) next.x = containerWidth - next.width;
+        if (Math.abs(next.y) < EDGE_SNAP) next.y = 0;
+        else if (Math.abs(next.y + next.height - containerHeight) < EDGE_SNAP) next.y = containerHeight - next.height;
+      }
+      regionRef.current = next;
+      setRegion(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      commit();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [scale, containerWidth, containerHeight, commit]);
 
-    // Get the container element's position for coordinate offset
-    const container = (e.target as HTMLElement).closest('.absolute.inset-0.z-50');
-    const containerRect = container?.getBoundingClientRect() ?? { left: 0, top: 0 };
+  /* ---------------- resize (rotation-aware, opposite corner/edge pinned) ---------------- */
+  const startResize = useCallback((hx: -1 | 0 | 1, hy: -1 | 0 | 1) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const r0 = regionRef.current;
+    const theta = deg2rad(r0.rotation);
+    const w0 = r0.width, h0 = r0.height;
+    const cx = r0.x + w0 / 2, cy = r0.y + h0 / 2;
+    // Anchor (opposite edge/corner midpoint) — world, stays fixed.
+    const [aox, aoy] = rot((-hx * w0) / 2, (-hy * h0) / 2, theta);
+    const ax = cx + aox, ay = cy + aoy;
+    // Dragged handle's starting world position.
+    const [hox, hoy] = rot((hx * w0) / 2, (hy * h0) / 2, theta);
+    const hpx = cx + hox, hpy = cy + hoy;
+    const sx = e.clientX, sy = e.clientY;
 
-    // Initial angle from center to mouse
-    const mouseX = e.clientX - containerRect.left;
-    const mouseY = e.clientY - containerRect.top;
-    const initialAngle = Math.atan2(mouseY - centerY, mouseX - centerX) * (180 / Math.PI);
+    const cos = Math.cos(theta), sin = Math.sin(theta);
 
-    initialAngleRef.current = initialAngle;
-    startRotationRef.current = rotationRef.current;
+    const onMove = (ev: MouseEvent) => {
+      const mx = hpx + (ev.clientX - sx) / scale;
+      const my = hpy + (ev.clientY - sy) / scale;
+      const dx = mx - ax, dy = my - ay;
+      // Project the anchor→mouse vector onto the box's local axes.
+      const du = dx * cos + dy * sin;       // along local x (u)
+      const dv = -dx * sin + dy * cos;      // along local y (v)
+      const newW = hx !== 0 ? Math.max(minWidth, hx * du) : w0;
+      const newH = hy !== 0 ? Math.max(minHeight, hy * dv) : h0;
+      // New center keeps the anchor fixed: C' = A - R·(-hx*newW/2, -hy*newH/2)
+      const [ox, oy] = rot((-hx * newW) / 2, (-hy * newH) / 2, theta);
+      const ncx = ax - ox, ncy = ay - oy;
+      let next: Region = {
+        rotation: r0.rotation,
+        width: newW,
+        height: newH,
+        x: ncx - newW / 2,
+        y: ncy - newH / 2,
+      };
+      // Edge snapping only makes sense while axis-aligned.
+      if (Math.abs(r0.rotation) < 0.5) next = snapEdges(next, hx, hy);
+      regionRef.current = next;
+      setRegion(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      commit();
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [scale, minWidth, minHeight, snapEdges, commit]);
+
+  /* ---------------- rotation ---------------- */
+  const startRotate = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const start = regionRef.current;
+    // The box's bounding-rect center equals its rotation center at any angle.
+    const rect = boxRef.current?.getBoundingClientRect();
+    const ccx = rect ? rect.left + rect.width / 2 : 0;
+    const ccy = rect ? rect.top + rect.height / 2 : 0;
+    const startAngle = Math.atan2(e.clientY - ccy, e.clientX - ccx) * (180 / Math.PI);
     setIsRotating(true);
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const mx = moveEvent.clientX - containerRect.left;
-      const my = moveEvent.clientY - containerRect.top;
-      const currentAngle = Math.atan2(my - centerY, mx - centerX) * (180 / Math.PI);
-      let newRotation = startRotationRef.current + (currentAngle - initialAngleRef.current);
-
-      // Normalize to -180..180
-      newRotation = ((newRotation + 180) % 360 + 360) % 360 - 180;
-
-      // Snap to 0 when within +/- 3 degrees
-      if (Math.abs(newRotation) <= 3) {
-        newRotation = 0;
-      }
-
-      // Round to 1 decimal
-      newRotation = Math.round(newRotation * 10) / 10;
-
-      rotationRef.current = newRotation;
-      setRotation(newRotation);
+    const onMove = (ev: MouseEvent) => {
+      const cur = Math.atan2(ev.clientY - ccy, ev.clientX - ccx) * (180 / Math.PI);
+      let next = start.rotation + (cur - startAngle);
+      next = ((next + 180) % 360 + 360) % 360 - 180; // normalize to -180..180
+      // Snap to the nearest 0/90/180/270.
+      const nearest = Math.round(next / 90) * 90;
+      if (Math.abs(next - nearest) <= ANGLE_SNAP) next = nearest;
+      next = Math.round(next * 10) / 10;
+      const r: Region = { ...regionRef.current, rotation: next };
+      regionRef.current = r;
+      setRegion(r);
     };
-
-    const handleMouseUp = () => {
+    const onUp = () => {
       setIsRotating(false);
-      const finalRotation = rotationRef.current;
-      const region = regionRef.current;
-      const newRegion: ScoreRegion = {
-        ...region,
-        rotation: finalRotation,
-      };
-      setCurrentRegion(newRegion);
-      onRegionChange(newRegion);
-
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      commit();
     };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [commit]);
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [scale, onRegionChange]);
-
-  // Position of rotation handle: centered above the Rnd box
-  const handleLineHeight = 30;
-  const handleSize = 22;
+  const HANDLE = 10;
+  // Corner + edge resize handles, keyed by which local extreme they control.
+  const handles: { hx: -1 | 0 | 1; hy: -1 | 0 | 1; cursor: string }[] = [
+    { hx: -1, hy: -1, cursor: 'nwse-resize' },
+    { hx: 1, hy: -1, cursor: 'nesw-resize' },
+    { hx: 1, hy: 1, cursor: 'nwse-resize' },
+    { hx: -1, hy: 1, cursor: 'nesw-resize' },
+    { hx: 0, hy: -1, cursor: 'ns-resize' },
+    { hx: 0, hy: 1, cursor: 'ns-resize' },
+    { hx: -1, hy: 0, cursor: 'ew-resize' },
+    { hx: 1, hy: 0, cursor: 'ew-resize' },
+  ];
 
   return (
-    <div
-      className="absolute inset-0 z-50"
-      style={{ width: containerWidth, height: containerHeight }}
-    >
-      {/* Semi-transparent backdrop */}
+    <div className="absolute inset-0 z-50" style={{ width: containerWidth, height: containerHeight }}>
+      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 pointer-events-none" />
 
-      {/* Rotation wrapper - rotates the entire Rnd + handle group */}
+      {/* The region box — actually rotated, so it reflects the applied rotation */}
       <div
+        ref={boxRef}
+        onMouseDown={startDrag}
         style={{
           position: 'absolute',
-          left: currentRegion.x,
-          top: currentRegion.y,
-          width: currentRegion.width,
-          height: currentRegion.height,
-          transform: `rotate(${rotation}deg)`,
+          left: region.x,
+          top: region.y,
+          width: region.width,
+          height: region.height,
+          transform: region.rotation !== 0 ? `rotate(${region.rotation}deg)` : undefined,
           transformOrigin: 'center center',
-          pointerEvents: 'none',
+          border: '1px solid white',
+          backgroundColor: 'rgba(255,255,255,0.05)',
+          cursor: 'move',
           zIndex: 10,
         }}
       >
-        {/* Rotation handle - positioned above the region center */}
+        {/* Hint */}
+        <div className="w-full h-full flex items-center justify-center">
+          <div className="bg-black/70 border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 pointer-events-none uppercase tracking-wider">
+            Drag to move &middot; Handles to resize &middot; Top handle to rotate
+          </div>
+        </div>
+
+        {/* Resize handles (rotate with the box) */}
+        {handles.map(({ hx, hy, cursor }) => (
+          <div
+            key={`${hx},${hy}`}
+            onMouseDown={startResize(hx, hy)}
+            style={{
+              position: 'absolute',
+              left: `calc(${(hx + 1) * 50}% - ${HANDLE / 2}px)`,
+              top: `calc(${(hy + 1) * 50}% - ${HANDLE / 2}px)`,
+              width: HANDLE,
+              height: HANDLE,
+              backgroundColor: 'white',
+              border: '1px solid #404040',
+              cursor,
+              zIndex: 20,
+            }}
+          />
+        ))}
+
+        {/* Rotation handle + connector + angle label, above the box center */}
         <div
           style={{
             position: 'absolute',
-            top: -(handleLineHeight + handleSize),
+            top: -52,
             left: '50%',
             transform: 'translateX(-50%)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            pointerEvents: 'auto',
             zIndex: 20,
           }}
         >
-          {/* Handle circle with rotation icon */}
+          {region.rotation !== 0 && (
+            <div
+              style={{
+                marginBottom: 4,
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                border: '1px solid #404040',
+                padding: '1px 6px',
+                fontSize: 10,
+                color: '#a3a3a3',
+                whiteSpace: 'nowrap',
+                letterSpacing: '0.05em',
+              }}
+            >
+              {Math.round(region.rotation)}&deg;
+            </div>
+          )}
           <div
-            onMouseDown={handleRotateMouseDown}
+            onMouseDown={startRotate}
             style={{
-              width: handleSize,
-              height: handleSize,
+              width: 22,
+              height: 22,
               borderRadius: '50%',
               backgroundColor: 'white',
               border: '1px solid #525252',
@@ -193,108 +292,9 @@ export function ScoreRegionEditor({
               <polyline points="21 3 21 9 15 9" />
             </svg>
           </div>
-          {/* Connecting line */}
-          <div
-            style={{
-              width: 1,
-              height: handleLineHeight,
-              backgroundColor: 'white',
-              opacity: 0.7,
-            }}
-          />
+          <div style={{ width: 1, height: 30, backgroundColor: 'white', opacity: 0.7 }} />
         </div>
-
-        {/* Rotation angle label */}
-        {rotation !== 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              top: -(handleLineHeight + handleSize + 20),
-              left: '50%',
-              transform: 'translateX(-50%)',
-              pointerEvents: 'none',
-              zIndex: 20,
-            }}
-          >
-            <div
-              style={{
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                border: '1px solid #404040',
-                padding: '1px 6px',
-                fontSize: '10px',
-                color: '#a3a3a3',
-                whiteSpace: 'nowrap',
-                letterSpacing: '0.05em',
-              }}
-            >
-              {Math.round(rotation)}&deg;
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Draggable/resizable region */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: containerWidth,
-          height: containerHeight,
-        }}
-      >
-        <Rnd
-          scale={scale}
-          default={{
-            x: currentRegion.x,
-            y: currentRegion.y,
-            width: currentRegion.width,
-            height: currentRegion.height,
-          }}
-          minWidth={200}
-          minHeight={150}
-          bounds="parent"
-          onDragStop={handleDragStop}
-          onResizeStop={handleResizeStop}
-          resizeHandleStyles={{
-            top: { cursor: 'ns-resize' },
-            right: { cursor: 'ew-resize' },
-            bottom: { cursor: 'ns-resize' },
-            left: { cursor: 'ew-resize' },
-            topRight: { cursor: 'nesw-resize' },
-            bottomRight: { cursor: 'nwse-resize' },
-            bottomLeft: { cursor: 'nesw-resize' },
-            topLeft: { cursor: 'nwse-resize' },
-          }}
-          resizeHandleComponent={{
-            topLeft: <ResizeHandle />,
-            topRight: <ResizeHandle />,
-            bottomLeft: <ResizeHandle />,
-            bottomRight: <ResizeHandle />,
-          }}
-          className="border border-white bg-white/5"
-          style={{ zIndex: 10 }}
-        >
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="bg-black/70 border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 pointer-events-none uppercase tracking-wider">
-              Drag to move &middot; Corners to resize &middot; Top handle to rotate
-            </div>
-          </div>
-        </Rnd>
       </div>
     </div>
-  );
-}
-
-function ResizeHandle() {
-  return (
-    <div
-      style={{
-        width: 10,
-        height: 10,
-        backgroundColor: 'white',
-        border: '1px solid #404040',
-      }}
-    />
   );
 }

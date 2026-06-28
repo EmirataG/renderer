@@ -73,6 +73,9 @@ interface Props {
   hideLabels?: boolean;
   // portal target for transport bar (play/pause/reset) — renders there instead of inline
   transportPortalEl?: HTMLDivElement | null;
+  // reports the rendered score's natural height (editor px) so the region editor
+  // can default/clamp the single-line region to the score height
+  onScoreHeight?: (height: number) => void;
 }
 
 // memo: App re-renders on every transient UI state change (zoom, region
@@ -103,6 +106,7 @@ export default memo(function SingleLineRenderer({
   colorArticulations = false,
   hideLabels = false,
   transportPortalEl,
+  onScoreHeight,
 }: Props) {
   const colorExtrasSelector = useMemo(() => buildColorExtrasSelector({
     colorAccidentals, colorDots, colorArticulations,
@@ -144,6 +148,12 @@ export default memo(function SingleLineRenderer({
   // Convert scoreScale (0.5-1.5 multiplier) to Verovio percentage (20-60)
   const verovioScale = Math.round(40 * scoreScale);
   const { sections, sectionWidths, sectionOffsets, totalWidth, maxHeight, seamless, toolkit } = useSingleLineVerovio(xml, verovioScale, 15, musicFont);
+
+  // Report the rendered score height (editor px) upward so the region editor can
+  // default/clamp the region to it. renderScale is 1 in preview.
+  useEffect(() => {
+    if (maxHeight > 0) onScoreHeight?.(maxHeight);
+  }, [maxHeight, onScoreHeight]);
 
   const [renderScale, setRenderScale] = useState(1); // Scale factor for render mode
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1168,10 +1178,13 @@ export default memo(function SingleLineRenderer({
         >
           {/* Rotation wrapper - rotates score region + borders together */}
           {(() => {
+            // Default single-line region frames the score to its own height,
+            // vertically centered (clamped to the frame), instead of the full frame.
+            const defaultHeight = Math.min(maxHeight || containerHeight, containerHeight);
             const regionWidth = scoreRegion?.width ?? containerWidth;
             const regionX = scoreRegion?.x ?? 0;
-            const regionY = scoreRegion?.y ?? 0;
-            const regionHeight = scoreRegion?.height ?? containerHeight;
+            const regionHeight = scoreRegion?.height ?? defaultHeight;
+            const regionY = scoreRegion?.y ?? (containerHeight - regionHeight) / 2;
             const regionRotation = scoreRegion?.rotation ?? 0;
             const BorderComponent = scoreBorder !== "none" ? getBorderComponent(scoreBorder) : null;
             const borderHeight = scoreBorder !== "none" ? getBorderHeight(scoreBorder) : 0;
