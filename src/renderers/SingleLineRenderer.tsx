@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useSingleLineVerovio } from "../hooks/useSingleLineVerovio";
-import { extractTimemapEvents, computeEventPositions, computeSectionPositions } from "../lib/getEvents";
+import { extractTimemapEvents, computeEventPositions, computeSectionPositions, measureSvgGeometry } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
 import { interpolateTimestamps, computeNoteDurationSeconds } from "../lib/interpolation";
@@ -383,10 +383,12 @@ export default memo(function SingleLineRenderer({
       // sectionOffsets[i], so a compacted copy would misalign positions.
       if (toolkit) {
         const timemapEvents = extractTimemapEvents(toolkit);
-        // Compute vertical positions (for compatibility, using section 0 offset as fallback)
-        const cachedEvents = computeEventPositions(timemapEvents, toolkit, sectionContainerRefs.current, [0]);
-        // Compute horizontal positions for camera
-        const eventsWithX = computeSectionPositions(cachedEvents, sectionContainerRefs.current, sectionOffsets);
+        // Measure positions in a clean, untransformed DOM so a rotated/zoomed
+        // display DOM can't corrupt them (see measureSvgGeometry).
+        const eventsWithX = measureSvgGeometry(sections, (containers) => {
+          const cachedEvents = computeEventPositions(timemapEvents, toolkit, containers, [0]);
+          return computeSectionPositions(cachedEvents, containers, sectionOffsets);
+        });
         if (cancelled) return;
 
         // Set the visible window BEFORE the store write: the write flips

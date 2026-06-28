@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useVerovio } from "../hooks/useVerovio";
-import { extractTimemapEvents, computeEventPositions } from "../lib/getEvents";
+import { extractTimemapEvents, computeEventPositions, measureSvgGeometry } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
 import { interpolateTimestamps, computeNoteDurationSeconds } from "../lib/interpolation";
@@ -386,11 +386,14 @@ export default memo(function RegularRenderer({
       prevActiveRangeRef.current = null;
 
       // Extract events using two-phase extraction and store in cache.
-      // Pass the UNFILTERED ref array — computeEventPositions indexes it by
-      // absolute page index, so a compacted copy would measure wrong pages.
+      // Positions are measured in a clean, untransformed DOM so a rotated/zoomed
+      // display DOM can't corrupt them (see measureSvgGeometry). Pages are paired
+      // 1:1 with pageOffsets by absolute index.
       if (toolkit) {
         const timemapEvents = extractTimemapEvents(toolkit);
-        const cachedEvents = computeEventPositions(timemapEvents, toolkit, pageContainerRefs.current, pageOffsets);
+        const cachedEvents = measureSvgGeometry(svgPages, (containers) =>
+          computeEventPositions(timemapEvents, toolkit, containers, pageOffsets),
+        );
         if (cancelled) return;
 
         // Set the visible window BEFORE the store write: the write flips

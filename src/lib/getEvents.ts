@@ -458,3 +458,38 @@ export function computeSectionPositions(
 
   return result;
 }
+
+/**
+ * Runs `measure` against a freshly built, OFFSCREEN and UNTRANSFORMED DOM that
+ * mounts the given SVG strings — one container per string, paired 1:1 with the
+ * caller's offsets.
+ *
+ * Note positions must be measured in a DOM with no CSS rotation/scale on it.
+ * The live display DOM may be rotated (a rotated score region) or zoomed, which
+ * corrupts getBoundingClientRect()-based measurement: a rotated element's rect
+ * is its axis-aligned bounding box, losing the local position, and the scale
+ * isn't always recoverable. Measuring a clean copy here keeps extraction
+ * independent of how the score is displayed. (Queries inside
+ * computeEventPositions/computeSectionPositions are container-scoped, so the
+ * duplicated element ids don't collide with the live SVGs.)
+ */
+export function measureSvgGeometry<T>(
+  svgStrings: string[],
+  measure: (containers: HTMLElement[]) => T,
+): T {
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-99999px;top:0;visibility:hidden;';
+  const containers = svgStrings.map((svg) => {
+    const d = document.createElement('div');
+    d.innerHTML = svg;
+    host.appendChild(d);
+    return d;
+  });
+  document.body.appendChild(host);
+  void host.offsetHeight; // force layout so getBoundingClientRect() is valid
+  try {
+    return measure(containers);
+  } finally {
+    host.remove();
+  }
+}
