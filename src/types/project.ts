@@ -37,6 +37,8 @@ export interface Project {
   hideUnplayedNotes?: boolean;
   smoothReveal?: boolean;
   unplayedOpacity?: number;
+  activeLinePosition?: number;
+  revealLinePosition?: number;
 
   // Sync anchors (plain object, not Map)
   anchors?: Record<string, number>;

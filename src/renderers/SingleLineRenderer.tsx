@@ -78,6 +78,10 @@ interface Props {
   smoothReveal?: boolean;
   // opacity (0..1) of the unplayed region: 0 = hidden, >0 = faded
   unplayedOpacity?: number;
+  // position (0..1) of the active note across the viewport (0.5 = centered)
+  activeLinePosition?: number;
+  // position (0..1) of the reveal boundary; >= activeLinePosition
+  revealLinePosition?: number;
   // portal target for transport bar (play/pause/reset) — renders there instead of inline
   transportPortalEl?: HTMLDivElement | null;
   // reports the rendered score's natural height (editor px) so the region editor
@@ -114,6 +118,8 @@ export default memo(function SingleLineRenderer({
   hideUnplayedNotes = false,
   smoothReveal = false,
   unplayedOpacity = 0,
+  activeLinePosition = 0.5,
+  revealLinePosition = 0.5,
   transportPortalEl,
   onScoreHeight,
 }: Props) {
@@ -546,7 +552,7 @@ export default memo(function SingleLineRenderer({
 
     // Keep the target X position in the horizontal center of the viewport (50%)
     // Exception: at the beginning and end, don't scroll past the edges
-    let cameraX = targetX - viewportWidth / 2;
+    let cameraX = targetX - viewportWidth * activeLinePosition;
 
     // Clamp to valid range: don't scroll left of 0 or right of the maximum scroll
     cameraX = Math.max(0, cameraX);
@@ -589,6 +595,13 @@ export default memo(function SingleLineRenderer({
     syncRevealStructure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sections, hideUnplayedNotes, smoothReveal, unplayedOpacity]);
+
+  // Live preview: when the active/reveal line position changes in the region
+  // editor, re-apply the camera + reveal frontier so the move is visible
+  // immediately (during playback the rAF already re-applies every frame).
+  useLayoutEffect(() => {
+    applyCameraRef.current(currentXRef.current);
+  }, [activeLinePosition, revealLinePosition]);
 
   // Apply the current frontier to the viewport, or clear it when off.
   function syncRevealStructure() {
@@ -641,8 +654,11 @@ export default memo(function SingleLineRenderer({
     // The camera has no scale, so content units map 1:1 to viewport px.
     const playScreenX = playX - cameraXRef.current;
     const band = smoothReveal ? REVEAL_BAND : 0;
+    // The reveal boundary sits at the active line by default; shifting the reveal
+    // line ahead (revealLinePosition > activeLinePosition) reveals notes that
+    // distance before the playhead reaches them.
     applyReveal(viewport, {
-      playedFrac: playScreenX / viewportWidth,
+      playedFrac: playScreenX / viewportWidth + (revealLinePosition - activeLinePosition),
       bandFrac: band / viewportWidth,
       unplayedOpacity,
     });
@@ -703,7 +719,7 @@ export default memo(function SingleLineRenderer({
     if (interpolatedEvents.length === 0) return;
 
     const viewportWidth = scoreRegion?.width ?? containerWidth;
-    const targetX = newCameraX + viewportWidth / 2;
+    const targetX = newCameraX + viewportWidth * activeLinePosition;
 
     // Find closest event by X position. interpolatedEvents is beat-sorted and
     // extraction enforces non-decreasing x, so binary search applies — this

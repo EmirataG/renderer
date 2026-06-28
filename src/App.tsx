@@ -37,6 +37,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const hideUnplayedNotes = useProjectStore((s) => s.hideUnplayedNotes);
   const smoothReveal = useProjectStore((s) => s.smoothReveal);
   const unplayedOpacity = useProjectStore((s) => s.unplayedOpacity);
+  const activeLinePosition = useProjectStore((s) => s.activeLinePosition);
+  const revealLinePosition = useProjectStore((s) => s.revealLinePosition);
   const scoreRegion = useProjectStore((s) => s.scoreRegion);
   const scoreBorder = useProjectStore((s) => s.scoreBorder);
   const scoreScale = useProjectStore((s) => s.scoreScale);
@@ -219,6 +221,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           smoothReveal: project.smoothReveal ?? DEFAULT_SETTINGS.smoothReveal,
           unplayedOpacity:
             project.unplayedOpacity ?? DEFAULT_SETTINGS.unplayedOpacity,
+          activeLinePosition:
+            project.activeLinePosition ?? DEFAULT_SETTINGS.activeLinePosition,
+          revealLinePosition:
+            project.revealLinePosition ?? DEFAULT_SETTINGS.revealLinePosition,
           bgColor: project.bgColor ?? DEFAULT_SETTINGS.bgColor,
           // Back-compat: legacy projects with an image but no stored mode show it.
           bgMode: project.bgMode ?? (project.backgroundUrl ? "image" : "color"),
@@ -483,6 +489,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         hideUnplayedNotes,
         smoothReveal,
         unplayedOpacity,
+        activeLinePosition,
+        revealLinePosition,
         scoreRegion,
         scoreBorder,
         scoreScale,
@@ -1260,6 +1268,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               hideUnplayedNotes={hideUnplayedNotes}
                               smoothReveal={smoothReveal}
                               unplayedOpacity={unplayedOpacity}
+                              activeLinePosition={activeLinePosition}
+                              revealLinePosition={revealLinePosition}
                               transportPortalEl={transportEl}
                             />
                           ) : (
@@ -1277,6 +1287,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               scoreRegion={debouncedScoreRegion}
                               scoreBorder={scoreBorder}
                               scoreScale={debouncedScoreScale}
+                              activeLinePosition={activeLinePosition}
                               musicFont={musicFont}
                               // active notehead options
                               activeNoteheadColor={
@@ -1323,6 +1334,16 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                     setSetting("scoreRegion", region)
                                   }
                                   scale={zoomScale}
+                                  lineAxis={isSingleLine ? "x" : "y"}
+                                  activeLinePosition={activeLinePosition}
+                                  onActiveLineChange={(p) =>
+                                    setSetting("activeLinePosition", p)
+                                  }
+                                  showRevealLine={isSingleLine && hideUnplayedNotes}
+                                  revealLinePosition={revealLinePosition}
+                                  onRevealLineChange={(p) =>
+                                    setSetting("revealLinePosition", p)
+                                  }
                                 />
                               </div>
                             )}
@@ -1459,7 +1480,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               Reset Score Region?
             </h3>
             <p className="text-[11px] text-fg-subtle mb-4 leading-relaxed">
-              This will reset the score to use the full background area.
+              This resets the score to the full background area and recenters the
+              active and reveal lines.
             </p>
             <div className="flex gap-2 justify-end">
               <button
@@ -1471,6 +1493,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               <button
                 onClick={() => {
                   setSetting("scoreRegion", null);
+                  setSetting("activeLinePosition", DEFAULT_SETTINGS.activeLinePosition);
+                  setSetting("revealLinePosition", DEFAULT_SETTINGS.revealLinePosition);
                   setIsEditingRegion(false);
                   setShowResetConfirm(false);
                 }}

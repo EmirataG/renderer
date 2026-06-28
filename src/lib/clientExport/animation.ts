@@ -111,6 +111,8 @@ export interface AnimationConfig {
   /** Precomputed max(holdSeconds + exitSeconds) across all events.
    *  Used to bound the backward scan so long tied chains aren't cut short. */
   maxAnimDuration?: number;
+  /** Position (0..1) of the active note along the pan axis. 0.5 = centered. */
+  activeLinePosition?: number;
 }
 
 export interface AnimationEvent {
@@ -215,7 +217,7 @@ export function setTimestamp(
       targetX = currentX;
     }
 
-    let cameraX = targetX - viewportWidth / 2;
+    let cameraX = targetX - viewportWidth * (config.activeLinePosition ?? 0.5);
     cameraX = Math.max(0, cameraX);
     cameraX = Math.min(cameraX, Math.max(0, scoreWidth - viewportWidth));
 
@@ -227,7 +229,7 @@ export function setTimestamp(
     const scoreHeight = config.totalHeight || scoreEl.scrollHeight;
     const viewportHeight = config.scoreRegionHeight ?? config.containerHeight;
 
-    let newTargetCameraY = currentEvent.y - viewportHeight / 2;
+    let newTargetCameraY = currentEvent.y - viewportHeight * (config.activeLinePosition ?? 0.5);
     newTargetCameraY = Math.max(0, newTargetCameraY);
     newTargetCameraY = Math.min(newTargetCameraY, Math.max(0, scoreHeight - viewportHeight));
 

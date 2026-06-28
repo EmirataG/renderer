@@ -42,6 +42,10 @@ export interface ExportSettings {
   smoothReveal: boolean;
   /** Opacity (0..1) of the unplayed region: 0 = hidden, >0 = faded. */
   unplayedOpacity: number;
+  /** Position (0..1) of the active note along the pan axis. 0.5 = centered. */
+  activeLinePosition: number;
+  /** Position (0..1, single-line) of the reveal boundary; >= activeLinePosition. */
+  revealLinePosition: number;
   scoreRegion: ScoreRegion | null;
   scoreBorder: BorderStyle;
   scoreScale: number;
@@ -940,6 +944,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     regionWidth,
     viewMode: settings.viewMode ?? 'page',
     maxAnimDuration,
+    activeLinePosition: settings.activeLinePosition,
   };
 
   // ── 7. Setup canvas + encoder ─────────────────────────────────────
@@ -1120,7 +1125,11 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     // Reveal frontier (single-line only): the playhead's content-space X.
     // Per-section played fraction is computed in that same local layout space —
     // rotation/zoom invariant, identical to the preview renderer.
-    const revealPlayX = animState.currentX;
+    // Reveal boundary shifts ahead of the playhead by the active→reveal line
+    // gap (in content px = regionWidth fractions), matching the preview.
+    const revealPlayX =
+      animState.currentX +
+      (settings.revealLinePosition - settings.activeLinePosition) * regionWidth;
 
     if (isSingleLine) {
       const cameraX = animState.cameraX;

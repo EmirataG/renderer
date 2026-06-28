@@ -87,6 +87,8 @@ interface Props {
   scoreBorder?: BorderStyle;
   // score scale (size multiplier)
   scoreScale?: number;
+  // position (0..1) of the active note down the viewport (0.5 = centered)
+  activeLinePosition?: number;
   // music font (Bravura, Petaluma, Leland, Gootville, Leipzig)
   musicFont?: string;
   // notehead animations
@@ -120,6 +122,7 @@ export default memo(function RegularRenderer({
   scoreRegion,
   scoreBorder = "none",
   scoreScale = 1,
+  activeLinePosition = 0.5,
   musicFont = "Bravura",
   // notehead animation defaults
   activeNoteheadColor = scoreColor,
@@ -530,7 +533,7 @@ export default memo(function RegularRenderer({
 
     // Keep the target Y position in the vertical center of the viewport
     // Exception: at the beginning and end, don't scroll past the edges
-    let cameraY = targetY - viewportHeight / 2;
+    let cameraY = targetY - viewportHeight * activeLinePosition;
 
     // Clamp to valid range: don't scroll above 0 or below the maximum scroll
     cameraY = Math.max(0, cameraY);
@@ -689,7 +692,7 @@ export default memo(function RegularRenderer({
 
     const viewportHeight = scoreRegion?.height ?? containerHeight;
     // Convert camera position back to a target center Y
-    const targetY = newCameraY + viewportHeight / 2;
+    const targetY = newCameraY + viewportHeight * activeLinePosition;
 
     // Find closest event by Y position. interpolatedEvents is beat-sorted and
     // extraction enforces non-decreasing y, so binary search applies — this
@@ -901,7 +904,7 @@ export default memo(function RegularRenderer({
       const viewportHeight = scoreRegion?.height ?? containerHeight;
 
       // Compute what applyCamera would produce for this event's Y
-      let newTargetCameraY = eventY - viewportHeight / 2;
+      let newTargetCameraY = eventY - viewportHeight * activeLinePosition;
       newTargetCameraY = Math.max(0, newTargetCameraY);
       newTargetCameraY = Math.min(newTargetCameraY, Math.max(0, scoreHeight - viewportHeight));
 

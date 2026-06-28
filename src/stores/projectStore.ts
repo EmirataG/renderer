@@ -26,6 +26,16 @@ export interface ProjectSettings {
   /** Opacity (0..1) of the unplayed region when hideUnplayedNotes is on.
    *  0 = fully hidden; >0 = unplayed content shown faded at this opacity. */
   unplayedOpacity: number;
+  /** Position of the active (currently-playing) note within the score region,
+   *  as a fraction (0..1) along the camera's pan axis (x in single-line, y in
+   *  page mode). 0.5 = centered (the legacy behavior). */
+  activeLinePosition: number;
+  /** Position (0..1, single-line x axis) where unplayed notes get revealed.
+   *  Always >= activeLinePosition: notes can reveal AHEAD of the playhead so the
+   *  reader sees them before they're played. Equal to activeLinePosition by
+   *  default (reveal exactly at the playhead). Persists even when the hide
+   *  feature is off. */
+  revealLinePosition: number;
   /** Solid background color for the frame. Defaults to white. */
   bgColor: string | null;
   /** Which background to show: a solid color or the uploaded image. */
@@ -57,6 +67,8 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   hideUnplayedNotes: false,
   smoothReveal: true,
   unplayedOpacity: 0,
+  activeLinePosition: 0.5,
+  revealLinePosition: 0.5,
   bgColor: '#ffffff',
   bgMode: 'color',
   aspectRatio: 16 / 9,

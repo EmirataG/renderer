@@ -31,6 +31,8 @@ function getSaveableSettings(state: ReturnType<typeof useProjectStore.getState>)
     hideUnplayedNotes: state.hideUnplayedNotes,
     smoothReveal: state.smoothReveal,
     unplayedOpacity: state.unplayedOpacity,
+    activeLinePosition: state.activeLinePosition,
+    revealLinePosition: state.revealLinePosition,
     bgColor: state.bgColor,
     bgMode: state.bgMode,
     aspectRatio: state.aspectRatio,

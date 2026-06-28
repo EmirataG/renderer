@@ -20,6 +20,8 @@ declare global {
     hideUnplayedNotes: boolean;
     smoothReveal: boolean;
     unplayedOpacity: number;
+    activeLinePosition: number;
+    revealLinePosition: number;
     scoreRegion: { x: number; y: number; width: number; height: number; rotation?: number } | null;
     scoreBorder: string;
     scoreScale: number;

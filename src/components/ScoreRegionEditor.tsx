@@ -12,7 +12,20 @@ interface Props {
   onRegionChange: (region: ScoreRegion | null) => void;
   /** Zoom scale applied to the preview (pointer deltas are divided by it). */
   scale?: number;
+  /** Axis the camera pans along: 'x' for single-line (vertical lines), 'y' for
+   *  page mode (horizontal lines). */
+  lineAxis?: 'x' | 'y';
+  /** Position (0..1) of the active-note line, along lineAxis within the region. */
+  activeLinePosition: number;
+  onActiveLineChange: (pos: number) => void;
+  /** Show + allow editing the reveal line (single-line + hide feature on). */
+  showRevealLine?: boolean;
+  /** Position (0..1) of the reveal line; kept >= activeLinePosition. */
+  revealLinePosition: number;
+  onRevealLineChange: (pos: number) => void;
 }
+
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 type Region = Required<Pick<ScoreRegion, 'x' | 'y' | 'width' | 'height'>> & { rotation: number };
 
@@ -37,6 +50,12 @@ export function ScoreRegionEditor({
   minHeight = 150,
   onRegionChange,
   scale = 1,
+  lineAxis = 'x',
+  activeLinePosition,
+  onActiveLineChange,
+  showRevealLine = false,
+  revealLinePosition,
+  onRevealLineChange,
 }: Props) {
   const [region, setRegion] = useState<Region>(() => {
     const base = initialRegion ?? defaultRegion;
@@ -182,6 +201,56 @@ export function ScoreRegionEditor({
     window.addEventListener('mouseup', onUp);
   }, [commit]);
 
+  /* ---------------- active / reveal line dragging ----------------
+   * Drag projects the pointer onto the region's local pan axis (so it works
+   * under rotation), in the box's [0,1] space. The reveal line is kept at or
+   * ahead of the active line. onChange fires live for instant preview. */
+  const startLineDrag = useCallback(
+    (which: 'active' | 'reveal') => (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const r = regionRef.current;
+      const theta = deg2rad(r.rotation);
+      const cos = Math.cos(theta), sin = Math.sin(theta);
+      const size = lineAxis === 'x' ? r.width : r.height;
+      const startActive = activeLinePosition;
+      const startReveal = revealLinePosition;
+      const startFrac = which === 'active' ? startActive : startReveal;
+      const sx = e.clientX, sy = e.clientY;
+
+      // Snap to a target fraction when within EDGE_SNAP px of it.
+      const snapTo = (f: number, targets: number[]) => {
+        for (const t of targets) {
+          if (size > 0 && Math.abs((f - t) * size) < EDGE_SNAP) return t;
+        }
+        return f;
+      };
+      const onMove = (ev: MouseEvent) => {
+        const dx = (ev.clientX - sx) / scale;
+        const dy = (ev.clientY - sy) / scale;
+        const along = lineAxis === 'x' ? dx * cos + dy * sin : -dx * sin + dy * cos;
+        let frac = clamp01(startFrac + (size > 0 ? along / size : 0));
+        if (which === 'active') {
+          frac = snapTo(frac, [0.5]); // snap back to the middle
+          onActiveLineChange(frac);
+          // Reveal can never sit behind the active line — push it ahead, and
+          // let it settle back to where it was once the active line retreats.
+          onRevealLineChange(Math.max(startReveal, frac));
+        } else {
+          frac = snapTo(frac, [0.5, startActive]); // snap to middle or onto the active line
+          onRevealLineChange(Math.max(frac, startActive));
+        }
+      };
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    },
+    [scale, lineAxis, activeLinePosition, revealLinePosition, onActiveLineChange, onRevealLineChange],
+  );
+
   const HANDLE = 10;
   // Corner + edge resize handles, keyed by which local extreme they control.
   const handles: { hx: -1 | 0 | 1; hy: -1 | 0 | 1; cursor: string }[] = [
@@ -194,6 +263,58 @@ export function ScoreRegionEditor({
     { hx: -1, hy: 0, cursor: 'ew-resize' },
     { hx: 1, hy: 0, cursor: 'ew-resize' },
   ];
+
+  // Active / reveal marker line + its drag handle, drawn inside the rotated box.
+  // `atStart` puts the handle on the leading edge (top/left for active), `!atStart`
+  // on the trailing edge (bottom/right for reveal) — so handles never collide even
+  // when the two lines overlap.
+  const isX = lineAxis === 'x';
+  const renderLine = (
+    kind: 'active' | 'reveal',
+    frac: number,
+    color: string,
+    atStart: boolean,
+  ) => {
+    const pct = `${clamp01(frac) * 100}%`;
+    const dashed = kind === 'reveal';
+    return (
+      <div key={kind} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 15 }}>
+        <div
+          style={{
+            position: 'absolute',
+            ...(isX
+              ? { left: pct, top: 0, bottom: 0, borderLeft: `2px ${dashed ? 'dashed' : 'solid'} ${color}`, transform: 'translateX(-1px)' }
+              : { top: pct, left: 0, right: 0, borderTop: `2px ${dashed ? 'dashed' : 'solid'} ${color}`, transform: 'translateY(-1px)' }),
+          }}
+        />
+        <div
+          onMouseDown={startLineDrag(kind)}
+          title={kind === 'active' ? 'Where the playing note sits' : 'Where notes get revealed'}
+          style={{
+            position: 'absolute',
+            pointerEvents: 'auto',
+            cursor: isX ? 'ew-resize' : 'ns-resize',
+            background: color,
+            color: '#000',
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            padding: '2px 6px',
+            borderRadius: 4,
+            whiteSpace: 'nowrap',
+            userSelect: 'none',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.6)',
+            zIndex: 25,
+            ...(isX
+              ? { left: pct, transform: 'translateX(-50%)', ...(atStart ? { top: -24 } : { bottom: -24 }) }
+              : { top: pct, transform: 'translateY(-50%)', ...(atStart ? { left: -2 } : { right: -2 }) }),
+          }}
+        >
+          {kind === 'active' ? 'ACTIVE' : 'REVEAL'}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="absolute inset-0 z-50" style={{ width: containerWidth, height: containerHeight }}>
@@ -224,6 +345,28 @@ export function ScoreRegionEditor({
             Drag to move &middot; Handles to resize &middot; Top handle to rotate
           </div>
         </div>
+
+        {/* Look-ahead zone: the gap where notes are revealed before they play */}
+        {showRevealLine && isX && revealLinePosition > activeLinePosition && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: `${clamp01(activeLinePosition) * 100}%`,
+              width: `${clamp01(revealLinePosition - activeLinePosition) * 100}%`,
+              background: 'rgba(245,158,11,0.10)',
+              pointerEvents: 'none',
+              zIndex: 14,
+            }}
+          />
+        )}
+
+        {/* Active line (always) + reveal line (single-line + hide feature). The
+            reveal handle sits on the opposite edge so the two stay grabbable
+            even when the lines overlap. */}
+        {renderLine('active', activeLinePosition, '#22d3ee', true)}
+        {showRevealLine && renderLine('reveal', revealLinePosition, '#f59e0b', false)}
 
         {/* Resize handles (rotate with the box) */}
         {handles.map(({ hx, hy, cursor }) => (
