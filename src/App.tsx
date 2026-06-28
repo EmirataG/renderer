@@ -873,7 +873,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     <div className="grunge-field">
                       <button
                         onClick={() => setIsEditingRegion(true)}
-                        disabled={!bgUrl}
+                        disabled={!regionContainerDims}
                         className="grunge-btn grunge-btn-sm w-full"
                       >
                         Edit Score Region
