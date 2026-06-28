@@ -40,13 +40,14 @@ export interface ExportSettings {
   scoreShadowDistance: number;
   hideUnplayedNotes: boolean;
   smoothReveal: boolean;
+  /** Opacity (0..1) of the unplayed region: 0 = hidden, >0 = faded. */
+  unplayedOpacity: number;
   scoreRegion: ScoreRegion | null;
   scoreBorder: BorderStyle;
   scoreScale: number;
   musicFont: 'Bravura' | 'Petaluma' | 'Leland' | 'Gootville' | 'Leipzig';
   activeNoteheadColor: string | null;
   activeNoteheadScale: number;
-  activeNoteheadEntryMs: number;
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
   activeNoteheadUseNoteDuration: boolean;
@@ -63,6 +64,11 @@ export interface ExportSettings {
 // ---------------------------------------------------------------------------
 
 const EDITOR_WIDTH = 980;
+
+// Soft-reveal fade band width, in CSS (editor) coordinate px — the export
+// analogue of the renderers' REVEAL_BAND. Drawn destination boxes are in this
+// CSS space (regionWidth / sectionWidths are CSS px), so the band is too.
+const REVEAL_BAND_EXPORT = 60;
 
 // Maximum raster dimension for a single SVG page/section image. Browsers
 // silently fail (or produce blank frames) when decoding/drawing images far
@@ -340,6 +346,95 @@ async function svgPageToImage(
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Progressive reveal compositing (export)
+// ---------------------------------------------------------------------------
+
+/**
+ * Draw a single-line section raster onto `ctx` with a horizontal reveal alpha
+ * applied — the canvas analogue of the preview's CSS `clip-path` / `mask-image`,
+ * dimming the whole section (staff + notes) uniformly in the unplayed region.
+ *
+ * `playedFrac` (0..1) is the fraction of the destination width that is played
+ * (full alpha). The unplayed remainder is drawn at `unplayedOpacity` alpha. With
+ * `bandFrac` > 0 a linear gradient softens the boundary. The image is first
+ * painted into an offscreen canvas, its alpha is multiplied by a gradient via
+ * `destination-in`, then it's composited onto the main canvas.
+ *
+ * Destination rect is (dx, dy, dw, dh) in the current `ctx` transform.
+ */
+function drawContentWithReveal(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+  playedFrac: number,
+  bandFrac: number,
+  unplayedOpacity: number,
+  scratch: HTMLCanvasElement,
+  /** Output device-px per user-space unit (the ctx's scaleFactor). The scratch
+   *  is rendered at this resolution so the high-res raster isn't downsampled. */
+  pixelScale: number,
+): void {
+  const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const played = clamp01(playedFrac);
+  const op = clamp01(unplayedOpacity);
+
+  // Fully played → straight draw. Fully hidden + nothing played → skip.
+  if (played >= 1) {
+    ctx.drawImage(img, dx, dy, dw, dh);
+    return;
+  }
+  if (played <= 0 && op <= 0) return;
+
+  // Render into a scratch canvas sized to the destination pixel box. The
+  // destination box here is in the ctx's *current* (already scaled/rotated)
+  // user space; we render the mask in the same user space so the gradient
+  // aligns with the drawn image regardless of camera transform.
+  // Size the scratch in OUTPUT device px (× pixelScale) so the high-res note
+  // raster is composited 1:1 instead of being downsampled to CSS resolution
+  // and then upscaled by the ctx transform (which blurred the notes).
+  const S = pixelScale > 0 ? pixelScale : 1;
+  const w = Math.max(1, Math.ceil(dw * S));
+  const h = Math.max(1, Math.ceil(dh * S));
+  if (scratch.width < w || scratch.height < h) {
+    scratch.width = Math.max(scratch.width, w);
+    scratch.height = Math.max(scratch.height, h);
+  }
+  const sctx = scratch.getContext('2d')!;
+  sctx.clearRect(0, 0, w, h);
+
+  // Paint the content image at the scratch origin.
+  sctx.drawImage(img, 0, 0, w, h);
+
+  // Multiply alpha by the horizontal reveal gradient.
+  sctx.globalCompositeOperation = 'destination-in';
+  const grad = sctx.createLinearGradient(0, 0, w, 0);
+  const band = Math.max(0, bandFrac);
+  const a = op;
+  if (band <= 0 || played <= 0) {
+    const edge = clamp01(played);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    if (edge > 0) grad.addColorStop(edge, 'rgba(0,0,0,1)');
+    grad.addColorStop(Math.min(1, edge + 1e-4), `rgba(0,0,0,${a})`);
+    grad.addColorStop(1, `rgba(0,0,0,${a})`);
+  } else {
+    const fadeEnd = clamp01(played + band);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(played, 'rgba(0,0,0,1)');
+    grad.addColorStop(fadeEnd, `rgba(0,0,0,${a})`);
+    grad.addColorStop(1, `rgba(0,0,0,${a})`);
+  }
+  sctx.fillStyle = grad;
+  sctx.fillRect(0, 0, w, h);
+  sctx.globalCompositeOperation = 'source-over';
+
+  // Composite the masked content onto the main canvas at the destination.
+  ctx.drawImage(scratch, 0, 0, w, h, dx, dy, dw, dh);
 }
 
 // ---------------------------------------------------------------------------
@@ -682,6 +777,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   // it serves only to host SVGs for rasterization and to measure note positions.
   const borderStyle = (settings.scoreBorder ?? 'none') as BorderStyle;
 
+  // Progressive reveal: split each section/page's page-margin into an
+  // The frame loop dims each section uniformly up to the playhead (staff +
+  // notes together), matching the preview, so no skeleton/content split is
+  // needed. Progressive reveal is single-line only.
+  const revealOn = !!settings.hideUnplayedNotes && settings.viewMode === 'single-line';
+
   // ── 5. Extract events and compute positions ───────────────────────
   // Force layout so getBoundingClientRect works
   void hostEl.offsetHeight;
@@ -917,27 +1018,33 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     }
   };
 
+  // Scratch canvas reused across frames for the single-line reveal alpha
+  // composite (drawContentWithReveal).
+  const revealScratch = document.createElement('canvas');
+
   // Rasterize a page-mode page into horizontal bands, each kept under
   // MAX_RASTER_AREA so the browser never downsamples the SVG raster. A short
-  // page yields a single full-height band.
+  // page yields a single full-height band. (Reveal is single-line only.)
   const rasterizePageBands = async (p: number): Promise<RasterPiece[]> => {
     const pageH = pageHeights[p];
     const pixelW = regionWidth * scaleFactor;
     const maxBandHCss = Math.max(1, Math.floor(MAX_RASTER_AREA / pixelW) / scaleFactor);
+    const bands: { yCss: number; hCss: number }[] = [];
     if (pageH <= maxBandHCss) {
-      const img = await svgPageToImage(
-        pageContainers[p], settings.scoreColor, regionWidth, scaleFactor,
-      );
-      return [{ img, yCss: 0, hCss: pageH }];
+      bands.push({ yCss: 0, hCss: pageH });
+    } else {
+      for (let y = 0; y < pageH; y += maxBandHCss) {
+        bands.push({ yCss: y, hCss: Math.min(maxBandHCss, pageH - y) });
+      }
     }
     const pieces: RasterPiece[] = [];
-    for (let y = 0; y < pageH; y += maxBandHCss) {
-      const hCss = Math.min(maxBandHCss, pageH - y);
+    for (const b of bands) {
+      const band = pageH <= maxBandHCss ? undefined : b;
       const img = await svgPageToImage(
         pageContainers[p], settings.scoreColor, regionWidth, scaleFactor,
-        false, 0, { yCss: y, hCss },
+        false, 0, band,
       );
-      pieces.push({ img, yCss: y, hCss });
+      pieces.push({ img, yCss: b.yCss, hCss: b.hCss });
     }
     return pieces;
   };
@@ -1003,6 +1110,11 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     // Draw each page/section at its offset, shifted by camera. Rasterize
     // lazily on first visibility, re-rasterize while animating, release once
     // fully behind the camera.
+    // Reveal frontier (single-line only): the playhead's content-space X.
+    // Per-section played fraction is computed in that same local layout space —
+    // rotation/zoom invariant, identical to the preview renderer.
+    const revealPlayX = animState.currentX;
+
     if (isSingleLine) {
       const cameraX = animState.cameraX;
       for (let p = 0; p < pageContainers.length; p++) {
@@ -1018,10 +1130,13 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         if (sectionX > regionWidth + sectionOverscan) continue; // ahead, not yet visible
 
         if (!pageCache[p] || dirtyPages.has(p)) {
+          if (pageCache[p]) releasePage(p);
+          // One raster of the WHOLE section (staff + notes). The reveal dims the
+          // entire section uniformly, matching the preview, so no separate
+          // skeleton layer is needed.
           const img = await svgPageToImage(
             pageContainers[p], settings.scoreColor, sectionW, scaleFactor,
-            p > 0 && !singleLineSeamless,
-            sectionOverscan,
+            p > 0 && !singleLineSeamless, sectionOverscan,
           );
           pageCache[p] = [{ img, yCss: 0, hCss: sectionH }];
         }
@@ -1029,13 +1144,23 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
         // overscanned horizontally — draw it shifted left by the overscan
         // so the section content lands exactly at sectionX.
         const yOff = (regionHeight - sectionH) / 2;
-        ctx.drawImage(
-          pageCache[p]![0].img,
-          sectionX - sectionOverscan,
-          yOff,
-          sectionW + 2 * sectionOverscan,
-          sectionH,
-        );
+        const dx = sectionX - sectionOverscan;
+        const dw = sectionW + 2 * sectionOverscan;
+        const piece = pageCache[p]![0];
+        if (revealOn) {
+          // Dim the whole section up to the playhead (staff + notes uniformly).
+          // playedFrac is computed for the OVERSCANNED drawn box so the gradient
+          // aligns with the section.
+          const sectPlayed = sectionW > 0 ? (revealPlayX - sectionOffsets[p]) / sectionW : 0;
+          const boxPlayed = dw > 0 ? (sectionOverscan + sectPlayed * sectionW) / dw : 0;
+          const boxBand = dw > 0 && settings.smoothReveal ? (REVEAL_BAND_EXPORT) / dw : 0;
+          drawContentWithReveal(
+            ctx, piece.img, dx, yOff, dw, sectionH,
+            boxPlayed, boxBand, settings.unplayedOpacity, revealScratch, scaleFactor,
+          );
+        } else {
+          ctx.drawImage(piece.img, dx, yOff, dw, sectionH);
+        }
       }
     } else {
       const cameraY = animState.cameraY;
@@ -1055,7 +1180,9 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
           pageCache[p] = await rasterizePageBands(p);
         }
         for (const piece of pageCache[p]!) {
-          ctx.drawImage(piece.img, 0, pageY + piece.yCss, regionWidth, piece.hCss);
+          const dy = pageY + piece.yCss;
+          // Reveal is single-line only — page mode always draws the full page.
+          ctx.drawImage(piece.img, 0, dy, regionWidth, piece.hCss);
         }
       }
     }

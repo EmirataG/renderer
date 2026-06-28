@@ -26,7 +26,6 @@ export interface Project {
   scoreRegion?: { x: number; y: number; width: number; height: number; rotation?: number } | null;
   activeNoteheadColor?: string | null;
   activeNoteheadScale?: number;
-  activeNoteheadEntryMs?: number;
   activeNoteheadHoldMs?: number;
   activeNoteheadExitMs?: number;
   activeNoteheadUseNoteDuration?: boolean;
@@ -37,6 +36,7 @@ export interface Project {
   scoreShadowDistance?: number;
   hideUnplayedNotes?: boolean;
   smoothReveal?: boolean;
+  unplayedOpacity?: number;
 
   // Sync anchors (plain object, not Map)
   anchors?: Record<string, number>;

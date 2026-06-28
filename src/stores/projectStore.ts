@@ -13,7 +13,6 @@ export interface ProjectSettings {
   scoreRegion: ScoreRegion | null;
   activeNoteheadColor: string | null;
   activeNoteheadScale: number;
-  activeNoteheadEntryMs: number;
   activeNoteheadHoldMs: number;
   activeNoteheadExitMs: number;
   activeNoteheadUseNoteDuration: boolean;
@@ -24,6 +23,9 @@ export interface ProjectSettings {
   scoreShadowDistance: number;
   hideUnplayedNotes: boolean;
   smoothReveal: boolean;
+  /** Opacity (0..1) of the unplayed region when hideUnplayedNotes is on.
+   *  0 = fully hidden; >0 = unplayed content shown faded at this opacity. */
+  unplayedOpacity: number;
   /** Solid background color for the frame. Defaults to white. */
   bgColor: string | null;
   /** Which background to show: a solid color or the uploaded image. */
@@ -44,7 +46,6 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   scoreRegion: null,
   activeNoteheadColor: '#000000',
   activeNoteheadScale: 1.2,
-  activeNoteheadEntryMs: 50,
   activeNoteheadHoldMs: 200,
   activeNoteheadExitMs: 500,
   activeNoteheadUseNoteDuration: false,
@@ -53,8 +54,9 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   colorArticulations: false,
   fps: 30,
   scoreShadowDistance: 0,
-  hideUnplayedNotes: true,
+  hideUnplayedNotes: false,
   smoothReveal: true,
+  unplayedOpacity: 0,
   bgColor: '#ffffff',
   bgMode: 'color',
   aspectRatio: 16 / 9,

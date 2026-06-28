@@ -75,10 +75,10 @@ export async function DELETE(
 const ALLOWED_SETTINGS = [
   'viewMode', 'scoreColor', 'scoreScale', 'musicFont', 'scoreBorder', 'hideLabels',
   'scoreRegion', 'activeNoteheadColor', 'activeNoteheadScale',
-  'activeNoteheadEntryMs', 'activeNoteheadHoldMs', 'activeNoteheadExitMs',
+  'activeNoteheadHoldMs', 'activeNoteheadExitMs',
   'activeNoteheadUseNoteDuration',
   'colorAccidentals', 'colorDots', 'colorArticulations',
-  'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal',
+  'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal', 'unplayedOpacity',
   'bgColor', 'bgMode', 'aspectRatio',
 ];
 

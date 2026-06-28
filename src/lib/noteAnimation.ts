@@ -1,6 +1,5 @@
 interface NoteheadAnimationOptions {
   scale?: number;
-  entryMs?: number;
   holdMs?: number;
   exitMs?: number;
   color?: string;
@@ -110,7 +109,6 @@ export function animateNoteheads(
   svgIds: string[],
   {
     scale = 1.2,
-    entryMs = 120,
     holdMs = 0,
     exitMs = 120,
     color,
@@ -134,10 +132,10 @@ export function animateNoteheads(
       const noteheads = target.querySelectorAll<SVGGElement>("g.notehead");
 
       noteheads.forEach((nh) => {
-        /* ---------------- scale (group) ---------------- */
+        /* ---------------- scale (group) — instant entry ---------------- */
         nh.style.transformBox = "fill-box";
         nh.style.transformOrigin = "center";
-        nh.style.transition = `transform ${entryMs}ms ease-out`;
+        nh.style.transition = "none";
         nh.style.transform = `scale(${scale})`;
 
         /* ---------------- color override (notehead shapes) ---------------- */
@@ -145,12 +143,12 @@ export function animateNoteheads(
 
         shapes.forEach((shape) => {
           if (color) {
-            applyColorToElement(shape, color, entryMs, "ease-out");
+            applyColorToElement(shape, color, 0, "ease-out");
           }
         });
 
         /* ---------------- exit ---------------- */
-        const totalDelay = entryMs + holdMs;
+        const totalDelay = holdMs;
 
         scheduleExitTimer(totalDelay, () => {
           nh.style.transition = `transform ${exitMs}ms ease-in`;
@@ -172,12 +170,12 @@ export function animateNoteheads(
       extras.forEach((group) => {
         // Color all renderable children (path, use, polygon, ellipse, etc.)
         const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse");
-        children.forEach((child) => applyColorToElement(child, color, entryMs, "ease-out"));
+        children.forEach((child) => applyColorToElement(child, color, 0, "ease-out"));
         // Also color the group itself (for elements with direct fill)
-        applyColorToElement(group as SVGGraphicsElement, color, entryMs, "ease-out");
+        applyColorToElement(group as SVGGraphicsElement, color, 0, "ease-out");
       });
 
-      const totalDelay = entryMs + holdMs;
+      const totalDelay = holdMs;
       scheduleExitTimer(totalDelay, () => {
         extras.forEach((group) => {
           const children = group.querySelectorAll<SVGGraphicsElement>("path, use, polygon, line, ellipse");

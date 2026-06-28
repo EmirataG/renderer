@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useSingleLineVerovio } from "../hooks/useSingleLineVerovio";
@@ -14,7 +14,6 @@ import { useEventStore } from "../stores/eventStore";
 import { PreviewScrollbar } from "../components/PreviewScrollbar";
 
 import {
-  animateNoteheads,
   resetNoteheadAnimations,
   resetEventNoteheads,
   reorderNoteheadsAboveStems,
@@ -23,8 +22,11 @@ import {
   cancelPendingNoteheadTimers,
   type ElementCache,
 } from "../lib/noteAnimation";
+import { applyReveal, clearRevealStyles } from "../lib/revealMask";
 
 const WIDTH = 980;
+/** Soft-reveal fade band width, in score (content) coordinate units. */
+const REVEAL_BAND = 120;
 
 /** Contiguous window of mounted sections, inclusive on both ends. */
 interface VisibleRange {
@@ -62,7 +64,6 @@ interface Props {
   // notehead animations
   activeNoteheadColor?: string;
   activeNoteheadScale?: number;
-  activeNoteheadAnimationEntryMs?: number;
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
   activeNoteheadUseNoteDuration?: boolean;
@@ -71,6 +72,12 @@ interface Props {
   colorArticulations?: boolean;
   // hide instrument labels (Verovio .label elements)
   hideLabels?: boolean;
+  // progressive reveal: hide/fade content until the playhead reaches it
+  hideUnplayedNotes?: boolean;
+  // soft gradient reveal edge (vs. hard step) when hideUnplayedNotes is on
+  smoothReveal?: boolean;
+  // opacity (0..1) of the unplayed region: 0 = hidden, >0 = faded
+  unplayedOpacity?: number;
   // portal target for transport bar (play/pause/reset) — renders there instead of inline
   transportPortalEl?: HTMLDivElement | null;
   // reports the rendered score's natural height (editor px) so the region editor
@@ -97,7 +104,6 @@ export default memo(function SingleLineRenderer({
   // notehead animation defaults
   activeNoteheadColor = scoreColor,
   activeNoteheadScale = 1,
-  activeNoteheadAnimationEntryMs = 50,
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
   activeNoteheadUseNoteDuration = false,
@@ -105,6 +111,9 @@ export default memo(function SingleLineRenderer({
   colorDots = false,
   colorArticulations = false,
   hideLabels = false,
+  hideUnplayedNotes = false,
+  smoothReveal = false,
+  unplayedOpacity = 0,
   transportPortalEl,
   onScoreHeight,
 }: Props) {
@@ -131,14 +140,6 @@ export default memo(function SingleLineRenderer({
       svgPagesRef: state.svgPagesRef,
       setEvents: state.setEvents,
     }))
-  );
-
-  // O(1) id → event lookup for the per-frame animation loop (animateSync
-  // needs each event's sectionIndex; a linear events.find per animated event
-  // per frame is O(n) and stalls long scores).
-  const eventById = useMemo(
-    () => new Map(events.map((e) => [e.id, e])),
-    [events],
   );
 
   // (interpolatedEvents is derived via useMemo below; no useState needed.)
@@ -169,6 +170,16 @@ export default memo(function SingleLineRenderer({
   const eventIndexRef = useRef(-1); // -1 so first event (index 0) triggers animation
   const currentXRef = useRef(0);
   const prevActiveRangeRef = useRef<{ start: number; end: number } | null>(null);
+
+  // Always points at the CURRENT-render `applyCamera`. `setTimestamp` (a
+  // useCallback) drives the camera + reveal frontier during playback, but
+  // `applyCamera` is not one of its deps — calling it directly would capture a
+  // stale instance whose closed-over reveal settings (hideUnplayedNotes,
+  // unplayedOpacity, …) are out of date the moment the user toggles them, so the
+  // reveal would freeze mid-playback and only refresh on pause (which re-renders
+  // and re-runs the reveal layout effect). Routing through this ref keeps the
+  // camera/reveal call fresh every frame regardless of setTimestamp's deps.
+  const applyCameraRef = useRef<(targetX: number) => void>(() => {});
 
 
   /* ---------------- audio element ---------------- */
@@ -551,37 +562,114 @@ export default memo(function SingleLineRenderer({
         setVisibleSections(newVisible);
       }
     }
+
+    // Drive the reveal frontier from the (just-updated) playhead position, every
+    // frame, so the reveal sweeps smoothly with the camera and any section the
+    // camera just brought into view is clipped/faded before it paints.
+    applyRevealFrontier(eventIndexRef.current);
   }
 
-  /* ---------------- motion ---------------- */
+  // Keep the ref pointing at this render's applyCamera so setTimestamp always
+  // calls the freshest instance (see applyCameraRef declaration).
+  applyCameraRef.current = applyCamera;
 
-  // Sync-based timing: find event at given timestamp using binary search O(log n)
-  function getEventAtTimestamp(timestampSec: number): {
-    event: (typeof interpolatedEvents)[0] | null;
-    index: number;
-  } {
-    if (interpolatedEvents.length === 0) return { event: null, index: -1 };
+  /* ---------------- progressive reveal (hide unplayed notes) ---------------- */
 
-    // Binary search for the last event whose computedTimestamp <= timestampSec
-    let low = 0;
-    let high = interpolatedEvents.length - 1;
-    let result = -1;
+  // The playhead's last known content-space X (score coordinate units, the same
+  // space as sectionOffsets / sectionWidths / currentXRef), held so a transient
+  // non-finite reading never snaps the frontier backward. Using CONTENT space —
+  // not screen space — makes the reveal rotation/zoom/pan invariant: a rotated
+  // single-line strip still reveals correctly along its own axis, because the
+  // per-section fraction (playX - sectionOffset) / sectionWidth is computed
+  // entirely in the pre-rotation layout space.
+  const lastRevealXRef = useRef<number | null>(null);
 
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2);
-      if (interpolatedEvents[mid].computedTimestamp <= timestampSec) {
-        result = mid;
-        low = mid + 1;
-      } else {
-        high = mid - 1;
+  // Re-apply the reveal synchronously before paint whenever the score, the
+  // visible-section window, or the reveal toggles change. A layout effect (not
+  // rAF) is essential: during playback the camera pans and `visibleSections`
+  // changes rapidly; a rAF would be cancelled-and-rescheduled every change
+  // before it ever fired, leaving freshly-mounted sections unmasked (showing
+  // the full score).
+  useLayoutEffect(() => {
+    syncRevealStructure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections, visibleSections, hideUnplayedNotes, smoothReveal, unplayedOpacity]);
+
+  // Re-apply the current frontier across all mounted sections, or clear it when
+  // the feature is off. No persistent handles — re-resolved from live refs.
+  function syncRevealStructure() {
+    if (!hideUnplayedNotes || isRenderMode) {
+      // Reveal off → clear the clip/mask from every section container.
+      for (const container of sectionContainerRefs.current) {
+        if (container) clearRevealStyles(container);
       }
+      return;
+    }
+    applyRevealFrontier(eventIndexRef.current);
+  }
+
+  // Reveal each mounted section up to the playhead, by clipping/fading the
+  // section's HTML container <div> as a whole (staff + notes + everything dim
+  // uniformly in the unplayed region). The reveal MUST live on the HTML
+  // container, not the inner SVG: Chromium does not invalidate a `mask-image`
+  // on an SVG element when only the gradient's color stops change, so an
+  // SVG-level opacity fade froze under virtualization. clip-path/mask on the
+  // HTML <div> updates reliably.
+  function applyRevealFrontier(index: number) {
+    if (!hideUnplayedNotes || isRenderMode) return;
+    const refs = sectionContainerRefs.current;
+
+    // The frontier follows the live playhead X (currentXRef) — the SAME source
+    // the camera uses, which always tracks correctly during playback. It must
+    // NOT be gated on `interpolatedEvents[index]`: that array can be a different
+    // length in this closure than in the (memoized) setTimestamp that writes
+    // eventIndexRef, so keying off it once made the frontier freeze while the
+    // camera kept scrolling. `index` is used only for the genuine "nothing
+    // played yet" state (before the first event / right after reset).
+    let playX: number | null;
+    if (index < 0) {
+      lastRevealXRef.current = null;
+      playX = null;
+    } else {
+      const x = currentXRef.current;
+      if (Number.isFinite(x)) lastRevealXRef.current = x;
+      playX = lastRevealXRef.current;
     }
 
-    if (result < 0) return { event: null, index: -1 };
-    return { event: interpolatedEvents[result], index: result };
+    const band = smoothReveal ? REVEAL_BAND : 0;
+
+    for (let i = 0; i < refs.length; i++) {
+      const host = refs[i];
+      if (!host) continue;
+      const offset = sectionOffsets[i] ?? 0;
+      const width = sectionWidths[i] || 0;
+      const playedFrac = playX == null || width <= 0 ? 0 : (playX - offset) / width;
+      applyReveal(host, {
+        playedFrac,
+        bandFrac: width > 0 ? band / width : 0,
+        unplayedOpacity,
+      });
+    }
   }
 
-  // Sync-based animation: driven by audio currentTime
+  // Sync-based animation: driven by audio currentTime.
+  //
+  // Drives playback through the SAME stateless per-frame `setTimestamp` engine
+  // the export pipeline uses (see clientExport/animation.ts), instead of the
+  // old fire-and-forget `animateNoteheads` + setTimeout exit timers. The timer
+  // approach colored each note exactly ONCE when the playhead crossed it; under
+  // single-line virtualization that silently breaks:
+  //   - a section that unmounts/remounts as the camera pans loses the inline
+  //     color set on its (now-detached) noteheads, and nothing re-applies it →
+  //     "highlights stop appearing past some point";
+  //   - a long/tied note's continuation noteheads live in LATER sections that
+  //     weren't mounted yet at onset, so they were never colored → "the
+  //     long-held note reverts to normal early".
+  // `setTimestamp` instead recomputes the active-note window every frame and
+  // re-applies color to whatever is currently in the live DOM, so it self-heals
+  // across remounts and colors freshly-mounted sections — exactly like export.
+  // It also updates eventIndexRef/currentXRef and calls applyCamera internally,
+  // so the camera, reveal frontier, and section virtualization stay in sync.
   function animateSync() {
     if (!audioRef.current) return;
 
@@ -602,105 +690,7 @@ export default memo(function SingleLineRenderer({
     }
     lastFrameTimeRef.current = now;
 
-    const currentTime = audioRef.current.currentTime;
-    const { event, index } = getEventAtTimestamp(currentTime);
-
-    if (!event) {
-      animationFrameRef.current = requestAnimationFrame(animateSync);
-      return;
-    }
-
-    // Check if we moved to a new event - animate ALL skipped events
-    if (index !== eventIndexRef.current) {
-      const prevIndex = eventIndexRef.current;
-      eventIndexRef.current = index;
-
-      // Animate all events from prevIndex+1 to current index (inclusive)
-      // This prevents skipping events when multiple occur between frames
-      const startIdx = Math.max(0, prevIndex + 1);
-      for (let i = startIdx; i <= index; i++) {
-        const evt = interpolatedEvents[i];
-        if (evt?.svgIds?.length) {
-          // For single-line mode, query from the section container if available
-          const cachedEvent = eventById.get(evt.id);
-          const sectionIndex = cachedEvent?.sectionIndex;
-          const root = sectionIndex !== undefined && sectionContainerRefs.current[sectionIndex]
-            ? sectionContainerRefs.current[sectionIndex]
-            : scoreRef.current;
-
-          const baseOpts = {
-            scale: activeNoteheadScale,
-            entryMs: activeNoteheadAnimationEntryMs,
-            exitMs: activeNoteheadAnimationExitMs,
-            color: activeNoteheadColor,
-            colorExtrasSelector,
-          };
-
-          if (activeNoteheadUseNoteDuration && evt.tiedStartIds?.length) {
-            // Mixed event: untied notes get their own hold, tied chain gets chain hold
-            const untiedIds = evt.svgIds.filter(id => !evt.tiedStartIds!.includes(id));
-            const tiedIds = [...evt.tiedStartIds, ...(evt.tiedContinuationIds || [])];
-            const untiedHoldMs = evt.holdSeconds !== undefined ? evt.holdSeconds * 1000 : activeNoteheadAnimationHoldMs;
-            const tiedHoldMs = evt.tiedHoldSeconds !== undefined ? evt.tiedHoldSeconds * 1000 : activeNoteheadAnimationHoldMs;
-
-            if (untiedIds.length) {
-              animateNoteheads(root, untiedIds, { ...baseOpts, holdMs: untiedHoldMs }, elementCacheRef.current);
-            }
-            if (tiedIds.length) {
-              animateNoteheads(root, tiedIds, { ...baseOpts, holdMs: tiedHoldMs }, elementCacheRef.current);
-            }
-          } else {
-            const holdMs = activeNoteheadUseNoteDuration && evt.holdSeconds !== undefined
-              ? evt.holdSeconds * 1000
-              : activeNoteheadAnimationHoldMs;
-            const idsToAnimate = activeNoteheadUseNoteDuration && evt.tiedContinuationIds?.length
-              ? [...evt.svgIds, ...evt.tiedContinuationIds]
-              : evt.svgIds;
-
-            animateNoteheads(root, idsToAnimate, { ...baseOpts, holdMs }, elementCacheRef.current);
-          }
-        }
-      }
-    }
-
-    // Camera X: interpolate between current and next event for smooth scrolling
-    const currentX = event.x;
-    const nextEvent = interpolatedEvents[index + 1];
-
-    let targetX: number;
-    if (nextEvent) {
-      // Calculate progress between current and next event
-      const currentTimestamp = event.computedTimestamp;
-      const nextTimestamp = nextEvent.computedTimestamp;
-      const duration = nextTimestamp - currentTimestamp;
-
-      if (duration > 0) {
-        const progress = (currentTime - currentTimestamp) / duration;
-        targetX = lerp(currentX, nextEvent.x, progress);
-      } else {
-        targetX = currentX;
-      }
-    } else {
-      // At last event, no interpolation needed
-      targetX = currentX;
-    }
-
-    if (process.env.NODE_ENV !== 'production' && targetX < currentXRef.current - 1) {
-      // Invariant: extraction enforces non-decreasing globalX, so the camera
-      // target must never move backward during playback. If this fires, the
-      // event data is broken — capture everything needed to diagnose it.
-      console.warn(
-        '[SingleLineRenderer] camera target moved BACKWARD during playback:',
-        `${currentXRef.current.toFixed(1)} -> ${targetX.toFixed(1)}px,`,
-        `audio t=${currentTime.toFixed(3)}s, event ${index} (${event.id}),`,
-        `x=${event.x.toFixed(1)}, nextX=${nextEvent?.x?.toFixed(1)},`,
-        `beatOnset=${event.beatOnset}, computedTimestamp=${event.computedTimestamp.toFixed(3)}s,`,
-        `nextTs=${nextEvent?.computedTimestamp?.toFixed(3)}`,
-      );
-    }
-    currentXRef.current = targetX;
-
-    applyCamera(currentXRef.current);
+    setTimestamp(audioRef.current.currentTime);
 
     // Check if audio ended
     if (audioRef.current.ended) {
@@ -942,7 +932,8 @@ export default memo(function SingleLineRenderer({
         currentXRef.current = currentX;
       }
 
-      applyCamera(currentXRef.current);
+      // Via ref so the live (non-stale) applyCamera runs — see applyCameraRef.
+      applyCameraRef.current(currentXRef.current);
 
       // For frame capture: delta-based animation (only touch changed DOM elements)
       const globalHoldSeconds = activeNoteheadAnimationHoldMs / 1000;
@@ -1085,9 +1076,11 @@ export default memo(function SingleLineRenderer({
       // Store current active range for next frame's delta
       prevActiveRangeRef.current = { start: firstActiveIndex, end: currentIndex };
 
-      // Force reflow to ensure CSS styles are applied synchronously
-      // before Puppeteer takes the screenshot
-      void scoreRef.current.offsetHeight;
+      // Force reflow to ensure CSS styles are applied synchronously before
+      // Puppeteer takes the screenshot. Only needed for headless frame capture;
+      // live preview repaints via its own rAF, so skip the per-frame reflow
+      // there (it would add avoidable layout cost on every playback frame).
+      if (isRenderMode) void scoreRef.current.offsetHeight;
     },
     [
       isRenderMode,

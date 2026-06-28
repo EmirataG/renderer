@@ -36,6 +36,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const scoreShadowDistance = useProjectStore((s) => s.scoreShadowDistance);
   const hideUnplayedNotes = useProjectStore((s) => s.hideUnplayedNotes);
   const smoothReveal = useProjectStore((s) => s.smoothReveal);
+  const unplayedOpacity = useProjectStore((s) => s.unplayedOpacity);
   const scoreRegion = useProjectStore((s) => s.scoreRegion);
   const scoreBorder = useProjectStore((s) => s.scoreBorder);
   const scoreScale = useProjectStore((s) => s.scoreScale);
@@ -43,7 +44,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const hideLabels = useProjectStore((s) => s.hideLabels);
   const activeNoteheadColor = useProjectStore((s) => s.activeNoteheadColor);
   const activeNoteheadScale = useProjectStore((s) => s.activeNoteheadScale);
-  const activeNoteheadEntryMs = useProjectStore((s) => s.activeNoteheadEntryMs);
   const activeNoteheadHoldMs = useProjectStore((s) => s.activeNoteheadHoldMs);
   const activeNoteheadExitMs = useProjectStore((s) => s.activeNoteheadExitMs);
   const activeNoteheadUseNoteDuration = useProjectStore(
@@ -190,9 +190,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             project.activeNoteheadColor ?? DEFAULT_SETTINGS.activeNoteheadColor,
           activeNoteheadScale:
             project.activeNoteheadScale ?? DEFAULT_SETTINGS.activeNoteheadScale,
-          activeNoteheadEntryMs:
-            project.activeNoteheadEntryMs ??
-            DEFAULT_SETTINGS.activeNoteheadEntryMs,
           activeNoteheadHoldMs:
             project.activeNoteheadHoldMs ??
             DEFAULT_SETTINGS.activeNoteheadHoldMs,
@@ -220,6 +217,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           hideUnplayedNotes:
             project.hideUnplayedNotes ?? DEFAULT_SETTINGS.hideUnplayedNotes,
           smoothReveal: project.smoothReveal ?? DEFAULT_SETTINGS.smoothReveal,
+          unplayedOpacity:
+            project.unplayedOpacity ?? DEFAULT_SETTINGS.unplayedOpacity,
           bgColor: project.bgColor ?? DEFAULT_SETTINGS.bgColor,
           // Back-compat: legacy projects with an image but no stored mode show it.
           bgMode: project.bgMode ?? (project.backgroundUrl ? "image" : "color"),
@@ -483,13 +482,13 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         scoreShadowDistance,
         hideUnplayedNotes,
         smoothReveal,
+        unplayedOpacity,
         scoreRegion,
         scoreBorder,
         scoreScale,
         musicFont: musicFont as ExportSettings["musicFont"],
         activeNoteheadColor,
         activeNoteheadScale,
-        activeNoteheadEntryMs,
         activeNoteheadHoldMs,
         activeNoteheadExitMs,
         activeNoteheadUseNoteDuration,
@@ -980,29 +979,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
                   <div className="grunge-field">
                     <div className="grunge-field-head">
-                      <span className="grunge-label">Entry</span>
-                      <span className="grunge-field-value">
-                        {activeNoteheadEntryMs}ms
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={300}
-                      step={10}
-                      value={activeNoteheadEntryMs}
-                      onChange={(e) =>
-                        setSetting(
-                          "activeNoteheadEntryMs",
-                          Number(e.target.value),
-                        )
-                      }
-                      className="grunge-range"
-                    />
-                  </div>
-
-                  <div className="grunge-field">
-                    <div className="grunge-field-head">
                       <span className="grunge-label">Hold</span>
                       <span className="grunge-field-value">
                         {activeNoteheadUseNoteDuration
@@ -1064,6 +1040,59 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       className="grunge-range"
                     />
                   </div>
+
+                  {viewMode === "single-line" && (
+                    <div className="grunge-field">
+                      <label className="grunge-toggle-row">
+                        <input
+                          type="checkbox"
+                          checked={hideUnplayedNotes}
+                          onChange={(e) =>
+                            setSetting("hideUnplayedNotes", e.target.checked)
+                          }
+                          className="grunge-checkbox"
+                        />
+                        <span>Hide Unplayed Notes</span>
+                      </label>
+
+                      {hideUnplayedNotes && (
+                        <>
+                          <label className="grunge-toggle-row">
+                            <input
+                              type="checkbox"
+                              checked={smoothReveal}
+                              onChange={(e) =>
+                                setSetting("smoothReveal", e.target.checked)
+                              }
+                              className="grunge-checkbox"
+                            />
+                            <span>Smooth Reveal</span>
+                          </label>
+
+                          <div className="grunge-field-head">
+                            <span className="grunge-label">Unplayed Opacity</span>
+                            <span className="grunge-field-value">
+                              {Math.round(unplayedOpacity * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={Math.round(unplayedOpacity * 100)}
+                            onChange={(e) =>
+                              setSetting(
+                                "unplayedOpacity",
+                                Number(e.target.value) / 100,
+                              )
+                            }
+                            className="grunge-range"
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </section>
             </div>
@@ -1215,9 +1244,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                 activeNoteheadColor ?? undefined
                               }
                               activeNoteheadScale={activeNoteheadScale}
-                              activeNoteheadAnimationEntryMs={
-                                activeNoteheadEntryMs
-                              }
                               activeNoteheadAnimationHoldMs={
                                 activeNoteheadHoldMs
                               }
@@ -1231,6 +1257,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               colorDots={colorDots}
                               colorArticulations={colorArticulations}
                               hideLabels={hideLabels}
+                              hideUnplayedNotes={hideUnplayedNotes}
+                              smoothReveal={smoothReveal}
+                              unplayedOpacity={unplayedOpacity}
                               transportPortalEl={transportEl}
                             />
                           ) : (
@@ -1254,9 +1283,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                 activeNoteheadColor ?? undefined
                               }
                               activeNoteheadScale={activeNoteheadScale}
-                              activeNoteheadAnimationEntryMs={
-                                activeNoteheadEntryMs
-                              }
                               activeNoteheadAnimationHoldMs={
                                 activeNoteheadHoldMs
                               }

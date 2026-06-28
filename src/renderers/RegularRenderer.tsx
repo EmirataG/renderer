@@ -92,7 +92,6 @@ interface Props {
   // notehead animations
   activeNoteheadColor?: string;
   activeNoteheadScale?: number;
-  activeNoteheadAnimationEntryMs?: number;
   activeNoteheadAnimationHoldMs?: number;
   activeNoteheadAnimationExitMs?: number;
   activeNoteheadUseNoteDuration?: boolean;
@@ -125,7 +124,6 @@ export default memo(function RegularRenderer({
   // notehead animation defaults
   activeNoteheadColor = scoreColor,
   activeNoteheadScale = 1,
-  activeNoteheadAnimationEntryMs = 50,
   activeNoteheadAnimationHoldMs = 200,
   activeNoteheadAnimationExitMs = 200,
   activeNoteheadUseNoteDuration = false,
@@ -624,7 +622,6 @@ export default memo(function RegularRenderer({
         if (evt?.svgIds?.length) {
           const baseOpts = {
             scale: activeNoteheadScale,
-            entryMs: activeNoteheadAnimationEntryMs,
             exitMs: activeNoteheadAnimationExitMs,
             color: activeNoteheadColor,
             colorExtrasSelector,
