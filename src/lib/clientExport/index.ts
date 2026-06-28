@@ -381,15 +381,20 @@ function drawContentWithReveal(
   pixelScale: number,
 ): void {
   const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-  const played = clamp01(playedFrac);
   const op = clamp01(unplayedOpacity);
+  // UNCLAMPED (like applyReveal) so the fade band stays continuous across
+  // section boundaries — see the gradient construction below.
+  const played = playedFrac;
+  const band = Math.max(0, bandFrac);
+  const fadeEnd = played + band;
 
-  // Fully played → straight draw. Fully hidden + nothing played → skip.
+  // Fully played → straight draw. Hidden + nothing in view (band ends before the
+  // box) → skip.
   if (played >= 1) {
     ctx.drawImage(img, dx, dy, dw, dh);
     return;
   }
-  if (played <= 0 && op <= 0) return;
+  if (op <= 0 && fadeEnd <= 0) return;
 
   // Render into a scratch canvas sized to the destination pixel box. The
   // destination box here is in the ctx's *current* (already scaled/rotated)
@@ -411,24 +416,26 @@ function drawContentWithReveal(
   // Paint the content image at the scratch origin.
   sctx.drawImage(img, 0, 0, w, h);
 
-  // Multiply alpha by the horizontal reveal gradient.
+  // Multiply alpha by the horizontal reveal gradient. The alpha is piecewise
+  // linear across the box: 1 (full) for f <= played, `op` for f >= fadeEnd,
+  // linear between. Canvas stop offsets must be in [0,1], so we extrapolate the
+  // alpha at the box edges and only place interior stops where the fade actually
+  // crosses the section — that keeps the band continuous across boundaries
+  // (the box's `played`/`fadeEnd` may sit outside [0,1]).
   sctx.globalCompositeOperation = 'destination-in';
   const grad = sctx.createLinearGradient(0, 0, w, 0);
-  const band = Math.max(0, bandFrac);
   const a = op;
-  if (band <= 0 || played <= 0) {
-    const edge = clamp01(played);
-    grad.addColorStop(0, 'rgba(0,0,0,1)');
-    if (edge > 0) grad.addColorStop(edge, 'rgba(0,0,0,1)');
-    grad.addColorStop(Math.min(1, edge + 1e-4), `rgba(0,0,0,${a})`);
-    grad.addColorStop(1, `rgba(0,0,0,${a})`);
-  } else {
-    const fadeEnd = clamp01(played + band);
-    grad.addColorStop(0, 'rgba(0,0,0,1)');
-    grad.addColorStop(played, 'rgba(0,0,0,1)');
+  const alphaAt = (f: number) =>
+    f <= played ? 1 : f >= fadeEnd ? a : 1 + (a - 1) * ((f - played) / (fadeEnd - played));
+  grad.addColorStop(0, `rgba(0,0,0,${alphaAt(0)})`);
+  if (played > 0 && played < 1) grad.addColorStop(played, 'rgba(0,0,0,1)');
+  if (band <= 0) {
+    // Hard step at the playhead (no smooth reveal).
+    if (played > 0 && played < 1) grad.addColorStop(played, `rgba(0,0,0,${a})`);
+  } else if (fadeEnd > 0 && fadeEnd < 1) {
     grad.addColorStop(fadeEnd, `rgba(0,0,0,${a})`);
-    grad.addColorStop(1, `rgba(0,0,0,${a})`);
   }
+  grad.addColorStop(1, `rgba(0,0,0,${alphaAt(1)})`);
   sctx.fillStyle = grad;
   sctx.fillRect(0, 0, w, h);
   sctx.globalCompositeOperation = 'source-over';

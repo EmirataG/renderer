@@ -123,8 +123,12 @@ export default memo(function SingleLineRenderer({
 
   const cameraRef = useRef<HTMLDivElement>(null);
   const scoreRef = useRef<HTMLDivElement>(null);
+  // The static, overflow-clipped viewport (does NOT translate — the camera div
+  // inside it does). The progressive reveal mask lives here: one mask over the
+  // visible window, computed in screen space, so it never interacts with
+  // section virtualization and has no per-section boundary seams.
+  const viewportRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const sectionContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const elementCacheRef = useRef<ElementCache>(new Map());
   // Visibility is always contiguous (+ symmetric buffer), so a plain range
   // replaces the old Set<number> — getVisibleSectionRange runs once per
@@ -563,9 +567,8 @@ export default memo(function SingleLineRenderer({
       }
     }
 
-    // Drive the reveal frontier from the (just-updated) playhead position, every
-    // frame, so the reveal sweeps smoothly with the camera and any section the
-    // camera just brought into view is clipped/faded before it paints.
+    // Drive the reveal frontier from the (just-updated) playhead + camera
+    // position, every frame, so the viewport mask sweeps smoothly with playback.
     applyRevealFrontier(eventIndexRef.current);
   }
 
@@ -575,57 +578,49 @@ export default memo(function SingleLineRenderer({
 
   /* ---------------- progressive reveal (hide unplayed notes) ---------------- */
 
-  // The playhead's last known content-space X (score coordinate units, the same
-  // space as sectionOffsets / sectionWidths / currentXRef), held so a transient
-  // non-finite reading never snaps the frontier backward. Using CONTENT space —
-  // not screen space — makes the reveal rotation/zoom/pan invariant: a rotated
-  // single-line strip still reveals correctly along its own axis, because the
-  // per-section fraction (playX - sectionOffset) / sectionWidth is computed
-  // entirely in the pre-rotation layout space.
+  // The playhead's last known content-space X (currentXRef), held so a transient
+  // non-finite reading never snaps the frontier backward.
   const lastRevealXRef = useRef<number | null>(null);
 
-  // Re-apply the reveal synchronously before paint whenever the score, the
-  // visible-section window, or the reveal toggles change. A layout effect (not
-  // rAF) is essential: during playback the camera pans and `visibleSections`
-  // changes rapidly; a rAF would be cancelled-and-rescheduled every change
-  // before it ever fired, leaving freshly-mounted sections unmasked (showing
-  // the full score).
+  // Re-apply the reveal synchronously before paint whenever the score or the
+  // reveal toggles change (a layout effect, so it lands before the browser
+  // paints rather than a frame later).
   useLayoutEffect(() => {
     syncRevealStructure();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sections, visibleSections, hideUnplayedNotes, smoothReveal, unplayedOpacity]);
+  }, [sections, hideUnplayedNotes, smoothReveal, unplayedOpacity]);
 
-  // Re-apply the current frontier across all mounted sections, or clear it when
-  // the feature is off. No persistent handles — re-resolved from live refs.
+  // Apply the current frontier to the viewport, or clear it when off.
   function syncRevealStructure() {
     if (!hideUnplayedNotes || isRenderMode) {
-      // Reveal off → clear the clip/mask from every section container.
-      for (const container of sectionContainerRefs.current) {
-        if (container) clearRevealStyles(container);
-      }
+      if (viewportRef.current) clearRevealStyles(viewportRef.current);
       return;
     }
     applyRevealFrontier(eventIndexRef.current);
   }
 
-  // Reveal each mounted section up to the playhead, by clipping/fading the
-  // section's HTML container <div> as a whole (staff + notes + everything dim
-  // uniformly in the unplayed region). The reveal MUST live on the HTML
-  // container, not the inner SVG: Chromium does not invalidate a `mask-image`
-  // on an SVG element when only the gradient's color stops change, so an
-  // SVG-level opacity fade froze under virtualization. clip-path/mask on the
-  // HTML <div> updates reliably.
+  // Reveal up to the playhead by clipping/fading the STATIC viewport <div> (the
+  // whole visible window — staff + notes — dims uniformly in the unplayed
+  // region). One mask in SCREEN space: the playhead's on-screen X is
+  // `playX - cameraX`, so it never interacts with section virtualization and
+  // there are no per-section boundary seams. The reveal MUST be on this HTML
+  // <div>, not an inner SVG: Chromium doesn't invalidate a `mask-image` on an
+  // SVG element when only the gradient's stops change (it froze under
+  // virtualization); clip-path/mask on an HTML element updates reliably. The
+  // viewport sits inside the rotation wrapper, so the gradient still sweeps
+  // along the (possibly rotated) strip's own axis.
   function applyRevealFrontier(index: number) {
     if (!hideUnplayedNotes || isRenderMode) return;
-    const refs = sectionContainerRefs.current;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const viewportWidth = scoreRegion?.width ?? containerWidth;
 
     // The frontier follows the live playhead X (currentXRef) — the SAME source
-    // the camera uses, which always tracks correctly during playback. It must
-    // NOT be gated on `interpolatedEvents[index]`: that array can be a different
-    // length in this closure than in the (memoized) setTimestamp that writes
-    // eventIndexRef, so keying off it once made the frontier freeze while the
-    // camera kept scrolling. `index` is used only for the genuine "nothing
-    // played yet" state (before the first event / right after reset).
+    // the camera uses. It must NOT be gated on `interpolatedEvents[index]`: that
+    // array can be a different length in this closure than in the (memoized)
+    // setTimestamp that writes eventIndexRef, so keying off it once made the
+    // frontier freeze while the camera kept scrolling. `index` is used only for
+    // the genuine "nothing played yet" state (before the first event / reset).
     let playX: number | null;
     if (index < 0) {
       lastRevealXRef.current = null;
@@ -636,20 +631,21 @@ export default memo(function SingleLineRenderer({
       playX = lastRevealXRef.current;
     }
 
-    const band = smoothReveal ? REVEAL_BAND : 0;
-
-    for (let i = 0; i < refs.length; i++) {
-      const host = refs[i];
-      if (!host) continue;
-      const offset = sectionOffsets[i] ?? 0;
-      const width = sectionWidths[i] || 0;
-      const playedFrac = playX == null || width <= 0 ? 0 : (playX - offset) / width;
-      applyReveal(host, {
-        playedFrac,
-        bandFrac: width > 0 ? band / width : 0,
-        unplayedOpacity,
-      });
+    if (playX == null || viewportWidth <= 0) {
+      // Nothing played yet → uniform unplayed alpha (no band).
+      applyReveal(viewport, { playedFrac: 0, bandFrac: 0, unplayedOpacity });
+      return;
     }
+
+    // Screen-space frontier: playhead X minus the (just-applied) camera offset.
+    // The camera has no scale, so content units map 1:1 to viewport px.
+    const playScreenX = playX - cameraXRef.current;
+    const band = smoothReveal ? REVEAL_BAND : 0;
+    applyReveal(viewport, {
+      playedFrac: playScreenX / viewportWidth,
+      bandFrac: band / viewportWidth,
+      unplayedOpacity,
+    });
   }
 
   // Sync-based animation: driven by audio currentTime.
@@ -1196,8 +1192,9 @@ export default memo(function SingleLineRenderer({
                   transformOrigin: "center center",
                 }}
               >
-                {/* Score container */}
+                {/* Score container (static viewport — hosts the reveal mask) */}
                 <div
+                  ref={viewportRef}
                   style={{
                     position: "absolute",
                     left: 0,
@@ -1240,8 +1237,7 @@ export default memo(function SingleLineRenderer({
                           // Placeholder: maintain layout width. Distinct key
                           // from the mounted section forces React to swap the
                           // DOM node (dropping the SVG subtree) instead of
-                          // reconciling in place; the mounted div's ref
-                          // callback then nulls sectionContainerRefs[i].
+                          // reconciling in place.
                           return (
                             <div
                               key={`ph-${i}`}
@@ -1257,7 +1253,6 @@ export default memo(function SingleLineRenderer({
                         return (
                           <div
                             key={`section-${i}`}
-                            ref={(el) => { sectionContainerRefs.current[i] = el; }}
                             // .section-continuation hides re-stated leading
                             // clef/key/time signatures — only the select()-
                             // based fallback produces those. Seamless (split)

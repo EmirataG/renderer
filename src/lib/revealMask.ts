@@ -23,7 +23,6 @@
  *           `smoothReveal`, a hard step otherwise). No clip-path in this case.
  */
 
-const clamp = (v: number) => (v < 0 ? 0 : v > 100 ? 100 : v);
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 export interface RevealParams {
@@ -50,10 +49,17 @@ export interface RevealParams {
  *
  * The unplayed region is cut/faded from the RIGHT; top/bottom are overscanned
  * by 50% (`inset(-50% … -50% -50%)`) so tall elements aren't clipped.
+ *
+ * The gradient stops are deliberately NOT clamped to [0%, 100%]: a section is
+ * one slice of the global score, so a fade band that straddles a section
+ * boundary must extend past the box on one side and start before it on the
+ * other. CSS extrapolates beyond the box, and both sides of a seam share the
+ * same playhead + band, so the alpha matches exactly across the boundary — a
+ * clamp here is what made smooth reveal hard-edge at section boundaries.
  */
 export function applyReveal(el: HTMLElement, params: RevealParams): void {
-  const played = clamp(params.playedFrac * 100); // % revealed
-  const band = Math.max(0, params.bandFrac * 100);
+  const p = params.playedFrac * 100;            // % of section width played (unclamped)
+  const fe = p + Math.max(0, params.bandFrac) * 100; // fade-band end (unclamped, fe >= p)
   const op = clamp01(params.unplayedOpacity);
 
   // inset() order is top right bottom left.
@@ -62,31 +68,20 @@ export function applyReveal(el: HTMLElement, params: RevealParams): void {
   let clipPath = 'none';
   let maskImage = 'none';
 
-  if (played >= 100) {
+  if (p >= 100) {
     // Fully played — reveal everything (clip/mask stay 'none').
   } else if (op > 0) {
-    // FADED unplayed region. Mask only (a clip can't fade). Alpha steps from
-    // opaque (played) to `op` (unplayed), with a gradient band when smooth.
+    // FADED unplayed region. Mask only (a clip can't fade): full alpha up to the
+    // playhead (`p`), fading to `op` by the band end (`fe`). Two stops + CSS
+    // extrapolation give a hard step when fe === p (no smooth reveal).
     const a = op.toFixed(4);
-    if (band <= 0 || played <= 0) {
-      const edge = clamp(played);
-      maskImage = `linear-gradient(to right, #000 0%, #000 ${edge.toFixed(2)}%, rgba(0,0,0,${a}) ${edge.toFixed(2)}%, rgba(0,0,0,${a}) 100%)`;
-    } else {
-      const fadeEnd = clamp(played + band);
-      maskImage = `linear-gradient(to right, #000 0%, #000 ${played.toFixed(2)}%, rgba(0,0,0,${a}) ${fadeEnd.toFixed(2)}%, rgba(0,0,0,${a}) 100%)`;
-    }
+    maskImage = `linear-gradient(to right, #000 ${p.toFixed(2)}%, rgba(0,0,0,${a}) ${fe.toFixed(2)}%)`;
   } else {
-    // HIDDEN unplayed region (op === 0).
-    if (played <= 0) {
-      clipPath = insetFor(100); // nothing played — hide everything
-    } else if (band <= 0) {
-      clipPath = insetFor(100 - played); // hard cut just past the playhead
-    } else {
-      // Soft fade band ahead of the playhead, BACKED by a hard clip just past
-      // the fade so it degrades to a hard edge if the mask won't render.
-      const fadeEnd = clamp(played + band);
-      clipPath = insetFor(100 - fadeEnd);
-      maskImage = `linear-gradient(to right, #000 0%, #000 ${played.toFixed(2)}%, transparent ${fadeEnd.toFixed(2)}%)`;
+    // HIDDEN unplayed region (op === 0): clip-path cut at the band end, plus a
+    // soft mask band from the playhead to the band end when smooth.
+    clipPath = insetFor(100 - fe);
+    if (fe > p) {
+      maskImage = `linear-gradient(to right, #000 ${p.toFixed(2)}%, transparent ${fe.toFixed(2)}%)`;
     }
   }
 
