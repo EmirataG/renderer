@@ -244,7 +244,9 @@ export function ScoreRegionEditor({
           />
         ))}
 
-        {/* Rotation handle + connector + angle label, above the box center */}
+        {/* Rotation handle + connector + angle label, above the box center.
+            The wrapper ignores pointer events so its connector line doesn't
+            cover the top-center resize handle; only the circle is interactive. */}
         <div
           style={{
             position: 'absolute',
@@ -254,6 +256,7 @@ export function ScoreRegionEditor({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            pointerEvents: 'none',
             zIndex: 20,
           }}
         >
@@ -284,6 +287,7 @@ export function ScoreRegionEditor({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              pointerEvents: 'auto',
               cursor: isRotating ? 'grabbing' : 'grab',
             }}
           >

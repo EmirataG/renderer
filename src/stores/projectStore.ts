@@ -28,6 +28,8 @@ export interface ProjectSettings {
   bgColor: string | null;
   /** Which background to show: a solid color or the uploaded image. */
   bgMode: 'color' | 'image';
+  /** Frame aspect ratio (width / height). */
+  aspectRatio: number;
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   smoothReveal: true,
   bgColor: '#ffffff',
   bgMode: 'color',
+  aspectRatio: 16 / 9,
 };
 
 interface ProjectStore extends ProjectSettings {

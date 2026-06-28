@@ -5,6 +5,7 @@ import { SyncEditor } from "./components/SyncEditor";
 import { ToastProvider } from "./components/Toast";
 import { UploadDropZone } from "./components/UploadDropZone";
 import { BackgroundControl } from "./components/BackgroundControl";
+import { AspectRatioControl } from "./components/AspectRatioControl";
 import { ScoreRegionEditor } from "./components/ScoreRegionEditor";
 import { BorderPicker } from "./components/BorderPicker";
 import { BorderStyle } from "./borders";
@@ -12,7 +13,6 @@ import { useSyncStore } from "./stores/syncStore";
 import { useProjectStore, DEFAULT_SETTINGS } from "./stores/projectStore";
 import { useEventStore } from "./stores/eventStore";
 import { SaveIndicator } from "./components/SaveIndicator";
-import { ThemeToggle } from "./components/ThemeToggle";
 import { ManuscriptMark } from "./components/ManuscriptMark";
 import { initAutoSave } from "./lib/autoSave";
 import type { ScoreRegion } from "./types/score";
@@ -52,6 +52,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const colorArticulations = useProjectStore((s) => s.colorArticulations);
   const bgColor = useProjectStore((s) => s.bgColor);
   const bgMode = useProjectStore((s) => s.bgMode);
+  const projectAspectRatio = useProjectStore((s) => s.aspectRatio);
   const setSetting = useProjectStore((s) => s.setSetting);
   const projectName = useProjectStore((s) => s.projectName);
   const setProjectName = useProjectStore((s) => s.setProjectName);
@@ -74,7 +75,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const [bgFileName, setBgFileName] = useState<string | null>(null);
   // Server URL of the uncropped original image (for Re-crop after reload).
   const [originalBgUrl, setOriginalBgUrl] = useState<string | null>(null);
-  const [projectAspectRatio, setProjectAspectRatio] = useState<number | null>(null);
 
   // Show the uploaded image only in image mode; otherwise the solid color (or
   // white) is shown. The image is kept on disk even while color is active.
@@ -165,8 +165,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             : null,
         );
 
-        // aspectRatio is the source of truth for frame dimensions.
-        setProjectAspectRatio(project.aspectRatio || null);
 
         // Load settings from API response into projectStore
         const { loadSettings, setProjectId, setProjectName } =
@@ -213,6 +211,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           bgColor: project.bgColor ?? DEFAULT_SETTINGS.bgColor,
           // Back-compat: legacy projects with an image but no stored mode show it.
           bgMode: project.bgMode ?? (project.backgroundUrl ? 'image' : 'color'),
+          aspectRatio: project.aspectRatio ?? DEFAULT_SETTINGS.aspectRatio,
         });
 
         // Load sync anchors from API response in one batch — clears stale
@@ -638,7 +637,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </button>
           )}
           {projectId && <SaveIndicator />}
-          <ThemeToggle className="h-6" />
         </div>
 
         <div className="flex-1 flex min-h-0">
@@ -673,6 +671,22 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       currentFiles={currentFiles}
                     />
                   )}
+                </div>
+              </section>
+
+              {/* ASPECT RATIO SECTION */}
+              <section className="grunge-section">
+                <h2 className="grunge-section-title">Frame Aspect Ratio</h2>
+                <div className="grunge-section-body">
+                  <AspectRatioControl
+                    value={projectAspectRatio || 16 / 9}
+                    onChange={(ratio) => {
+                      setSetting("aspectRatio", ratio);
+                      // The region is sized for the old frame — reset to default.
+                      setSetting("scoreRegion", null);
+                      setIsEditingRegion(false);
+                    }}
+                  />
                 </div>
               </section>
 

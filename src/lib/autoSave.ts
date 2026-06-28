@@ -33,6 +33,7 @@ function getSaveableSettings(state: ReturnType<typeof useProjectStore.getState>)
     smoothReveal: state.smoothReveal,
     bgColor: state.bgColor,
     bgMode: state.bgMode,
+    aspectRatio: state.aspectRatio,
   };
 }
 

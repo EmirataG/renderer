@@ -79,7 +79,7 @@ const ALLOWED_SETTINGS = [
   'activeNoteheadUseNoteDuration',
   'colorAccidentals', 'colorDots', 'colorArticulations',
   'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal',
-  'bgColor', 'bgMode',
+  'bgColor', 'bgMode', 'aspectRatio',
 ];
 
 export async function PATCH(
