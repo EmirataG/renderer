@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { useToast } from '../hooks/useToast';
 import { ImageCropModal } from './ImageCropModal';
+import { CropIcon, ReplaceIcon } from './icons';
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 // Treat aspect ratios within this tolerance as "matching" the frame (skip crop).
@@ -167,16 +168,20 @@ export function BackgroundControl({
             {recropSrc && (
               <button
                 onClick={() => { setPendingOriginal(null); setCropSrc(recropSrc); }}
-                className="text-[10px] text-fg-subtle hover:text-fg uppercase tracking-wider font-semibold"
+                className="flex-shrink-0 p-1 text-fg-subtle hover:text-fg transition-colors"
+                title="Re-crop"
+                aria-label="Re-crop"
               >
-                Re-crop
+                <CropIcon className="w-4 h-4" />
               </button>
             )}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="text-[10px] text-fg-subtle hover:text-fg uppercase tracking-wider font-semibold"
+              className="flex-shrink-0 p-1 text-fg-subtle hover:text-fg transition-colors"
+              title="Replace"
+              aria-label="Replace"
             >
-              Replace
+              <ReplaceIcon className="w-4 h-4" />
             </button>
           </div>
         ) : (
