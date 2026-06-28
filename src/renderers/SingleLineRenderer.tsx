@@ -575,7 +575,7 @@ export default memo(function SingleLineRenderer({
 
     // Drive the reveal frontier from the (just-updated) playhead + camera
     // position, every frame, so the viewport mask sweeps smoothly with playback.
-    applyRevealFrontier(eventIndexRef.current);
+    applyRevealFrontier();
   }
 
   // Keep the ref pointing at this render's applyCamera so setTimestamp always
@@ -583,10 +583,6 @@ export default memo(function SingleLineRenderer({
   applyCameraRef.current = applyCamera;
 
   /* ---------------- progressive reveal (hide unplayed notes) ---------------- */
-
-  // The playhead's last known content-space X (currentXRef), held so a transient
-  // non-finite reading never snaps the frontier backward.
-  const lastRevealXRef = useRef<number | null>(null);
 
   // Re-apply the reveal synchronously before paint whenever the score or the
   // reveal toggles change (a layout effect, so it lands before the browser
@@ -603,13 +599,23 @@ export default memo(function SingleLineRenderer({
     applyCameraRef.current(currentXRef.current);
   }, [activeLinePosition, revealLinePosition]);
 
+  // Before any playback, park the playhead at the score's first note so the
+  // pre-play view is exactly the first frame of playback (camera + reveal). Only
+  // fires while eventIndexRef < 0, so it never disturbs a paused/seeked position.
+  useLayoutEffect(() => {
+    if (events.length > 0 && eventIndexRef.current < 0) {
+      currentXRef.current = events[0].globalX ?? 0;
+      applyCameraRef.current(currentXRef.current);
+    }
+  }, [events]);
+
   // Apply the current frontier to the viewport, or clear it when off.
   function syncRevealStructure() {
     if (!hideUnplayedNotes || isRenderMode) {
       if (viewportRef.current) clearRevealStyles(viewportRef.current);
       return;
     }
-    applyRevealFrontier(eventIndexRef.current);
+    applyRevealFrontier();
   }
 
   // Reveal up to the playhead by clipping/fading the STATIC viewport <div> (the
@@ -622,37 +628,22 @@ export default memo(function SingleLineRenderer({
   // virtualization); clip-path/mask on an HTML element updates reliably. The
   // viewport sits inside the rotation wrapper, so the gradient still sweeps
   // along the (possibly rotated) strip's own axis.
-  function applyRevealFrontier(index: number) {
+  //
+  // The frontier follows the live playhead X (currentXRef), NOT the event index:
+  // before playback currentXRef is already parked at the score start, so the
+  // pre-play view is identical to the first frame of playback (no separate
+  // "everything faded" state). Using currentXRef (the same source the camera
+  // uses) also can't desync from the camera.
+  function applyRevealFrontier() {
     if (!hideUnplayedNotes || isRenderMode) return;
     const viewport = viewportRef.current;
     if (!viewport) return;
     const viewportWidth = scoreRegion?.width ?? containerWidth;
-
-    // The frontier follows the live playhead X (currentXRef) — the SAME source
-    // the camera uses. It must NOT be gated on `interpolatedEvents[index]`: that
-    // array can be a different length in this closure than in the (memoized)
-    // setTimestamp that writes eventIndexRef, so keying off it once made the
-    // frontier freeze while the camera kept scrolling. `index` is used only for
-    // the genuine "nothing played yet" state (before the first event / reset).
-    let playX: number | null;
-    if (index < 0) {
-      lastRevealXRef.current = null;
-      playX = null;
-    } else {
-      const x = currentXRef.current;
-      if (Number.isFinite(x)) lastRevealXRef.current = x;
-      playX = lastRevealXRef.current;
-    }
-
-    if (playX == null || viewportWidth <= 0) {
-      // Nothing played yet → uniform unplayed alpha (no band).
-      applyReveal(viewport, { playedFrac: 0, bandFrac: 0, unplayedOpacity });
-      return;
-    }
+    if (viewportWidth <= 0) return;
 
     // Screen-space frontier: playhead X minus the (just-applied) camera offset.
     // The camera has no scale, so content units map 1:1 to viewport px.
-    const playScreenX = playX - cameraXRef.current;
+    const playScreenX = currentXRef.current - cameraXRef.current;
     const band = smoothReveal ? REVEAL_BAND : 0;
     // The reveal boundary sits at the active line by default; shifting the reveal
     // line ahead (revealLinePosition > activeLinePosition) reveals notes that
