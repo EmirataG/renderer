@@ -18,9 +18,9 @@
   color-scheme: dark;
 
   --canvas: #000000;          /* app background            */
-  --surface: #0a0a0a;         /* cards, inputs, raised bg  */
-  --surface-muted: #1a1a1a;   /* hover fills, subtle chips */
-  --elevated: #0a0a0a;        /* popovers / menus          */
+  --surface: #141414;         /* cards, inputs, raised bg  */
+  --surface-muted: #242424;   /* hover fills, subtle chips */
+  --elevated: #1a1a1a;        /* popovers / menus          */
 
   --line: #262626;            /* default borders           */
   --line-strong: #525252;     /* prominent borders         */
