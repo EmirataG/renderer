@@ -80,6 +80,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   // white) is shown. The image is kept on disk even while color is active.
   const showImageBg = bgMode === "image" && !!bgUrl;
 
+  // Natural height (editor px) of the single-line score, reported by the
+  // renderer. Drives the default + minimum region height in single-line mode.
+  const [singleLineScoreHeight, setSingleLineScoreHeight] = useState(0);
+
   // Project loading state
   const [isLoadingProject, setIsLoadingProject] = useState(false);
 
@@ -276,6 +280,24 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     width: number;
     height: number;
   } | null>(null);
+
+  // Region editor min/default height. In single-line mode the region is framed
+  // to the score's own height (centered); elsewhere it defaults to the frame.
+  const isSingleLine = viewMode === "single-line";
+  const editorMinHeight =
+    isSingleLine && singleLineScoreHeight > 0 && regionContainerDims
+      ? Math.min(singleLineScoreHeight, regionContainerDims.height)
+      : 150;
+  const editorDefaultRegion: ScoreRegion | null =
+    isSingleLine && regionContainerDims && singleLineScoreHeight > 0
+      ? {
+          x: 0,
+          y: (regionContainerDims.height - editorMinHeight) / 2,
+          width: regionContainerDims.width,
+          height: editorMinHeight,
+          rotation: 0,
+        }
+      : null;
 
   // Verovio rendering debounces (local state, derived from store values)
   // Initialize from current store values so the first render uses real values
@@ -1104,6 +1126,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               bgUrl={showImageBg ? bgUrl! : undefined}
                               aspectRatio={projectAspectRatio || undefined}
                               bgColor={bgColor}
+                              onScoreHeight={setSingleLineScoreHeight}
                               fps={fps}
                               scoreColor={scoreColor}
                               syncAnchors={
@@ -1189,6 +1212,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                   containerWidth={regionContainerDims.width}
                                   containerHeight={regionContainerDims.height}
                                   initialRegion={scoreRegion}
+                                  defaultRegion={editorDefaultRegion}
+                                  minWidth={200}
+                                  minHeight={editorMinHeight}
                                   onRegionChange={(region) =>
                                     setSetting("scoreRegion", region)
                                   }
@@ -1249,19 +1275,16 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
           {/* Blurred backdrop */}
           <div
-            className="absolute inset-0"
+            className="absolute inset-0 bg-overlay"
             style={{
               backdropFilter: "blur(8px)",
               WebkitBackdropFilter: "blur(8px)",
-              background: "rgba(0, 0, 0, 0.7)",
             }}
           />
           {/* Modal */}
           <div
-            className="relative z-10 w-full max-w-md mx-4 rounded"
+            className="relative z-10 w-full max-w-md mx-4 rounded bg-surface border border-line"
             style={{
-              background: "#0a0a0a",
-              border: "1px solid #2a2a2a",
               padding: "2rem",
             }}
           >
@@ -1280,17 +1303,17 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                 </span>
               </div>
               <div
+                className="bg-surface-muted"
                 style={{
                   width: "100%",
                   height: "4px",
-                  background: "#222",
                 }}
               >
                 <div
+                  className="bg-accent"
                   style={{
                     width: `${exportState.percent}%`,
                     height: "4px",
-                    background: "white",
                     transition: "width 300ms",
                   }}
                 />
