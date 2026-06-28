@@ -46,7 +46,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const activeNoteheadEntryMs = useProjectStore((s) => s.activeNoteheadEntryMs);
   const activeNoteheadHoldMs = useProjectStore((s) => s.activeNoteheadHoldMs);
   const activeNoteheadExitMs = useProjectStore((s) => s.activeNoteheadExitMs);
-  const activeNoteheadUseNoteDuration = useProjectStore((s) => s.activeNoteheadUseNoteDuration);
+  const activeNoteheadUseNoteDuration = useProjectStore(
+    (s) => s.activeNoteheadUseNoteDuration,
+  );
   const colorAccidentals = useProjectStore((s) => s.colorAccidentals);
   const colorDots = useProjectStore((s) => s.colorDots);
   const colorArticulations = useProjectStore((s) => s.colorArticulations);
@@ -115,11 +117,14 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             const fileName: string = project.scoreFileName || "score.xml";
             let xml: string;
 
-            if (isMxlFile(fileName) || scoreRes.headers.get('Content-Type')?.includes('recordare')) {
+            if (
+              isMxlFile(fileName) ||
+              scoreRes.headers.get("Content-Type")?.includes("recordare")
+            ) {
               // MXL (compressed MusicXML) — decompress via Verovio
               const buffer = await scoreRes.arrayBuffer();
               const result = await validateMxl(buffer);
-              xml = result.valid && result.xml ? result.xml : '';
+              xml = result.valid && result.xml ? result.xml : "";
             } else {
               xml = await scoreRes.text();
             }
@@ -139,7 +144,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         // Set audio via server proxy (avoids CORS, supports range requests for seeking)
         if (project.audioUrl) {
           // Revoke any user-uploaded blob URL from the previous project.
-          if (audioFile?.url?.startsWith('blob:')) {
+          if (audioFile?.url?.startsWith("blob:")) {
             URL.revokeObjectURL(audioFile.url);
           }
           setAudioFile({
@@ -153,7 +158,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         // (bgColor) and drawn natively by the renderers — no synthesized image.
         if (project.backgroundUrl) {
           // Revoke any user-uploaded blob URL from the previous project.
-          if (bgUrl?.startsWith('blob:')) {
+          if (bgUrl?.startsWith("blob:")) {
             URL.revokeObjectURL(bgUrl);
           }
           setBgUrl(`/api/projects/${projectId}/background`);
@@ -165,14 +170,15 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             : null,
         );
 
-
         // Load settings from API response into projectStore
         const { loadSettings, setProjectId, setProjectName } =
           useProjectStore.getState();
         setProjectId(projectId!);
         if (project.name) setProjectName(project.name);
         loadSettings({
-          viewMode: (project.viewMode ?? DEFAULT_SETTINGS.viewMode) as 'page' | 'single-line',
+          viewMode: (project.viewMode ?? DEFAULT_SETTINGS.viewMode) as
+            | "page"
+            | "single-line",
           scoreColor: project.scoreColor ?? DEFAULT_SETTINGS.scoreColor,
           scoreScale: project.scoreScale ?? DEFAULT_SETTINGS.scoreScale,
           musicFont: project.musicFont ?? DEFAULT_SETTINGS.musicFont,
@@ -197,11 +203,17 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             project.activeNoteheadUseNoteDuration ??
             DEFAULT_SETTINGS.activeNoteheadUseNoteDuration,
           colorAccidentals:
-            project.colorAccidentals ?? project.colorFullNote ?? DEFAULT_SETTINGS.colorAccidentals,
+            project.colorAccidentals ??
+            project.colorFullNote ??
+            DEFAULT_SETTINGS.colorAccidentals,
           colorDots:
-            project.colorDots ?? project.colorFullNote ?? DEFAULT_SETTINGS.colorDots,
+            project.colorDots ??
+            project.colorFullNote ??
+            DEFAULT_SETTINGS.colorDots,
           colorArticulations:
-            project.colorArticulations ?? project.colorFullNote ?? DEFAULT_SETTINGS.colorArticulations,
+            project.colorArticulations ??
+            project.colorFullNote ??
+            DEFAULT_SETTINGS.colorArticulations,
           fps: project.fps ?? DEFAULT_SETTINGS.fps,
           scoreShadowDistance:
             project.scoreShadowDistance ?? DEFAULT_SETTINGS.scoreShadowDistance,
@@ -210,7 +222,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           smoothReveal: project.smoothReveal ?? DEFAULT_SETTINGS.smoothReveal,
           bgColor: project.bgColor ?? DEFAULT_SETTINGS.bgColor,
           // Back-compat: legacy projects with an image but no stored mode show it.
-          bgMode: project.bgMode ?? (project.backgroundUrl ? 'image' : 'color'),
+          bgMode: project.bgMode ?? (project.backgroundUrl ? "image" : "color"),
           aspectRatio: project.aspectRatio ?? DEFAULT_SETTINGS.aspectRatio,
         });
 
@@ -419,7 +431,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     file?: File,
   ) => {
     // Revoke the previous blob URL before replacing (also covers removal).
-    if (audioFile?.url?.startsWith('blob:') && audioFile.url !== audioUrl) {
+    if (audioFile?.url?.startsWith("blob:") && audioFile.url !== audioUrl) {
       URL.revokeObjectURL(audioFile.url);
     }
     setAudioFile(
@@ -435,7 +447,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
     // Revoke the previous blob URL before replacing (also covers removal).
     // Server URLs and data: URLs don't need revocation — the cleanup is a
     // no-op for non-blob URLs, but skipping it avoids the lookup cost.
-    if (bgUrl?.startsWith('blob:') && bgUrl !== imageUrl) {
+    if (bgUrl?.startsWith("blob:") && bgUrl !== imageUrl) {
       URL.revokeObjectURL(bgUrl);
     }
     setBgUrl(imageUrl || null);
@@ -508,7 +520,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         settings,
         audioFile: audioFileForExport!,
         bgImageUrl: showImageBg ? bgUrl! : undefined,
-        bgColor: showImageBg ? undefined : (bgColor || undefined),
+        bgColor: showImageBg ? undefined : bgColor || undefined,
         aspectRatio: projectAspectRatio || undefined,
         signal: abortController.signal,
         onProgress: (percent, stage) => {
@@ -590,7 +602,16 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               className="flex items-center gap-1.5 text-fg-subtle hover:text-fg-muted transition-colors cursor-pointer"
               title="Dashboard"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
@@ -614,13 +635,19 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
               <div className="flex gap-1">
                 <button
                   onClick={() => setCurrentView("renderer")}
-                  className={currentView === "renderer" ? "grunge-tab-active" : "grunge-tab"}
+                  className={
+                    currentView === "renderer"
+                      ? "grunge-tab-active"
+                      : "grunge-tab"
+                  }
                 >
                   Preview
                 </button>
                 <button
                   onClick={() => setCurrentView("sync")}
-                  className={currentView === "sync" ? "grunge-tab-active" : "grunge-tab"}
+                  className={
+                    currentView === "sync" ? "grunge-tab-active" : "grunge-tab"
+                  }
                 >
                   Sync Editor
                 </button>
@@ -695,7 +722,12 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                   renderer creates its own playback element, so without this
                   the same audio gets fetched/buffered twice. */}
               {audioFile && (
-                <audio ref={audioRef} src={audioFile.url} preload="metadata" className="hidden" />
+                <audio
+                  ref={audioRef}
+                  src={audioFile.url}
+                  preload="metadata"
+                  className="hidden"
+                />
               )}
 
               {/* PLAYBACK SECTION */}
@@ -818,7 +850,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                         onClick={() => setShowResetConfirm(true)}
                         className="grunge-btn grunge-btn-sm flex-1"
                       >
-                        Use Full Background
+                        Reset
                       </button>
                       <button
                         onClick={() => {
@@ -891,15 +923,29 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       <div className="grunge-field">
                         <span className="grunge-label">Also color</span>
                         <div className="flex gap-1.5">
-                          {([
-                            ['colorAccidentals', 'Accidentals', colorAccidentals],
-                            ['colorDots', 'Dots', colorDots],
-                            ['colorArticulations', 'Articulations', colorArticulations],
-                          ] as const).map(([key, label, value]) => (
+                          {(
+                            [
+                              [
+                                "colorAccidentals",
+                                "Accidentals",
+                                colorAccidentals,
+                              ],
+                              ["colorDots", "Dots", colorDots],
+                              [
+                                "colorArticulations",
+                                "Articulations",
+                                colorArticulations,
+                              ],
+                            ] as const
+                          ).map(([key, label, value]) => (
                             <button
                               key={key}
                               onClick={() => setSetting(key, !value)}
-                              className={value ? 'grunge-chip grunge-chip-active' : 'grunge-chip'}
+                              className={
+                                value
+                                  ? "grunge-chip grunge-chip-active"
+                                  : "grunge-chip"
+                              }
                             >
                               {label}
                             </button>
@@ -959,7 +1005,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                     <div className="grunge-field-head">
                       <span className="grunge-label">Hold</span>
                       <span className="grunge-field-value">
-                        {activeNoteheadUseNoteDuration ? 'auto' : `${activeNoteheadHoldMs}ms`}
+                        {activeNoteheadUseNoteDuration
+                          ? "auto"
+                          : `${activeNoteheadHoldMs}ms`}
                       </span>
                     </div>
                     <label className="grunge-toggle-row">
@@ -1049,17 +1097,24 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-[10px] uppercase tracking-wider font-semibold">
                     <span className="text-fg-subtle">Exporting</span>
-                    <span className="text-fg-muted tabular-nums">{Math.round(exportState.percent)}%</span>
+                    <span className="text-fg-muted tabular-nums">
+                      {Math.round(exportState.percent)}%
+                    </span>
                   </div>
                   <div className="h-1 bg-surface-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-accent rounded-full transition-all duration-300" style={{ width: `${exportState.percent}%` }} />
+                    <div
+                      className="h-full bg-accent rounded-full transition-all duration-300"
+                      style={{ width: `${exportState.percent}%` }}
+                    />
                   </div>
                 </div>
               )}
 
               {exportState.status === "complete" && (
                 <div className="space-y-2">
-                  <p className="text-[10px] text-green-500 uppercase tracking-wider font-semibold text-center">Export complete</p>
+                  <p className="text-[10px] text-green-500 uppercase tracking-wider font-semibold text-center">
+                    Export complete
+                  </p>
                   <button
                     onClick={handleDownload}
                     className="grunge-btn-export w-full"
@@ -1088,7 +1143,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
 
               {exportState.status === "cancelled" && (
                 <div className="space-y-2">
-                  <p className="text-[10px] text-fg-subtle text-center">Export cancelled</p>
+                  <p className="text-[10px] text-fg-subtle text-center">
+                    Export cancelled
+                  </p>
                   <button onClick={resetExport} className="grunge-btn w-full">
                     New Export
                   </button>
@@ -1124,7 +1181,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       onTransformed={(_, state) => setZoomScale(state.scale)}
                       minScale={0.25}
                       maxScale={5}
-                      panning={{ activationKeys: [], disabled: isEditingRegion }}
+                      panning={{
+                        activationKeys: [],
+                        disabled: isEditingRegion,
+                      }}
                       wheel={{ disabled: !zoomEnabled }}
                       pinch={{ disabled: !zoomEnabled }}
                       doubleClick={{ disabled: !zoomEnabled, mode: "reset" }}
@@ -1134,7 +1194,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       >
                         {/* Wrapper for RegularRenderer + overlay */}
                         <div className="relative m-auto w-fit">
-                          {viewMode === 'single-line' ? (
+                          {viewMode === "single-line" ? (
                             <SingleLineRenderer
                               xml={musicXMLFile.xml}
                               bgUrl={showImageBg ? bgUrl! : undefined}
@@ -1164,7 +1224,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               activeNoteheadAnimationExitMs={
                                 activeNoteheadExitMs
                               }
-                              activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
+                              activeNoteheadUseNoteDuration={
+                                activeNoteheadUseNoteDuration
+                              }
                               colorAccidentals={colorAccidentals}
                               colorDots={colorDots}
                               colorArticulations={colorArticulations}
@@ -1201,7 +1263,9 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               activeNoteheadAnimationExitMs={
                                 activeNoteheadExitMs
                               }
-                              activeNoteheadUseNoteDuration={activeNoteheadUseNoteDuration}
+                              activeNoteheadUseNoteDuration={
+                                activeNoteheadUseNoteDuration
+                              }
                               colorAccidentals={colorAccidentals}
                               colorDots={colorDots}
                               colorArticulations={colorArticulations}
@@ -1350,10 +1414,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             </div>
 
             {/* Cancel */}
-            <button
-              onClick={handleCancelExport}
-              className="grunge-btn w-full"
-            >
+            <button onClick={handleCancelExport} className="grunge-btn w-full">
               Cancel Export
             </button>
           </div>
@@ -1363,7 +1424,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
       {/* Reset Score Region Confirmation Dialog */}
       {showResetConfirm && (
         <div className="fixed inset-0 flex items-center justify-center z-[70]">
-          <div className="absolute inset-0 bg-overlay" onClick={() => setShowResetConfirm(false)} />
+          <div
+            className="absolute inset-0 bg-overlay"
+            onClick={() => setShowResetConfirm(false)}
+          />
           <div className="relative bg-surface border border-line rounded p-5 max-w-sm mx-4">
             <h3 className="text-xs font-semibold text-fg mb-2 uppercase tracking-wider">
               Reset Score Region?
