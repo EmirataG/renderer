@@ -1,3 +1,13 @@
+/** Background placement crop in normalized image coords (0–1), AR-matched to the
+ *  frame. Applied over the stored (uncropped) image at render/export time;
+ *  null = centered cover. */
+export interface BgCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -10,9 +20,8 @@ export interface Project {
   audioFileName?: string;
   backgroundUrl?: string;
   backgroundFileName?: string;
-  /** Uncropped source image, retained so the placement crop can be redone. */
-  originalBackgroundUrl?: string;
-  originalBackgroundFileName?: string;
+  /** Placement crop applied over the (uncropped) background image at render time. */
+  bgCrop?: BgCrop | null;
   aspectRatio?: number;
   bgColor?: string;
   bgMode?: 'color' | 'image';

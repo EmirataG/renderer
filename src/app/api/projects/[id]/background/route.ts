@@ -84,70 +84,49 @@ export async function PUT(
   }
 
   const formData = await request.formData();
-  // `background` = the displayed/cropped image (required).
-  // `original`   = the uncropped source (optional), retained so the placement
-  //               crop can be redone later without re-selecting the file.
+  // The single stored image is the uncropped original; placement is a crop rect
+  // saved as a project setting (bgCrop) and applied at render/export time.
   const bgFile = formData.get('background') as File | null;
-  const originalFile = formData.get('original') as File | null;
   if (!bgFile) {
     return Response.json({ error: 'No background file provided' }, { status: 400 });
   }
 
-  const validateImage = (file: File): string | null => {
-    const e = getExtension(file.name);
-    if (!ALLOWED_IMAGE_EXTENSIONS.includes(e)) {
-      return `Invalid image type. Allowed: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}`;
-    }
-    if (file.size > MAX_IMAGE_SIZE) return 'Image too large. Maximum 20MB.';
-    return null;
-  };
-
-  const bgErr = validateImage(bgFile);
-  if (bgErr) return Response.json({ error: bgErr }, { status: 400 });
-  if (originalFile) {
-    const oErr = validateImage(originalFile);
-    if (oErr) return Response.json({ error: oErr }, { status: 400 });
-  }
-
   const ext = getExtension(bgFile.name);
-  const basePath = `users/${user.uid}/projects/${id}`;
-
-  // Delete the previous cropped image and upload the new one. The "original"
-  // is stored under a distinct prefix so this never clobbers it.
-  const ops: Promise<unknown>[] = [
-    getBucket().getFiles({ prefix: `${basePath}/background` })
-      .then(([files]) => Promise.all(files.map(f => f.delete()))),
-    bgFile.arrayBuffer()
-      .then(ab => uploadFile(`${basePath}/background${ext}`, Buffer.from(ab), bgFile.type || 'image/jpeg')),
-  ];
-  if (originalFile) {
-    const oext = getExtension(originalFile.name);
-    ops.push(
-      getBucket().getFiles({ prefix: `${basePath}/original` })
-        .then(([files]) => Promise.all(files.map(f => f.delete()))),
-      originalFile.arrayBuffer()
-        .then(ab => uploadFile(`${basePath}/original${oext}`, Buffer.from(ab), originalFile.type || 'image/jpeg')),
+  if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
+    return Response.json(
+      { error: `Invalid image type. Allowed: ${ALLOWED_IMAGE_EXTENSIONS.join(', ')}` },
+      { status: 400 },
     );
   }
+  if (bgFile.size > MAX_IMAGE_SIZE) {
+    return Response.json({ error: 'Image too large. Maximum 20MB.' }, { status: 400 });
+  }
 
-  const results = await Promise.all(ops);
-  const backgroundUrl = results[1] as string;
-  const originalBackgroundUrl = originalFile ? (results[3] as string) : undefined;
+  const basePath = `users/${user.uid}/projects/${id}`;
 
-  // Update Firestore document
+  // Replace the stored image; also sweep any legacy `original` file from the
+  // old dual-storage scheme so projects converge on a single copy.
+  const results = await Promise.all([
+    getBucket().getFiles({ prefix: `${basePath}/background` })
+      .then(([files]) => Promise.all(files.map(f => f.delete()))),
+    getBucket().getFiles({ prefix: `${basePath}/original` })
+      .then(([files]) => Promise.all(files.map(f => f.delete())))
+      .catch(() => { /* tolerate already-missing */ }),
+    bgFile.arrayBuffer()
+      .then(ab => uploadFile(`${basePath}/background${ext}`, Buffer.from(ab), bgFile.type || 'image/jpeg')),
+  ]);
+  const backgroundUrl = results[2] as string;
+
   await docRef.update({
     backgroundUrl,
     backgroundFileName: bgFile.name,
-    ...(originalFile
-      ? { originalBackgroundUrl, originalBackgroundFileName: originalFile.name }
-      : {}),
+    // Clear legacy dual-storage fields if present.
+    originalBackgroundUrl: FieldValue.delete(),
+    originalBackgroundFileName: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return Response.json({
-    backgroundUrl: `/api/projects/${id}/background`,
-    ...(originalFile ? { originalBackgroundUrl: `/api/projects/${id}/background-original` } : {}),
-  });
+  return Response.json({ backgroundUrl: `/api/projects/${id}/background` });
 }
 
 export async function DELETE(
@@ -181,6 +160,7 @@ export async function DELETE(
   await docRef.update({
     backgroundUrl: FieldValue.delete(),
     backgroundFileName: FieldValue.delete(),
+    bgCrop: FieldValue.delete(),
     originalBackgroundUrl: FieldValue.delete(),
     originalBackgroundFileName: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),

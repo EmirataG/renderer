@@ -4,6 +4,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useVerovio } from "../hooks/useVerovio";
 import { extractTimemapEvents, computeEventPositions, measureSvgGeometry } from "../lib/getEvents";
 import type { ScoreRegion } from "../types/score";
+import type { BgCrop } from "../types/project";
+import { bgCropPosition } from "../lib/bgCrop";
 import { BorderStyle, getBorderComponent, getBorderHeight } from "../borders";
 import { interpolateTimestamps, computeNoteDurationSeconds } from "../lib/interpolation";
 import {
@@ -71,6 +73,8 @@ interface Props {
   // core
   xml: string;
   bgUrl?: string;
+  /** Placement crop over bgUrl (normalized, AR-matched). null = centered cover. */
+  bgCrop?: BgCrop | null;
   /** Frame aspect ratio (width / height). Drives the frame dimensions. */
   aspectRatio?: number;
   /** Solid frame background color when there's no image. Null/undefined = white. */
@@ -113,6 +117,7 @@ interface Props {
 export default memo(function RegularRenderer({
   xml,
   bgUrl,
+  bgCrop,
   aspectRatio,
   bgColor,
   fps = 60,
@@ -1166,6 +1171,7 @@ export default memo(function RegularRenderer({
             backgroundColor: bgUrl ? undefined : (bgColor || "#ffffff"),
             backgroundImage: bgUrl ? `url(${bgUrl})` : undefined,
             backgroundSize: "cover",
+            backgroundPosition: bgUrl ? bgCropPosition(bgCrop) : undefined,
           }}
         >
           {/* Rotation wrapper - rotates score region + borders together */}

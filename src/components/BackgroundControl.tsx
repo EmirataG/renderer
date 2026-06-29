@@ -1,9 +1,10 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useToast } from '../hooks/useToast';
 import { ImageCropModal } from './ImageCropModal';
 import { CropIcon, ReplaceIcon } from './icons';
+import type { BgCrop } from '../types/project';
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 // Treat aspect ratios within this tolerance as "matching" the frame (skip crop).
@@ -13,15 +14,17 @@ interface BackgroundControlProps {
   projectId: string;
   /** Effective frame aspect ratio (width / height). */
   aspectRatio: number;
-  /** Stored cropped image (shown in image mode); kept even while color is active. */
+  /** Stored (uncropped) image; kept even while color is active. */
   bgUrl: string | null;
   bgFileName: string | null;
-  /** Server URL of the uncropped original (re-crop after reload). */
-  originalUrl: string | null;
+  /** Current placement crop, applied non-destructively over bgUrl. */
+  bgCrop: BgCrop | null;
   bgColor: string | null;
   bgMode: 'color' | 'image';
   /** Update the displayed background image (optimistic preview / clear). */
   onImageUpload: (url: string, fileName: string, file?: File) => void;
+  /** Persist the placement crop (null = centered cover). */
+  onCropChange: (crop: BgCrop | null) => void;
   /** Persist a solid background color (null clears it). */
   onColorChange: (color: string | null) => void;
   /** Persist which background is active. */
@@ -38,57 +41,38 @@ function getExtension(name: string): string {
  *
  * - The active background is an explicit mode (`bgMode`) so a color and an
  *   uploaded image can coexist: switching to Color keeps the image on disk, and
- *   switching back to Image restores it exactly as it was cropped.
- * - Picking an image whose aspect ratio differs from the frame opens a
- *   crop-to-frame modal. The uncropped original is uploaded alongside the
- *   cropped result so the crop can be redone ("Re-crop") — even after a reload.
+ *   switching back to Image restores it exactly as it was placed.
+ * - The full (uncropped) image is stored once; placement is a normalized crop
+ *   rect (`bgCrop`) applied at render time, so "Re-crop" never re-uploads and
+ *   only one copy of the image is ever stored.
  */
 export function BackgroundControl({
   projectId,
   aspectRatio,
   bgUrl,
   bgFileName,
-  originalUrl,
+  bgCrop,
   bgColor,
   bgMode,
   onImageUpload,
+  onCropChange,
   onColorChange,
   onModeChange,
 }: BackgroundControlProps) {
   const { show: showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // In-session object URL of the last picked original (for immediate re-crop).
-  const [originalSrc, setOriginalSrc] = useState<string | null>(null);
-  const originalSrcRef = useRef<string | null>(null);
-  const setOriginal = useCallback((url: string | null) => {
-    if (originalSrcRef.current && originalSrcRef.current !== url) {
-      URL.revokeObjectURL(originalSrcRef.current);
-    }
-    originalSrcRef.current = url;
-    setOriginalSrc(url);
-  }, []);
-  useEffect(() => () => {
-    if (originalSrcRef.current) URL.revokeObjectURL(originalSrcRef.current);
-  }, []);
-
-  // While set, the placement modal is open showing this image. `pendingOriginal`
-  // is the uncropped file to persist when this crop is applied (null = re-crop,
-  // where the original is already stored).
+  // While set, the placement modal is open showing this image (the stored
+  // original — bgUrl — or an in-session blob for a freshly-picked file).
   const [cropSrc, setCropSrc] = useState<string | null>(null);
-  const [pendingOriginal, setPendingOriginal] = useState<File | null>(null);
 
-  // Upload a cropped image (+ optionally its uncropped original): optimistic
-  // preview, switch to image mode, then PUT.
-  const uploadImage = useCallback(async (cropped: File, original: File | null) => {
+  // Upload the (uncropped) image: optimistic preview, switch to image mode, PUT.
+  const uploadImage = useCallback(async (file: File, previewUrl: string) => {
     onModeChange('image');
-
-    const blobUrl = URL.createObjectURL(cropped);
-    onImageUpload(blobUrl, original?.name ?? cropped.name, cropped);
+    onImageUpload(previewUrl, file.name, file);
 
     const formData = new FormData();
-    formData.append('background', cropped);
-    if (original) formData.append('original', original);
+    formData.append('background', file);
     try {
       const res = await fetch(`/api/projects/${projectId}/background`, {
         method: 'PUT',
@@ -100,13 +84,14 @@ export function BackgroundControl({
       }
       showToast('Background updated', 'success');
     } catch (err) {
-      URL.revokeObjectURL(blobUrl);
+      URL.revokeObjectURL(previewUrl);
       onImageUpload('', '');
       showToast(err instanceof Error ? err.message : 'Failed to upload background', 'error');
     }
   }, [projectId, onImageUpload, onModeChange, showToast]);
 
-  // A file was chosen: validate, then crop-to-frame if the AR differs.
+  // A file was chosen: validate, upload the original, then place it if the AR
+  // differs from the frame.
   const handleFile = useCallback((file: File) => {
     if (!IMAGE_EXTENSIONS.includes(getExtension(file.name))) {
       showToast(`Invalid image. Accepted: ${IMAGE_EXTENSIONS.join(', ')}`, 'error');
@@ -115,12 +100,10 @@ export function BackgroundControl({
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      setOriginal(url); // retain for re-crop (revokes any previous)
+      uploadImage(file, url);
+      onCropChange(null); // reset any prior placement; the modal sets a new one
       const imgAR = img.naturalWidth / img.naturalHeight;
-      if (Math.abs(imgAR - aspectRatio) <= AR_EPSILON) {
-        uploadImage(file, file); // already matches the frame
-      } else {
-        setPendingOriginal(file);
+      if (Math.abs(imgAR - aspectRatio) > AR_EPSILON) {
         setCropSrc(url); // open placement modal
       }
     };
@@ -129,9 +112,10 @@ export function BackgroundControl({
       showToast('Could not read that image', 'error');
     };
     img.src = url;
-  }, [aspectRatio, uploadImage, showToast, setOriginal]);
+  }, [aspectRatio, uploadImage, onCropChange, showToast]);
 
-  const recropSrc = originalSrc ?? originalUrl;
+  // Re-crop uses the stored image itself — it's the uncropped original.
+  const recropSrc = bgUrl;
 
   return (
     <div className="space-y-2.5">
@@ -167,7 +151,7 @@ export function BackgroundControl({
             </span>
             {recropSrc && (
               <button
-                onClick={() => { setPendingOriginal(null); setCropSrc(recropSrc); }}
+                onClick={() => setCropSrc(recropSrc)}
                 className="flex-shrink-0 p-1 text-fg-subtle hover:text-fg transition-colors"
                 title="Re-crop"
                 aria-label="Re-crop"
@@ -222,16 +206,12 @@ export function BackgroundControl({
         <ImageCropModal
           imageSrc={cropSrc}
           aspectRatio={aspectRatio}
-          onCrop={(file) => {
-            const original = pendingOriginal;
-            setPendingOriginal(null);
+          initialCrop={bgCrop}
+          onCrop={(crop) => {
             setCropSrc(null);
-            uploadImage(file, original);
+            onCropChange(crop);
           }}
-          onCancel={() => {
-            setPendingOriginal(null);
-            setCropSrc(null);
-          }}
+          onCancel={() => setCropSrc(null)}
         />
       )}
     </div>

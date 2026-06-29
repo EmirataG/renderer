@@ -56,6 +56,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const colorArticulations = useProjectStore((s) => s.colorArticulations);
   const bgColor = useProjectStore((s) => s.bgColor);
   const bgMode = useProjectStore((s) => s.bgMode);
+  const bgCrop = useProjectStore((s) => s.bgCrop);
   const projectAspectRatio = useProjectStore((s) => s.aspectRatio);
   const setSetting = useProjectStore((s) => s.setSetting);
   const projectName = useProjectStore((s) => s.projectName);
@@ -77,8 +78,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   } | null>(null);
   const [bgUrl, setBgUrl] = useState<string | null>(null);
   const [bgFileName, setBgFileName] = useState<string | null>(null);
-  // Server URL of the uncropped original image (for Re-crop after reload).
-  const [originalBgUrl, setOriginalBgUrl] = useState<string | null>(null);
 
   // Show the uploaded image only in image mode; otherwise the solid color (or
   // white) is shown. The image is kept on disk even while color is active.
@@ -166,11 +165,6 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           setBgUrl(`/api/projects/${projectId}/background`);
           setBgFileName(project.backgroundFileName || null);
         }
-        setOriginalBgUrl(
-          project.originalBackgroundUrl
-            ? `/api/projects/${projectId}/background-original`
-            : null,
-        );
 
         // Load settings from API response into projectStore
         const { loadSettings, setProjectId, setProjectName } =
@@ -228,6 +222,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
           bgColor: project.bgColor ?? DEFAULT_SETTINGS.bgColor,
           // Back-compat: legacy projects with an image but no stored mode show it.
           bgMode: project.bgMode ?? (project.backgroundUrl ? "image" : "color"),
+          bgCrop: project.bgCrop ?? DEFAULT_SETTINGS.bgCrop,
           aspectRatio: project.aspectRatio ?? DEFAULT_SETTINGS.aspectRatio,
         });
 
@@ -528,6 +523,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         audioFile: audioFileForExport!,
         bgImageUrl: showImageBg ? bgUrl! : undefined,
         bgColor: showImageBg ? undefined : bgColor || undefined,
+        bgCrop: showImageBg ? bgCrop ?? undefined : undefined,
         aspectRatio: projectAspectRatio || undefined,
         signal: abortController.signal,
         onProgress: (percent, stage) => {
@@ -689,10 +685,11 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                       aspectRatio={projectAspectRatio || 16 / 9}
                       bgUrl={bgUrl}
                       bgFileName={bgFileName}
-                      originalUrl={originalBgUrl}
+                      bgCrop={bgCrop}
                       bgColor={bgColor}
                       bgMode={bgMode}
                       onImageUpload={handleImageUpload}
+                      onCropChange={(crop) => setSetting("bgCrop", crop)}
                       onColorChange={(color) => setSetting("bgColor", color)}
                       onModeChange={(m) => setSetting("bgMode", m)}
                     />
@@ -1235,6 +1232,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                             <SingleLineRenderer
                               xml={musicXMLFile.xml}
                               bgUrl={showImageBg ? bgUrl! : undefined}
+                              bgCrop={showImageBg ? bgCrop ?? undefined : undefined}
                               aspectRatio={projectAspectRatio || undefined}
                               bgColor={bgColor}
                               onScoreHeight={setSingleLineScoreHeight}
@@ -1276,6 +1274,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                             <RegularRenderer
                               xml={musicXMLFile.xml}
                               bgUrl={showImageBg ? bgUrl! : undefined}
+                              bgCrop={showImageBg ? bgCrop ?? undefined : undefined}
                               aspectRatio={projectAspectRatio || undefined}
                               bgColor={bgColor}
                               fps={fps}

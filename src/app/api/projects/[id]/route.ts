@@ -80,7 +80,7 @@ const ALLOWED_SETTINGS = [
   'colorAccidentals', 'colorDots', 'colorArticulations',
   'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal', 'unplayedOpacity',
   'activeLinePosition', 'revealLinePosition',
-  'bgColor', 'bgMode', 'aspectRatio',
+  'bgColor', 'bgMode', 'bgCrop', 'aspectRatio',
 ];
 
 export async function PATCH(

@@ -35,6 +35,7 @@ function getSaveableSettings(state: ReturnType<typeof useProjectStore.getState>)
     revealLinePosition: state.revealLinePosition,
     bgColor: state.bgColor,
     bgMode: state.bgMode,
+    bgCrop: state.bgCrop,
     aspectRatio: state.aspectRatio,
   };
 }

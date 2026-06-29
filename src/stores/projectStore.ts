@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { BorderStyle } from '../borders';
 import type { ScoreRegion } from '../types/score';
+import type { BgCrop } from '../types/project';
 
 export interface ProjectSettings {
   viewMode: 'page' | 'single-line';
@@ -40,6 +41,8 @@ export interface ProjectSettings {
   bgColor: string | null;
   /** Which background to show: a solid color or the uploaded image. */
   bgMode: 'color' | 'image';
+  /** Placement crop over the (uncropped) background image. null = centered cover. */
+  bgCrop: BgCrop | null;
   /** Frame aspect ratio (width / height). */
   aspectRatio: number;
 }
@@ -71,6 +74,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   revealLinePosition: 0.5,
   bgColor: '#ffffff',
   bgMode: 'color',
+  bgCrop: null,
   aspectRatio: 16 / 9,
 };
 

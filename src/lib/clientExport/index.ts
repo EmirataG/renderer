@@ -30,6 +30,8 @@ import {
 import { splitSingleLineSvg } from '../splitSingleLineSvg';
 import { VideoExporter } from './encode';
 import type { ScoreRegion } from '../../types/score';
+import type { BgCrop } from '../../types/project';
+import { bgCropPosition, bgCropSourceRect } from '../bgCrop';
 
 /**
  * Settings for a video export job.
@@ -458,6 +460,8 @@ interface ClientExportParams {
   settings: ExportSettings;
   audioFile: File;
   bgImageUrl?: string;
+  /** Placement crop over bgImageUrl (normalized, AR-matched). undefined = centered cover. */
+  bgCrop?: BgCrop;
   /** Solid background color (used when no bgImageUrl). */
   bgColor?: string;
   /** Video aspect ratio — used with bgColor to derive viewport dimensions. */
@@ -476,7 +480,7 @@ interface ClientExportParams {
  * 5. Muxes into MP4 and triggers download
  */
 export async function clientExport(params: ClientExportParams): Promise<Blob> {
-  const { musicXml, syncAnchors, settings, audioFile, bgImageUrl, bgColor, aspectRatio, onProgress, signal } = params;
+  const { musicXml, syncAnchors, settings, audioFile, bgImageUrl, bgCrop, bgColor, aspectRatio, onProgress, signal } = params;
 
   onProgress(0, 'Preparing score...');
 
@@ -702,6 +706,7 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
   if (bgImageUrl) {
     bgEl.style.backgroundImage = `url(${bgImageUrl})`;
     bgEl.style.backgroundSize = 'cover';
+    bgEl.style.backgroundPosition = bgCropPosition(bgCrop);
   } else {
     bgEl.style.backgroundColor = bgColor || '#ffffff';
   }
@@ -1091,13 +1096,18 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
       }
     }
 
-    // Draw background: image (CSS `background-size: cover` — scale to cover the
-    // frame, centered), else solid color, else plain white.
+    // Draw background: image (crop rect → frame if placed, else `background-size:
+    // cover` centered), else solid color, else plain white.
     if (bgImage) {
-      const s = Math.max(viewportWidth / bgImage.width, viewportHeight / bgImage.height);
-      const dw = bgImage.width * s;
-      const dh = bgImage.height * s;
-      ctx.drawImage(bgImage, (viewportWidth - dw) / 2, (viewportHeight - dh) / 2, dw, dh);
+      if (bgCrop) {
+        const { sx, sy, sw, sh } = bgCropSourceRect(bgCrop, bgImage.width, bgImage.height);
+        ctx.drawImage(bgImage, sx, sy, sw, sh, 0, 0, viewportWidth, viewportHeight);
+      } else {
+        const s = Math.max(viewportWidth / bgImage.width, viewportHeight / bgImage.height);
+        const dw = bgImage.width * s;
+        const dh = bgImage.height * s;
+        ctx.drawImage(bgImage, (viewportWidth - dw) / 2, (viewportHeight - dh) / 2, dw, dh);
+      }
     } else {
       ctx.fillStyle = bgColor || '#ffffff';
       ctx.fillRect(0, 0, viewportWidth, viewportHeight);

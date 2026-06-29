@@ -2,24 +2,28 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import type { BgCrop } from '../types/project';
 
 interface ImageCropModalProps {
   imageSrc: string;
   /** Target aspect ratio (width / height) the crop must match. */
   aspectRatio: number;
-  onCrop: (file: File) => void;
+  /** Existing crop to start from (re-crop); null centers a fresh crop. */
+  initialCrop?: BgCrop | null;
+  onCrop: (crop: BgCrop) => void;
   onCancel: () => void;
 }
 
 /**
  * Pan-to-place crop modal. The crop box is locked to `aspectRatio` and the user
- * drags to choose which part of the image fills the frame. The result is a JPEG
- * cropped to exactly the target aspect ratio, so it fills the frame edge-to-edge.
+ * drags to choose which part of the image fills the frame. The result is a
+ * normalized crop rect (0–1) applied non-destructively over the original image
+ * at render time — the image itself is never re-encoded.
  *
  * Rendered through a portal to document.body so it escapes ancestor stacking
  * contexts, and it locks page scroll while open.
  */
-export function ImageCropModal({ imageSrc, aspectRatio, onCrop, onCancel }: ImageCropModalProps) {
+export function ImageCropModal({ imageSrc, aspectRatio, initialCrop, onCrop, onCancel }: ImageCropModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -69,9 +73,10 @@ export function ImageCropModal({ imageSrc, aspectRatio, onCrop, onCancel }: Imag
     }
     setCropW(w);
     setCropH(h);
-    setCropX((1 - w) / 2);
-    setCropY((1 - h) / 2);
-  }, [aspectRatio]);
+    // Re-crop: restore the prior placement; otherwise center the crop box.
+    setCropX(initialCrop ? Math.max(0, Math.min(1 - w, initialCrop.x)) : (1 - w) / 2);
+    setCropY(initialCrop ? Math.max(0, Math.min(1 - h, initialCrop.y)) : (1 - h) / 2);
+  }, [aspectRatio, initialCrop]);
 
   // Drag to move crop region
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -96,26 +101,9 @@ export function ImageCropModal({ imageSrc, aspectRatio, onCrop, onCancel }: Imag
     setDragging(false);
   }, []);
 
-  const handleCrop = useCallback(async () => {
+  const handleCrop = useCallback(() => {
     if (!imgNatW || !imgNatH) return;
-
-    const canvas = document.createElement('canvas');
-    const sx = Math.round(cropX * imgNatW);
-    const sy = Math.round(cropY * imgNatH);
-    const sw = Math.round(cropW * imgNatW);
-    const sh = Math.round(cropH * imgNatH);
-    canvas.width = sw;
-    canvas.height = sh;
-
-    const ctx = canvas.getContext('2d')!;
-    const img = imgRef.current!;
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    const blob = await new Promise<Blob>((resolve) =>
-      canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.92)
-    );
-    const file = new File([blob], 'background-cropped.jpg', { type: 'image/jpeg' });
-    onCrop(file);
+    onCrop({ x: cropX, y: cropY, w: cropW, h: cropH });
   }, [cropX, cropY, cropW, cropH, imgNatW, imgNatH, onCrop]);
 
   return createPortal(
