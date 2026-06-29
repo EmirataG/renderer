@@ -84,8 +84,10 @@ interface Props {
   unplayedOpacity?: number;
   // position (0..1) of the active note across the viewport (0.5 = centered)
   activeLinePosition?: number;
-  // position (0..1) of the reveal boundary; >= activeLinePosition
+  // position (0..1) of the reveal (fade-in) boundary; >= activeLinePosition
   revealLinePosition?: number;
+  // position (0..1) of the fade-out boundary; <= activeLinePosition. 0 = off.
+  fadeOutLinePosition?: number;
   // portal target for transport bar (play/pause/reset) — renders there instead of inline
   transportPortalEl?: HTMLDivElement | null;
   // reports the rendered score's natural height (editor px) so the region editor
@@ -125,6 +127,7 @@ export default memo(function SingleLineRenderer({
   unplayedOpacity = 0,
   activeLinePosition = 0.5,
   revealLinePosition = 0.5,
+  fadeOutLinePosition = 0,
   transportPortalEl,
   onScoreHeight,
 }: Props) {
@@ -602,7 +605,7 @@ export default memo(function SingleLineRenderer({
   // immediately (during playback the rAF already re-applies every frame).
   useLayoutEffect(() => {
     applyCameraRef.current(currentXRef.current);
-  }, [activeLinePosition, revealLinePosition]);
+  }, [activeLinePosition, revealLinePosition, fadeOutLinePosition]);
 
   // Before any playback, park the playhead at the score's first note so the
   // pre-play view is exactly the first frame of playback (camera + reveal). Only
@@ -650,13 +653,19 @@ export default memo(function SingleLineRenderer({
     // The camera has no scale, so content units map 1:1 to viewport px.
     const playScreenX = currentXRef.current - cameraXRef.current;
     const band = smoothReveal ? REVEAL_BAND : 0;
-    // The reveal boundary sits at the active line by default; shifting the reveal
-    // line ahead (revealLinePosition > activeLinePosition) reveals notes that
-    // distance before the playhead reaches them.
+    const screenFrac = playScreenX / viewportWidth;
+    // The fade-in boundary sits at the active line by default; shifting the reveal
+    // line ahead (revealLinePosition > activeLinePosition) fades notes in that
+    // distance before the playhead reaches them. The fade-out boundary mirrors it
+    // behind the playhead (fadeOutLinePosition <= activeLinePosition); 0 = off.
     applyReveal(viewport, {
-      playedFrac: playScreenX / viewportWidth + (revealLinePosition - activeLinePosition),
+      playedFrac: screenFrac + (revealLinePosition - activeLinePosition),
       bandFrac: band / viewportWidth,
       unplayedOpacity,
+      fadeOutFrac:
+        fadeOutLinePosition > 0
+          ? screenFrac + (fadeOutLinePosition - activeLinePosition)
+          : undefined,
     });
   }
 

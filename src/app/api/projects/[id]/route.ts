@@ -79,7 +79,7 @@ const ALLOWED_SETTINGS = [
   'activeNoteheadUseNoteDuration',
   'colorAccidentals', 'colorDots', 'colorArticulations',
   'fps', 'scoreShadowDistance', 'hideUnplayedNotes', 'smoothReveal', 'unplayedOpacity',
-  'activeLinePosition', 'revealLinePosition',
+  'activeLinePosition', 'revealLinePosition', 'fadeOutLinePosition',
   'bgColor', 'bgMode', 'bgCrop', 'aspectRatio',
 ];
 

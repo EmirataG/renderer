@@ -46,8 +46,11 @@ export interface ExportSettings {
   unplayedOpacity: number;
   /** Position (0..1) of the active note along the pan axis. 0.5 = centered. */
   activeLinePosition: number;
-  /** Position (0..1, single-line) of the reveal boundary; >= activeLinePosition. */
+  /** Position (0..1, single-line) of the fade-in boundary; >= activeLinePosition. */
   revealLinePosition: number;
+  /** Position (0..1, single-line) of the fade-out boundary; <= activeLinePosition.
+   *  0 = no fade-out. */
+  fadeOutLinePosition: number;
   scoreRegion: ScoreRegion | null;
   scoreBorder: BorderStyle;
   scoreScale: number;
@@ -385,6 +388,9 @@ function drawContentWithReveal(
   /** Output device-px per user-space unit (the ctx's scaleFactor). The scratch
    *  is rendered at this resolution so the high-res raster isn't downsampled. */
   pixelScale: number,
+  /** Fade-out boundary in the same box-fraction space as `playedFrac`: content
+   *  to its LEFT fades to `unplayedOpacity` over `bandFrac`. Omit for no fade-out. */
+  fadeOutFrac?: number,
 ): void {
   const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
   const op = clamp01(unplayedOpacity);
@@ -392,15 +398,19 @@ function drawContentWithReveal(
   // section boundaries — see the gradient construction below.
   const played = playedFrac;
   const band = Math.max(0, bandFrac);
-  const fadeEnd = played + band;
+  const fadeEnd = played + band;       // fade-in band end (right)
+  const hasFadeOut = fadeOutFrac != null;
+  const foEnd = fadeOutFrac ?? 0;      // fade-out boundary (right of it = full)
+  const foStart = foEnd - band;        // fade-out band start (left)
 
-  // Fully played → straight draw. Hidden + nothing in view (band ends before the
-  // box) → skip.
-  if (played >= 1) {
+  // Fully played, and the fade-out boundary doesn't cross this box (foEnd <= 0 ⇒
+  // box is entirely ahead of it) → straight draw. Hidden + nothing in view → skip.
+  if (played >= 1 && (!hasFadeOut || foEnd <= 0)) {
     ctx.drawImage(img, dx, dy, dw, dh);
     return;
   }
-  if (op <= 0 && fadeEnd <= 0) return;
+  if (op <= 0 && fadeEnd <= 0) return;                 // whole box past fade-in, hidden
+  if (op <= 0 && hasFadeOut && foStart >= 1) return;   // whole box before fade-out, hidden
 
   // Render into a scratch canvas sized to the destination pixel box. The
   // destination box here is in the ctx's *current* (already scaled/rotated)
@@ -423,23 +433,29 @@ function drawContentWithReveal(
   sctx.drawImage(img, 0, 0, w, h);
 
   // Multiply alpha by the horizontal reveal gradient. The alpha is piecewise
-  // linear across the box: 1 (full) for f <= played, `op` for f >= fadeEnd,
-  // linear between. Canvas stop offsets must be in [0,1], so we extrapolate the
-  // alpha at the box edges and only place interior stops where the fade actually
-  // crosses the section — that keeps the band continuous across boundaries
-  // (the box's `played`/`fadeEnd` may sit outside [0,1]).
+  // linear across the box: `op` for the faded-out tail (f <= foStart), ramping to
+  // 1 by foEnd, full through the played middle, then ramping back to `op` by
+  // fadeEnd (the faded-in head). We place a stop at each interior breakpoint
+  // (doubled, so a zero-width band renders as a hard step) and extrapolate the
+  // box edges — keeping bands continuous across section boundaries, since
+  // played/fadeEnd/foStart/foEnd may sit outside [0,1].
   sctx.globalCompositeOperation = 'destination-in';
   const grad = sctx.createLinearGradient(0, 0, w, 0);
   const a = op;
-  const alphaAt = (f: number) =>
-    f <= played ? 1 : f >= fadeEnd ? a : 1 + (a - 1) * ((f - played) / (fadeEnd - played));
+  const alphaAt = (f: number) => {
+    const aIn = f <= played ? 1 : f >= fadeEnd ? a : 1 + (a - 1) * ((f - played) / (fadeEnd - played));
+    if (!hasFadeOut) return aIn;
+    const aOut = f >= foEnd ? 1 : f <= foStart ? a : a + (1 - a) * ((f - foStart) / (foEnd - foStart));
+    return Math.min(aIn, aOut);
+  };
+  const breakpoints = [played, fadeEnd];
+  if (hasFadeOut) breakpoints.push(foStart, foEnd);
+  const interior = breakpoints.filter((b) => b > 0 && b < 1).sort((x, y) => x - y);
+  const EPS = 1e-4;
   grad.addColorStop(0, `rgba(0,0,0,${alphaAt(0)})`);
-  if (played > 0 && played < 1) grad.addColorStop(played, 'rgba(0,0,0,1)');
-  if (band <= 0) {
-    // Hard step at the playhead (no smooth reveal).
-    if (played > 0 && played < 1) grad.addColorStop(played, `rgba(0,0,0,${a})`);
-  } else if (fadeEnd > 0 && fadeEnd < 1) {
-    grad.addColorStop(fadeEnd, `rgba(0,0,0,${a})`);
+  for (const b of interior) {
+    grad.addColorStop(b, `rgba(0,0,0,${alphaAt(b - EPS)})`);
+    grad.addColorStop(b, `rgba(0,0,0,${alphaAt(b + EPS)})`);
   }
   grad.addColorStop(1, `rgba(0,0,0,${alphaAt(1)})`);
   sctx.fillStyle = grad;
@@ -1140,6 +1156,12 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
     const revealPlayX =
       animState.currentX +
       (settings.revealLinePosition - settings.activeLinePosition) * regionWidth;
+    // Fade-out boundary (content space), mirror of revealPlayX behind the
+    // playhead. 0 (left edge) = off.
+    const fadeOutOn = revealOn && settings.fadeOutLinePosition > 0;
+    const fadeOutPlayX =
+      animState.currentX +
+      (settings.fadeOutLinePosition - settings.activeLinePosition) * regionWidth;
 
     if (isSingleLine) {
       const cameraX = animState.cameraX;
@@ -1180,9 +1202,14 @@ export async function clientExport(params: ClientExportParams): Promise<Blob> {
           const sectPlayed = sectionW > 0 ? (revealPlayX - sectionOffsets[p]) / sectionW : 0;
           const boxPlayed = dw > 0 ? (sectionOverscan + sectPlayed * sectionW) / dw : 0;
           const boxBand = dw > 0 && settings.smoothReveal ? (REVEAL_BAND_EXPORT) / dw : 0;
+          const boxFadeOut =
+            fadeOutOn && dw > 0
+              ? (sectionOverscan + fadeOutPlayX - sectionOffsets[p]) / dw
+              : undefined;
           drawContentWithReveal(
             ctx, piece.img, dx, yOff, dw, sectionH,
             boxPlayed, boxBand, settings.unplayedOpacity, revealScratch, scaleFactor,
+            boxFadeOut,
           );
         } else {
           ctx.drawImage(piece.img, dx, yOff, dw, sectionH);

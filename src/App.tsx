@@ -39,6 +39,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
   const unplayedOpacity = useProjectStore((s) => s.unplayedOpacity);
   const activeLinePosition = useProjectStore((s) => s.activeLinePosition);
   const revealLinePosition = useProjectStore((s) => s.revealLinePosition);
+  const fadeOutLinePosition = useProjectStore((s) => s.fadeOutLinePosition);
   const scoreRegion = useProjectStore((s) => s.scoreRegion);
   const scoreBorder = useProjectStore((s) => s.scoreBorder);
   const scoreScale = useProjectStore((s) => s.scoreScale);
@@ -219,6 +220,8 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
             project.activeLinePosition ?? DEFAULT_SETTINGS.activeLinePosition,
           revealLinePosition:
             project.revealLinePosition ?? DEFAULT_SETTINGS.revealLinePosition,
+          fadeOutLinePosition:
+            project.fadeOutLinePosition ?? DEFAULT_SETTINGS.fadeOutLinePosition,
           bgColor: project.bgColor ?? DEFAULT_SETTINGS.bgColor,
           // Back-compat: legacy projects with an image but no stored mode show it.
           bgMode: project.bgMode ?? (project.backgroundUrl ? "image" : "color"),
@@ -486,6 +489,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
         unplayedOpacity,
         activeLinePosition,
         revealLinePosition,
+        fadeOutLinePosition,
         scoreRegion,
         scoreBorder,
         scoreScale,
@@ -1071,7 +1075,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               }
                               className="grunge-checkbox"
                             />
-                            <span>Smooth Reveal</span>
+                            <span>Smooth Fade</span>
                           </label>
 
                           <div className="grunge-field-head">
@@ -1268,6 +1272,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                               unplayedOpacity={unplayedOpacity}
                               activeLinePosition={activeLinePosition}
                               revealLinePosition={revealLinePosition}
+                              fadeOutLinePosition={fadeOutLinePosition}
                               transportPortalEl={transportEl}
                             />
                           ) : (
@@ -1342,6 +1347,10 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                                   revealLinePosition={revealLinePosition}
                                   onRevealLineChange={(p) =>
                                     setSetting("revealLinePosition", p)
+                                  }
+                                  fadeOutLinePosition={fadeOutLinePosition}
+                                  onFadeOutLineChange={(p) =>
+                                    setSetting("fadeOutLinePosition", p)
                                   }
                                 />
                               </div>
@@ -1494,6 +1503,7 @@ export default function App({ projectId, onNavigateDashboard }: AppProps) {
                   setSetting("scoreRegion", null);
                   setSetting("activeLinePosition", DEFAULT_SETTINGS.activeLinePosition);
                   setSetting("revealLinePosition", DEFAULT_SETTINGS.revealLinePosition);
+                  setSetting("fadeOutLinePosition", DEFAULT_SETTINGS.fadeOutLinePosition);
                   setIsEditingRegion(false);
                   setShowResetConfirm(false);
                 }}

@@ -31,12 +31,16 @@ export interface ProjectSettings {
    *  as a fraction (0..1) along the camera's pan axis (x in single-line, y in
    *  page mode). 0.5 = centered (the legacy behavior). */
   activeLinePosition: number;
-  /** Position (0..1, single-line x axis) where unplayed notes get revealed.
-   *  Always >= activeLinePosition: notes can reveal AHEAD of the playhead so the
+  /** Position (0..1, single-line x axis) where unplayed notes fade in.
+   *  Always >= activeLinePosition: notes can fade in AHEAD of the playhead so the
    *  reader sees them before they're played. Equal to activeLinePosition by
-   *  default (reveal exactly at the playhead). Persists even when the hide
+   *  default (fade in exactly at the playhead). Persists even when the hide
    *  feature is off. */
   revealLinePosition: number;
+  /** Position (0..1, single-line x axis) where played notes fade OUT as they
+   *  scroll off the trailing edge. Always <= activeLinePosition. 0 (default,
+   *  left edge) = no fade-out. Mirror of revealLinePosition. */
+  fadeOutLinePosition: number;
   /** Solid background color for the frame. Defaults to white. */
   bgColor: string | null;
   /** Which background to show: a solid color or the uploaded image. */
@@ -72,6 +76,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   unplayedOpacity: 0,
   activeLinePosition: 0.5,
   revealLinePosition: 0.5,
+  fadeOutLinePosition: 0,
   bgColor: '#ffffff',
   bgMode: 'color',
   bgCrop: null,

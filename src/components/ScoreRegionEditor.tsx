@@ -18,11 +18,14 @@ interface Props {
   /** Position (0..1) of the active-note line, along lineAxis within the region. */
   activeLinePosition: number;
   onActiveLineChange: (pos: number) => void;
-  /** Show + allow editing the reveal line (single-line + hide feature on). */
+  /** Show + allow editing the fade-in/out lines (single-line + hide feature on). */
   showRevealLine?: boolean;
-  /** Position (0..1) of the reveal line; kept >= activeLinePosition. */
+  /** Position (0..1) of the fade-in line; kept >= activeLinePosition. */
   revealLinePosition: number;
   onRevealLineChange: (pos: number) => void;
+  /** Position (0..1) of the fade-out line; kept <= activeLinePosition. */
+  fadeOutLinePosition: number;
+  onFadeOutLineChange: (pos: number) => void;
 }
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -56,6 +59,8 @@ export function ScoreRegionEditor({
   showRevealLine = false,
   revealLinePosition,
   onRevealLineChange,
+  fadeOutLinePosition,
+  onFadeOutLineChange,
 }: Props) {
   const [region, setRegion] = useState<Region>(() => {
     const base = initialRegion ?? defaultRegion;
@@ -201,12 +206,13 @@ export function ScoreRegionEditor({
     window.addEventListener('mouseup', onUp);
   }, [commit]);
 
-  /* ---------------- active / reveal line dragging ----------------
+  /* ---------------- active / fade-in / fade-out line dragging ----------------
    * Drag projects the pointer onto the region's local pan axis (so it works
-   * under rotation), in the box's [0,1] space. The reveal line is kept at or
-   * ahead of the active line. onChange fires live for instant preview. */
+   * under rotation), in the box's [0,1] space. The fade-in line is kept at or
+   * ahead of the active line; the fade-out line at or behind it. onChange fires
+   * live for instant preview. */
   const startLineDrag = useCallback(
-    (which: 'active' | 'reveal') => (e: React.MouseEvent) => {
+    (which: 'active' | 'reveal' | 'fadeOut') => (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
       const r = regionRef.current;
@@ -215,7 +221,9 @@ export function ScoreRegionEditor({
       const size = lineAxis === 'x' ? r.width : r.height;
       const startActive = activeLinePosition;
       const startReveal = revealLinePosition;
-      const startFrac = which === 'active' ? startActive : startReveal;
+      const startFadeOut = fadeOutLinePosition;
+      const startFrac =
+        which === 'active' ? startActive : which === 'reveal' ? startReveal : startFadeOut;
       const sx = e.clientX, sy = e.clientY;
 
       // Snap to a target fraction when within EDGE_SNAP px of it.
@@ -233,12 +241,16 @@ export function ScoreRegionEditor({
         if (which === 'active') {
           frac = snapTo(frac, [0.5]); // snap back to the middle
           onActiveLineChange(frac);
-          // Reveal can never sit behind the active line — push it ahead, and
-          // let it settle back to where it was once the active line retreats.
+          // The fade lines can't cross the active line — push them along, and let
+          // each settle back to where it was once the active line retreats.
           onRevealLineChange(Math.max(startReveal, frac));
-        } else {
+          onFadeOutLineChange(Math.min(startFadeOut, frac));
+        } else if (which === 'reveal') {
           frac = snapTo(frac, [0.5, startActive]); // snap to middle or onto the active line
           onRevealLineChange(Math.max(frac, startActive));
+        } else {
+          frac = snapTo(frac, [0.5, startActive]); // snap to middle or onto the active line
+          onFadeOutLineChange(Math.min(frac, startActive));
         }
       };
       const onUp = () => {
@@ -248,7 +260,8 @@ export function ScoreRegionEditor({
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [scale, lineAxis, activeLinePosition, revealLinePosition, onActiveLineChange, onRevealLineChange],
+    [scale, lineAxis, activeLinePosition, revealLinePosition, fadeOutLinePosition,
+     onActiveLineChange, onRevealLineChange, onFadeOutLineChange],
   );
 
   const HANDLE = 10;
@@ -264,19 +277,29 @@ export function ScoreRegionEditor({
     { hx: 1, hy: 0, cursor: 'ew-resize' },
   ];
 
-  // Active / reveal marker line + its drag handle, drawn inside the rotated box.
-  // `atStart` puts the handle on the leading edge (top/left for active), `!atStart`
-  // on the trailing edge (bottom/right for reveal) — so handles never collide even
-  // when the two lines overlap.
+  // Active / fade-in / fade-out marker line + its drag handle, drawn inside the
+  // rotated box. `atStart` puts the handle on the leading edge (top/left),
+  // `!atStart` on the trailing edge (bottom/right) — so handles never collide
+  // even when the lines overlap.
   const isX = lineAxis === 'x';
+  const LINE_LABEL: Record<'active' | 'reveal' | 'fadeOut', string> = {
+    active: 'ACTIVE',
+    reveal: 'FADE IN',
+    fadeOut: 'FADE OUT',
+  };
+  const LINE_TITLE: Record<'active' | 'reveal' | 'fadeOut', string> = {
+    active: 'Where the playing note sits',
+    reveal: 'Where notes fade in',
+    fadeOut: 'Where notes fade out',
+  };
   const renderLine = (
-    kind: 'active' | 'reveal',
+    kind: 'active' | 'reveal' | 'fadeOut',
     frac: number,
     color: string,
     atStart: boolean,
   ) => {
     const pct = `${clamp01(frac) * 100}%`;
-    const dashed = kind === 'reveal';
+    const dashed = kind !== 'active';
     return (
       <div key={kind} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 15 }}>
         <div
@@ -289,7 +312,7 @@ export function ScoreRegionEditor({
         />
         <div
           onMouseDown={startLineDrag(kind)}
-          title={kind === 'active' ? 'Where the playing note sits' : 'Where notes get revealed'}
+          title={LINE_TITLE[kind]}
           style={{
             position: 'absolute',
             pointerEvents: 'auto',
@@ -310,7 +333,7 @@ export function ScoreRegionEditor({
               : { top: pct, transform: 'translateY(-50%)', ...(atStart ? { left: -2 } : { right: -2 }) }),
           }}
         >
-          {kind === 'active' ? 'ACTIVE' : 'REVEAL'}
+          {LINE_LABEL[kind]}
         </div>
       </div>
     );
@@ -346,7 +369,7 @@ export function ScoreRegionEditor({
           </div>
         </div>
 
-        {/* Look-ahead zone: the gap where notes are revealed before they play */}
+        {/* Look-ahead zone: the gap where notes fade in before they play */}
         {showRevealLine && isX && revealLinePosition > activeLinePosition && (
           <div
             style={{
@@ -362,11 +385,28 @@ export function ScoreRegionEditor({
           />
         )}
 
-        {/* Active line (always) + reveal line (single-line + hide feature). The
-            reveal handle sits on the opposite edge so the two stay grabbable
-            even when the lines overlap. */}
+        {/* Trailing zone: the gap where played notes fade out */}
+        {showRevealLine && isX && fadeOutLinePosition < activeLinePosition && fadeOutLinePosition > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: `${clamp01(fadeOutLinePosition) * 100}%`,
+              width: `${clamp01(activeLinePosition - fadeOutLinePosition) * 100}%`,
+              background: 'rgba(168,85,247,0.10)',
+              pointerEvents: 'none',
+              zIndex: 14,
+            }}
+          />
+        )}
+
+        {/* Active line (always) + fade-in/out lines (single-line + hide feature).
+            The fade handles sit on the trailing edge so they stay grabbable even
+            when the lines overlap the active line. */}
         {renderLine('active', activeLinePosition, '#22d3ee', true)}
         {showRevealLine && renderLine('reveal', revealLinePosition, '#f59e0b', false)}
+        {showRevealLine && renderLine('fadeOut', fadeOutLinePosition, '#a855f7', false)}
 
         {/* Resize handles (rotate with the box) */}
         {handles.map(({ hx, hy, cursor }) => (

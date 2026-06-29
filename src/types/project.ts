@@ -48,6 +48,7 @@ export interface Project {
   unplayedOpacity?: number;
   activeLinePosition?: number;
   revealLinePosition?: number;
+  fadeOutLinePosition?: number;
 
   // Sync anchors (plain object, not Map)
   anchors?: Record<string, number>;

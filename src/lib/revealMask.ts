@@ -26,14 +26,19 @@
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 export interface RevealParams {
-  /** Fraction (0..1) of the section width that is PLAYED (revealed at full
-   *  opacity). 0 = nothing played, 1 = all played. */
+  /** Fraction (0..1) of the section width that is PLAYED (faded in at full
+   *  opacity). 0 = nothing played, 1 = all played. This is the fade-IN boundary;
+   *  content to its right is unplayed (hidden/faded). */
   playedFrac: number;
   /** Width of the soft fade band, as a fraction (0..1) of the section width.
-   *  0 = hard edge. Only used when smoothReveal is on. */
+   *  0 = hard edge. Only used when smoothReveal is on. Shared by both sides. */
   bandFrac: number;
-  /** Alpha (0..1) of the unplayed region. 0 = hidden, >0 = faded. */
+  /** Alpha (0..1) of the unplayed/faded region. 0 = hidden, >0 = faded. */
   unplayedOpacity: number;
+  /** Fade-OUT boundary (0..1, same axis as playedFrac): content to its LEFT
+   *  fades down to `unplayedOpacity` over `bandFrac`, mirroring the fade-in side.
+   *  Omit for no fade-out (the trailing edge stays at full opacity). */
+  fadeOutFrac?: number;
 }
 
 /**
@@ -47,8 +52,9 @@ export interface RevealParams {
  * virtualization (layer promotion, none→mask, and display-toggle repaint forces
  * all failed). HTML elements invalidate `mask-image` correctly.
  *
- * The unplayed region is cut/faded from the RIGHT; top/bottom are overscanned
- * by 50% (`inset(-50% … -50% -50%)`) so tall elements aren't clipped.
+ * The unplayed region is cut/faded from the RIGHT (fade in); with `fadeOutFrac`
+ * the trailing played region is cut/faded from the LEFT (fade out), symmetric.
+ * Top/bottom are overscanned by 50% so tall elements aren't clipped.
  *
  * The gradient stops are deliberately NOT clamped to [0%, 100%]: a section is
  * one slice of the global score, so a fade band that straddles a section
@@ -58,31 +64,50 @@ export interface RevealParams {
  * clamp here is what made smooth reveal hard-edge at section boundaries.
  */
 export function applyReveal(el: HTMLElement, params: RevealParams): void {
+  const bandPct = Math.max(0, params.bandFrac) * 100;
   const p = params.playedFrac * 100;            // % of section width played (unclamped)
-  const fe = p + Math.max(0, params.bandFrac) * 100; // fade-band end (unclamped, fe >= p)
+  const fe = p + bandPct;                        // fade-in band end (unclamped, fe >= p)
   const op = clamp01(params.unplayedOpacity);
 
-  // inset() order is top right bottom left.
-  const insetFor = (cutPct: number) => `inset(-50% ${cutPct.toFixed(2)}% -50% -50%)`;
+  // Fade-out (trailing) side: content left of `q` fades to `op` over a band
+  // ending at `q` and starting at `fs = q - band`. Omitted ⇒ no fade-out.
+  const hasFadeOut = params.fadeOutFrac != null;
+  const q = (params.fadeOutFrac ?? 0) * 100;
+  const fs = q - bandPct;
+  const fullyPlayed = p >= 100;
+
+  const f2 = (n: number) => n.toFixed(2);
+  // inset() order is top right bottom left. Top/bottom overscanned so tall
+  // elements aren't clipped; left/right cut the hidden head/tail.
+  const insetFor = (rightCut: number, leftCut: number) =>
+    `inset(-50% ${f2(rightCut)}% -50% ${f2(Math.max(0, leftCut))}%)`;
 
   let clipPath = 'none';
   let maskImage = 'none';
 
-  if (p >= 100) {
-    // Fully played — reveal everything (clip/mask stay 'none').
+  if (fullyPlayed && !hasFadeOut) {
+    // Fully played, no fade-out — reveal everything (clip/mask stay 'none').
   } else if (op > 0) {
-    // FADED unplayed region. Mask only (a clip can't fade): full alpha up to the
-    // playhead (`p`), fading to `op` by the band end (`fe`). Two stops + CSS
-    // extrapolation give a hard step when fe === p (no smooth reveal).
+    // FADED hidden regions. Mask only (a clip can't fade). Build stops left→right:
+    // faded-out tail → solid middle → faded-in head. Coincident stops give a hard
+    // step when band === 0.
     const a = op.toFixed(4);
-    maskImage = `linear-gradient(to right, #000 ${p.toFixed(2)}%, rgba(0,0,0,${a}) ${fe.toFixed(2)}%)`;
+    const stops: string[] = [];
+    if (hasFadeOut) stops.push(`rgba(0,0,0,${a}) ${f2(fs)}%`, `#000 ${f2(q)}%`);
+    if (!fullyPlayed) stops.push(`#000 ${f2(p)}%`, `rgba(0,0,0,${a}) ${f2(fe)}%`);
+    else stops.push('#000 100%'); // keep the right solid when fully played
+    maskImage = `linear-gradient(to right, ${stops.join(', ')})`;
   } else {
-    // HIDDEN unplayed region (op === 0): clip-path cut at the band end, plus a
-    // soft mask band from the playhead to the band end when smooth.
-    clipPath = insetFor(100 - fe);
-    if (fe > p) {
-      maskImage = `linear-gradient(to right, #000 ${p.toFixed(2)}%, transparent ${fe.toFixed(2)}%)`;
-    }
+    // HIDDEN regions (op === 0): clip-path cuts the hidden head/tail; a soft mask
+    // band feathers each boundary when smooth (band > 0).
+    const rightCut = fullyPlayed ? 0 : 100 - fe;
+    const leftCut = hasFadeOut ? fs : 0;
+    clipPath = insetFor(rightCut, leftCut);
+    const stops: string[] = [];
+    if (hasFadeOut && q > fs) stops.push(`transparent ${f2(fs)}%`, `#000 ${f2(q)}%`);
+    if (!fullyPlayed && fe > p) stops.push(`#000 ${f2(p)}%`, `transparent ${f2(fe)}%`);
+    else if (stops.length) stops.push('#000 100%'); // close the tail band into solid
+    if (stops.length) maskImage = `linear-gradient(to right, ${stops.join(', ')})`;
   }
 
   const key = `${clipPath}|${maskImage}`;

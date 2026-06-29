@@ -33,6 +33,7 @@ function getSaveableSettings(state: ReturnType<typeof useProjectStore.getState>)
     unplayedOpacity: state.unplayedOpacity,
     activeLinePosition: state.activeLinePosition,
     revealLinePosition: state.revealLinePosition,
+    fadeOutLinePosition: state.fadeOutLinePosition,
     bgColor: state.bgColor,
     bgMode: state.bgMode,
     bgCrop: state.bgCrop,
