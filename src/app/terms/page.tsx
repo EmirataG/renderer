@@ -1,14 +1,24 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ManuscriptMark } from "@/components/ManuscriptMark";
+import { LegalDocument, type LegalSection } from "@/components/LegalDocument";
 
 // ─────────────────────────────────────────────────────────────────────────
 // EDIT THESE before launch (and have a lawyer review the whole document).
+//   • COMPANY_NAME / COMPANY_ENTITY — your registered legal entity.
+//   • GOVERNING_LAW — the state/country whose law governs + courts.
+//   • CONTACT_EMAIL — general/legal contact.
+//   • COPYRIGHT_AGENT_* — your DMCA Designated Agent. You MUST also register
+//     the agent with the U.S. Copyright Office (DMCA Designated Agent
+//     Directory, dmca.copyright.gov) for §512 safe-harbor protection; the
+//     registration expires and must be renewed every three years.
 // ─────────────────────────────────────────────────────────────────────────
 const COMPANY_NAME = "Manuscript";
+const COMPANY_ENTITY = "Manuscript"; // e.g. "Manuscript, Inc."
 const CONTACT_EMAIL = "support@manuscript.app";
-const GOVERNING_LAW = "your jurisdiction";
-const LAST_UPDATED = "June 13, 2026";
+const COPYRIGHT_EMAIL = "copyright@manuscript.app";
+const COPYRIGHT_AGENT_NAME = "Manuscript Copyright Agent";
+const COPYRIGHT_AGENT_ADDRESS = "[mailing address on file with the U.S. Copyright Office]";
+const GOVERNING_LAW = "[the EU member state where the company is established]";
+const LAST_UPDATED = "June 29, 2026";
 // ─────────────────────────────────────────────────────────────────────────
 
 export const metadata: Metadata = {
@@ -16,34 +26,25 @@ export const metadata: Metadata = {
   description: `Terms of Service for ${COMPANY_NAME}, a score visualization and sync tool.`,
 };
 
-const serif = { fontFamily: 'Georgia, "Times New Roman", serif' } as const;
-
-interface Section {
-  title: string;
-  paras?: string[];
-  bullets?: string[];
-  outro?: string[];
-}
-
-const SECTIONS: Section[] = [
+const SECTIONS: LegalSection[] = [
   {
     title: "Acceptance of Terms",
     paras: [
-      `These Terms of Service ("Terms") govern your access to and use of ${COMPANY_NAME} (the "Service"), a web application that turns musical scores and audio recordings into synchronized score-animation videos. By creating an account or otherwise using the Service, you agree to be bound by these Terms.`,
+      `These Terms of Service ("Terms") govern your access to and use of ${COMPANY_NAME} (the "Service"), a web application that turns musical scores and audio recordings into synchronized score-animation videos. By creating an account or otherwise using the Service, you agree to be bound by these Terms and by our Privacy Policy, which is incorporated by reference.`,
       `If you do not agree to these Terms, do not use the Service. If you are using the Service on behalf of an organization, you represent that you have authority to bind that organization to these Terms.`,
     ],
   },
   {
     title: "The Service",
     paras: [
-      `${COMPANY_NAME} lets you upload a music score (MusicXML, MXL, or MEI), an audio recording, and an optional background image; align score events to the audio; preview the synchronized animation; and export it as a video. Video export is rendered and encoded entirely on your own device — exported files are not uploaded to or stored on our servers.`,
+      `${COMPANY_NAME} lets you upload a music score (MusicXML, MXL, or MEI), an audio recording, and an optional background image; align score events to the audio; preview the synchronized animation; and export it as a video. Video export is rendered and encoded entirely on your own device — exported videos are not uploaded to or stored on our servers. The files you upload (score, audio, image) are stored on our cloud infrastructure so that we can render and return your project to you.`,
       `The Service is under active development and may be offered on a pre-release or "beta" basis. Features may change, be added, or be removed at any time.`,
     ],
   },
   {
     title: "Accounts & Eligibility",
     paras: [
-      `Some features require an account, which you create through a third-party sign-in provider. You are responsible for all activity that occurs under your account and for maintaining the security of the credentials used to access it.`,
+      `Some features require an account, which you create through a third-party sign-in provider (Google). You are responsible for all activity that occurs under your account and for maintaining the security of the credentials used to access it.`,
     ],
     bullets: [
       "You must be at least 13 years old, or the minimum age of digital consent in your country, to use the Service.",
@@ -56,21 +57,39 @@ const SECTIONS: Section[] = [
     title: "Your Content & Ownership",
     paras: [
       `"Your Content" means the scores, audio, images, project settings, and other material you upload to or create within the Service. You retain all ownership rights in Your Content. We do not claim ownership of it.`,
-      `To operate the Service, you grant ${COMPANY_NAME} a limited, non-exclusive, worldwide, royalty-free license to host, store, reproduce, process, and display Your Content solely for the purpose of providing the Service to you (for example, to render your score, store your project, and stream your files back to your browser). This license ends when Your Content is deleted, except for residual copies retained transiently or in routine backups for a limited period.`,
+      `To operate the Service, you grant ${COMPANY_NAME} a limited, non-exclusive, worldwide, royalty-free license to host, store, reproduce, and process Your Content solely for the purpose of providing the Service to you (for example, to render your score, store your project, and stream your files back to your browser). This license ends when Your Content is deleted, except for residual copies retained transiently or in routine backups for a limited period.`,
     ],
   },
   {
-    title: "Content Rights & Copyright",
+    title: "Content Rights, Copyright & Music Licensing",
     paras: [
-      `Musical works and recordings are frequently protected by copyright. You are solely responsible for ensuring you have all rights necessary to upload and use Your Content.`,
+      `Musical compositions and sound recordings are frequently protected by copyright, and they often involve multiple, separately-owned rights — including rights in the underlying composition (held by songwriters/publishers) and rights in the specific recording (held by performers/labels). Creating a video that combines a recording or score with moving visuals can additionally implicate "synchronization" and other rights. You are solely responsible for ensuring you hold every right necessary to upload Your Content and to create, reproduce, distribute, and publicly perform or display any video you export.`,
+      `${COMPANY_NAME} does not grant, obtain, clear, or provide any music license of any kind. We do not hold blanket agreements with publishers, labels, performing-rights organizations, or other rightsholders, and using the Service does not give you any synchronization, mechanical, master-use, performance, or other license. Obtaining any required licenses is entirely your responsibility.`,
     ],
     bullets: [
-      "You represent and warrant that you own Your Content, or have obtained all licenses, permissions, and consents required to upload and use it within the Service.",
+      "You represent and warrant that you own Your Content, or have obtained all licenses, permissions, and consents required to upload it and to make and use any video you export from it.",
       "You agree not to upload content that infringes any copyright, trademark, or other right of a third party.",
+      "You acknowledge that exporting a video does not clear any rights, and that distributing or publishing that video may require licenses you must obtain yourself.",
       "We respect the intellectual-property rights of others and expect you to do the same.",
     ],
+  },
+  {
+    title: "Copyright Complaints & Notice-and-Takedown",
+    paras: [
+      `We operate a notice-and-takedown process and respond to copyright complaints in accordance with applicable law — including the EU Digital Services Act and e-Commerce rules governing hosting providers and, for matters arising under U.S. law, the Digital Millennium Copyright Act ("DMCA"). If you believe content stored on the Service infringes a copyright you own or control, send a written notice to our copyright contact that includes:`,
+    ],
+    bullets: [
+      "A physical or electronic signature of the copyright owner or a person authorized to act on their behalf;",
+      "Identification of the copyrighted work claimed to have been infringed;",
+      "Identification of the material that is claimed to be infringing and information reasonably sufficient to let us locate it;",
+      "Your contact information (name, address, telephone number, and email);",
+      "A statement that you have a good-faith belief that the use is not authorized by the copyright owner, its agent, or the law;",
+      "A statement, under penalty of perjury, that the information in the notice is accurate and that you are authorized to act on the copyright owner's behalf.",
+    ],
     outro: [
-      `If you believe content on the Service infringes your rights, contact us at ${CONTACT_EMAIL} with enough detail to identify the work and the allegedly infringing material. We may remove content, disable access, and terminate accounts of users who repeatedly infringe.`,
+      `Copyright contact (also our DMCA Designated Agent for U.S. notices): ${COPYRIGHT_AGENT_NAME}, ${COPYRIGHT_EMAIL}, ${COPYRIGHT_AGENT_ADDRESS}.`,
+      `Counter-notification: if your material was removed and you believe it was removed in error or misidentification, you may send a counter-notification to the same agent containing the information required by the DMCA. We may restore the material if the original complainant does not seek a court order within the time period required by law.`,
+      `Repeat-infringer policy: we will, in appropriate circumstances and at our discretion, disable or terminate the accounts of users who are the subject of repeated valid infringement notices or who we otherwise determine to be repeat infringers. Knowingly making a material misrepresentation in a notice or counter-notification may expose you to liability for damages under the DMCA.`,
     ],
   },
   {
@@ -102,12 +121,13 @@ const SECTIONS: Section[] = [
     title: "Intellectual Property",
     paras: [
       `The Service, including its software, design, text, graphics, logos, and the "${COMPANY_NAME}" name and branding, is owned by ${COMPANY_NAME} or its licensors and is protected by intellectual-property laws. Subject to these Terms, you are granted a limited, revocable, non-transferable license to use the Service for its intended purpose. No rights are granted to you in our intellectual property except as expressly stated here.`,
+      `The Service is built with third-party and open-source software (including the Verovio music-engraving library and SMuFL-compliant music fonts), which remains the property of its respective owners and is used under its own license terms.`,
     ],
   },
   {
     title: "Third-Party Services",
     paras: [
-      `The Service relies on third-party providers — including Google and Firebase for authentication and storage, and embedded video players for demonstration content. Your use of those features may be subject to the third parties' own terms and privacy policies. We are not responsible for third-party services and do not control them.`,
+      `The Service relies on third-party providers — including Google and Firebase for authentication, database, and file storage, and embedded YouTube players for demonstration content. Your use of those features may be subject to the third parties' own terms and privacy policies. We are not responsible for third-party services and do not control them.`,
     ],
   },
   {
@@ -119,13 +139,16 @@ const SECTIONS: Section[] = [
   {
     title: "Limitation of Liability",
     paras: [
-      `TO THE MAXIMUM EXTENT PERMITTED BY LAW, ${COMPANY_NAME.toUpperCase()} AND ITS OPERATORS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, OR GOODWILL, ARISING OUT OF OR RELATING TO YOUR USE OF THE SERVICE. OUR TOTAL LIABILITY FOR ANY CLAIM RELATING TO THE SERVICE WILL NOT EXCEED THE GREATER OF THE AMOUNT YOU PAID US IN THE TWELVE MONTHS BEFORE THE CLAIM OR ONE HUNDRED (100) UNITS OF YOUR LOCAL CURRENCY.`,
+      `TO THE MAXIMUM EXTENT PERMITTED BY LAW, ${COMPANY_NAME.toUpperCase()} AND ITS OPERATORS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF DATA, PROFITS, OR GOODWILL, ARISING OUT OF OR RELATING TO YOUR USE OF THE SERVICE. OUR TOTAL LIABILITY FOR ANY CLAIM RELATING TO THE SERVICE WILL NOT EXCEED THE GREATER OF THE AMOUNT YOU PAID US IN THE TWELVE MONTHS BEFORE THE CLAIM OR ONE HUNDRED (100) EUROS.`,
+    ],
+    outro: [
+      `Nothing in these Terms excludes or limits our liability where it would be unlawful to do so. In particular, if you are a consumer, these Terms do not affect any mandatory rights you have under the law of your country of residence, and we do not exclude or limit liability that cannot be excluded or limited under that law (such as liability for death or personal injury caused by negligence, fraud, or gross negligence).`,
     ],
   },
   {
     title: "Indemnification",
     paras: [
-      `You agree to indemnify and hold harmless ${COMPANY_NAME} and its operators from any claims, damages, liabilities, and expenses (including reasonable legal fees) arising out of Your Content, your use of the Service, or your violation of these Terms or of any law or third-party right.`,
+      `You agree to indemnify and hold harmless ${COMPANY_NAME} and its operators from any claims, damages, liabilities, and expenses (including reasonable legal fees) arising out of Your Content, your use of the Service, any video you create or distribute using the Service, or your violation of these Terms or of any law or third-party right.`,
     ],
   },
   {
@@ -149,131 +172,23 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Contact",
-    paras: [`Questions about these Terms can be sent to ${CONTACT_EMAIL}.`],
+    paras: [
+      `General questions about these Terms can be sent to ${CONTACT_EMAIL}. Copyright notices must be sent to our Designated Copyright Agent at ${COPYRIGHT_EMAIL}. ${COMPANY_ENTITY} operates the Service.`,
+    ],
   },
 ];
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-canvas text-fg">
-      {/* Header bar — mirrors the editor's top bar */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-line bg-canvas px-6 py-4">
-        <Link href="/login" className="flex items-center gap-3 group">
-          <ManuscriptMark className="w-5 h-5 opacity-70 group-hover:opacity-100 transition-opacity" />
-        </Link>
-        <div className="w-px h-4 bg-surface-muted" />
-        <span className="text-[11px] font-medium uppercase tracking-widest text-fg-subtle">
-          Legal
-        </span>
-        <div className="flex-1" />
-        <Link
-          href="/login"
-          className="text-[11px] uppercase tracking-widest text-fg-subtle hover:text-fg transition-colors"
-        >
-          ← Back
-        </Link>
-      </header>
-
-      <main className="mx-auto max-w-3xl px-6 py-16">
-        {/* Title block */}
-        <p className="text-[10px] font-bold uppercase tracking-widest text-fg-subtle mb-3">
-          {COMPANY_NAME}
-        </p>
-        <h1
-          className="text-3xl font-bold uppercase tracking-[0.15em] text-fg"
-          style={serif}
-        >
-          Terms of Service
-        </h1>
-        <div className="mt-5 mb-6 h-0.5 w-16 bg-accent" />
-        <p className="text-xs uppercase tracking-wider text-fg-subtle">
-          Last updated: {LAST_UPDATED}
-        </p>
-
-        <p className="mt-8 text-sm leading-relaxed text-fg-muted">
-          Please read these Terms carefully before using {COMPANY_NAME}. They
-          set out the rules for using the Service and the rights and
-          responsibilities of both you and us.
-        </p>
-
-        {/* Sections */}
-        <div className="mt-12 space-y-12">
-          {SECTIONS.map((section, i) => (
-            <section key={section.title} className="scroll-mt-24">
-              <div className="flex items-baseline gap-3">
-                <span
-                  className="text-sm tabular-nums text-fg-subtle"
-                  style={serif}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <h2
-                  className="text-lg font-bold uppercase tracking-wider text-fg"
-                  style={serif}
-                >
-                  {section.title}
-                </h2>
-              </div>
-
-              <div className="mt-4 pl-8 space-y-4">
-                {section.paras?.map((p, j) => (
-                  <p
-                    key={j}
-                    className="text-sm leading-relaxed text-fg-muted"
-                  >
-                    {p}
-                  </p>
-                ))}
-
-                {section.bullets && (
-                  <ul className="space-y-2.5">
-                    {section.bullets.map((b, j) => (
-                      <li key={j} className="flex items-start gap-3">
-                        <span className="mt-2 h-1 w-1 flex-shrink-0 rounded-full bg-fg-subtle" />
-                        <span className="text-sm leading-relaxed text-fg-muted">
-                          {b}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {section.outro?.map((p, j) => (
-                  <p
-                    key={j}
-                    className="text-sm leading-relaxed text-fg-muted"
-                  >
-                    {p}
-                  </p>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-
-        {/* Footer */}
-        <footer className="mt-20 border-t border-line pt-8">
-          <p className="text-xs leading-relaxed text-fg-subtle">
-            By continuing to use {COMPANY_NAME}, you acknowledge that you have
-            read and agree to these Terms of Service.
-          </p>
-          <div className="mt-4 flex items-center gap-4 text-[11px] uppercase tracking-widest text-fg-subtle">
-            <Link
-              href="/login"
-              className="hover:text-fg transition-colors"
-            >
-              Back to {COMPANY_NAME}
-            </Link>
-            <span className="text-fg-subtle">·</span>
-            <a
-              href={`mailto:${CONTACT_EMAIL}`}
-              className="hover:text-fg transition-colors"
-            >
-              Contact
-            </a>
-          </div>
-        </footer>
-      </main>
-    </div>
+    <LegalDocument
+      companyName={COMPANY_NAME}
+      docTitle="Terms of Service"
+      lastUpdated={LAST_UPDATED}
+      contactEmail={CONTACT_EMAIL}
+      intro={`Please read these Terms carefully before using ${COMPANY_NAME}. They set out the rules for using the Service and the rights and responsibilities of both you and us.`}
+      sections={SECTIONS}
+      footerNote={`By continuing to use ${COMPANY_NAME}, you acknowledge that you have read and agree to these Terms of Service.`}
+      crossLinks={[{ href: "/privacy", label: "Privacy" }]}
+    />
   );
 }

@@ -58,13 +58,24 @@ export default async function LoginPage() {
           {/* System requirements link */}
           <SystemRequirementsButton />
 
-          {/* Legal */}
-          <Link
-            href="/terms"
-            className="mt-4 text-fg-muted hover:text-fg transition-colors text-xs uppercase tracking-widest border-b border-line-strong hover:border-fg pb-px"
-          >
-            Terms of Service
-          </Link>
+          {/* Legal — clickwrap notice + links */}
+          <p className="mt-4 max-w-sm text-center text-[11px] leading-relaxed text-fg-muted">
+            By signing in, you agree to our{" "}
+            <Link
+              href="/terms"
+              className="text-fg hover:text-fg transition-colors border-b border-line-strong hover:border-fg pb-px"
+            >
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/privacy"
+              className="text-fg hover:text-fg transition-colors border-b border-line-strong hover:border-fg pb-px"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </div>
 
         {/* Scroll arrow */}

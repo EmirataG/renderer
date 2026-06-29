@@ -14,6 +14,7 @@ import {
   SunIcon,
   MoonIcon,
   TermsIcon,
+  ShieldIcon,
   SignOutIcon,
   EmptyMusicIcon,
 } from "@/components/icons";
@@ -508,6 +509,16 @@ function SettingsMenu({ onSignOut }: { onSignOut: () => void }) {
           >
             <TermsIcon className="w-4 h-4 shrink-0" />
             <span>Review terms</span>
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              router.push('/privacy');
+            }}
+            className={itemClass}
+          >
+            <ShieldIcon className="w-4 h-4 shrink-0" />
+            <span>Privacy policy</span>
           </button>
           <div className="border-t border-line" />
           <button
